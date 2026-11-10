@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use zgui_geom::{Css, CssPx, Point};
 
-/// What a drop event carries: everything dropped at once, and where.
+/// What a drop, drag enter or drag over event carries: everything dragged at once, and where.
 ///
 /// A drop is one event carrying a set of paths rather than one event per path. That is not a
 /// convenience: a handler told about three files one at a time cannot tell whether a fourth is
@@ -23,9 +23,12 @@ use zgui_geom::{Css, CssPx, Point};
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct DropEvent {
-    /// Everything dropped, in the order the platform listed it.
+    /// Everything dragged, in the order the platform listed it.
+    ///
+    /// A drag enter or drag over event has the paths the platform gave when the drag entered the
+    /// window.
     pub paths: Vec<PathBuf>,
-    /// Where the drop happened, in CSS pixels from the window's top-left corner.
+    /// Where the drag is, in CSS pixels from the window's top-left corner.
     pub position: Point<CssPx, Css>,
 }
 
