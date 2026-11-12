@@ -8,6 +8,7 @@ use zgui_runtime::AppError;
 use zgui_view::{Anchor, BuildCx, IntoView, View};
 
 pub use crate::app::fonts::Fonts;
+pub use crate::app::graphics::adapters;
 
 /// Shaping text outside the paragraph pipeline: the shaper [`Fonts::shaper`] answers with, what one
 /// line is asked for in, the OpenType settings on top of that, and what the resolved face measures.
@@ -143,7 +144,7 @@ pub struct App {
     renderer: Option<zgui_runtime::RendererFactory>,
     /// How precisely the default renderer holds a plain group, when the application set it.
     group_precision: Option<crate::GroupPrecision>,
-    /// What the default renderer asks each device for.
+    /// What the default renderer asks each device for, and which adapter it prefers.
     graphics: zgui_render_wgpu::GraphicsOptions,
     /// The application's own context setup, held until the faces are known.
     ///
@@ -512,6 +513,31 @@ impl App {
         self
     }
 
+    /// Sets which adapter the default renderer tries first.
+    ///
+    /// The preference sorts the adapters. The renderer still tries the next adapter where the
+    /// preferred one cannot open a device or cannot present to the window. The
+    /// `ZGUI_DEVICE_ID` environment variable sorts before the preference, and `ZGUI_BACKENDS`
+    /// selects the backends before the sort. With [`AdapterPreference::Software`], the application
+    /// keeps the software Vulkan driver available. A renderer set with [`App::with_renderer`]
+    /// ignores it.
+    ///
+    /// [`AdapterPreference::Software`]: crate::AdapterPreference::Software
+    ///
+    /// ```no_run
+    /// use zgui::prelude::*;
+    ///
+    /// # fn main() -> Result<(), zgui::Error> {
+    /// app()
+    ///     .with_adapter_preference(zgui::AdapterPreference::NameContains("intel".to_owned()))
+    ///     .run(|| view! { column() })
+    /// # }
+    /// ```
+    pub fn with_adapter_preference(mut self, preference: crate::AdapterPreference) -> Self {
+        self.graphics.preference = preference;
+        self
+    }
+
     /// The faces this application draws with, for registering one of its own.
     ///
     /// Asking settles the question [`App::with_fonts`] would otherwise answer: an application that
@@ -564,8 +590,14 @@ impl App {
         V: IntoView,
     {
         // Before the font thread below, which is the first thread this process starts: the guard
-        // inside changes the environment only while the process has one thread.
-        zgui_render_wgpu::gpu::loader::prefer_hardware_vulkan();
+        // inside changes the environment only while the process has one thread. The default
+        // renderer keeps the software Vulkan driver where the application prefers a software
+        // adapter.
+        let software = self.renderer.is_none()
+            && self.graphics.preference == crate::AdapterPreference::Software;
+        if !software {
+            zgui_render_wgpu::gpu::loader::prefer_hardware_vulkan();
+        }
         // The last point at which the application could have named its own faces has passed, so
         // this is where enumerating the machine's starts — on a thread of its own, alongside
         // opening the window and the graphics device rather than in front of them.

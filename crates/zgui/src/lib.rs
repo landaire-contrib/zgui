@@ -136,6 +136,8 @@ pub mod prelude;
 
 pub use crate::app::{App, app};
 pub use crate::error::Error;
+/// Which adapter the default renderer tries first, see [`App::with_adapter_preference`].
+pub use zgui_render_wgpu::AdapterPreference;
 /// The features and limits each device of the default renderer gets, see
 /// [`App::with_device_request`].
 pub use zgui_render_wgpu::DeviceRequest;
