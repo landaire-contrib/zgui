@@ -486,18 +486,30 @@ impl LayoutStore {
         let lowered = self.styles.lowered(style_slot);
         let natural_ratio = self.replaced.get(key).and_then(|it| it.as_ref()?.ratio);
         let state = self.layout.get(key).and_then(Option::as_ref);
-        let gutter = state.map_or((false, false), |state| {
-            let held = state.auto_scroll;
-            match state.scroll_lock {
-                Some(locked) => (held.0 || locked.0, held.1 || locked.1),
-                None => held,
-            }
-        });
+        let held = state.map_or((false, false), |state| state.auto_scroll);
+        // A lock that holds no axis holds no breadth either, so a gutter the container comes to
+        // need while it is locked takes the breadth its style asks for.
+        let locked = state
+            .and_then(|state| state.scroll_lock)
+            .filter(|locked| locked.axes != (false, false));
+        let gutter = match locked {
+            Some(locked) => (held.0 || locked.axes.0, held.1 || locked.axes.1),
+            None => held,
+        };
         let measured = state.map_or_else(Default::default, |state| crate::style::MeasuredSizes {
             horizontal: state.intrinsic[0],
             vertical: state.intrinsic[1],
         });
-        let variant = crate::style::engine::variant(node, lowered, natural_ratio, gutter, measured);
+        let variant = crate::style::engine::variant(
+            node,
+            lowered,
+            natural_ratio,
+            crate::style::engine::Gutter {
+                axes: gutter,
+                breadth: locked.map(|locked| locked.breadth),
+            },
+            measured,
+        );
         let style = crate::style::engine::engine_style(lowered, &variant);
         let scroll_container = style.is_scroll_container();
         let id = self.engine_styles.intern(style);

@@ -1,12 +1,13 @@
 //! What a scroll container's style says about its scrollbars.
 //!
-//! Two inputs. The inherited `color-scheme` picks the light or the dark default paint, so a dark
+//! Three inputs. The inherited `color-scheme` picks the light or the dark default paint, so a dark
 //! theme on a light desktop gets a thumb that shows on its own background. The custom properties
 //! [`THUMB`] and [`TRACK`] replace the default colours, the way `--zgui-fill` replaces a drawing's
-//! fill.
+//! fill. The custom property
+//! [`SCROLLBAR_WIDTH`](zgui_css::values::scrollbar::SCROLLBAR_WIDTH) makes the painted thumb thin.
 //!
-//! Only a scroll container reads either. Every other box lowers to the default, which keeps the
-//! lowering of an ordinary box independent of both.
+//! Only a scroll container reads any of them. Every other box lowers to the default, which keeps
+//! the lowering of an ordinary box independent of all three.
 
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use zgui_color::Color;
 use zgui_css::parity::Support;
 use zgui_css::values::color::ColorSchemeFlags;
 use zgui_css::values::custom;
+use zgui_css::values::scrollbar::ScrollbarWidth;
 use zgui_css::{ComputedStyle, register_properties};
 
 register_properties! {
@@ -57,6 +59,8 @@ pub struct ScrollbarStyle {
     pub scheme: ScrollbarScheme,
     /// The colours that replace the default ones, when a style sheet set any.
     pub colors: Option<Arc<ScrollbarColors>>,
+    /// How broad the bars are.
+    pub width: ScrollbarWidth,
 }
 
 /// The scrollbar style of `style`.
@@ -70,6 +74,7 @@ pub fn of(style: &ComputedStyle) -> ScrollbarStyle {
         scheme: scheme_of(style.get_inherited_ui().color_scheme.bits),
         colors: (thumb.is_some() || track.is_some())
             .then(|| Arc::new(ScrollbarColors { thumb, track })),
+        width: ScrollbarWidth::of(style),
     }
 }
 

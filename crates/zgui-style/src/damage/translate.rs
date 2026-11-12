@@ -3,6 +3,7 @@
 use rustc_hash::FxHashMap;
 use style::selector_parser::RestyleDamage;
 use zgui_bits::Dirty;
+use zgui_css::values::scrollbar::ScrollbarWidth;
 use zgui_dom::dirty::propagate;
 use zgui_dom::side::paint_key::PaintStyleHeld;
 use zgui_dom::{DocumentStore, NodeIndex};
@@ -250,6 +251,16 @@ pub fn translate(
                 .get(key)
                 .is_some_and(|after| paint_key::paints_alike(before, after))
         });
+    // The scrollbar width is read from a custom property, which the engine reports as a repaint
+    // alone, and it sizes the gutter layout reserves.
+    if previous.custom != paint.custom
+        && let Some(before) = &before
+        && store.columns().paint_key.get(key).is_some_and(|after| {
+            ScrollbarWidth::of(&before.style) != ScrollbarWidth::of(&after.style)
+        })
+    {
+        out.mark(node, Dirty::RELAYOUT);
+    }
     if moved {
         out.mark(node, Dirty::REPAINT);
         // The inherited interaction group holds `pointer-events`, which the hit entry copies

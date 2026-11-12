@@ -663,3 +663,139 @@ fn a_custom_property_sets_the_thumb_colour() {
     harness.settle(8);
     assert_eq!(painted_color(&harness, THUMB), Some([0.0, 1.0, 0.0, 1.0]));
 }
+
+/// The scrolling page with no scrollbar.
+const BARE_CSS: &str = "
+root { display: block; width: 100%; height: 100%; overflow-x: hidden; overflow-y: scroll;
+       --zgui-scrollbar-width: none }
+.filler { display: block; width: 100%; height: 600px; background-color: #202020 }
+";
+
+/// The scrolling page with a thin scrollbar.
+const THIN_CSS: &str = "
+root { display: block; width: 100%; height: 100%; overflow-x: hidden; overflow-y: scroll;
+       --zgui-scrollbar-width: thin }
+.filler { display: block; width: 100%; height: 600px; background-color: #202020 }
+";
+
+/// How wide a thin gutter is, in device pixels: half of [`GUTTER`], on a whole pixel.
+const THIN_GUTTER: f32 = 8.0;
+
+/// How wide the filler is laid out, which is the scrollport less any gutter.
+fn filler_width(harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>) -> f32 {
+    let layout = window(harness).layout().borrow();
+    layout
+        .keys()
+        .into_iter()
+        .filter_map(|key| layout.layout_of(key))
+        .find(|resolved| resolved.size.height.0 == 600.0)
+        .expect("the filler was laid out")
+        .size
+        .width
+        .0
+}
+
+/// Turns the wheel three lines down over the page and lets the glide arrive.
+fn wheel(harness: &mut zgui_platform_headless::Harness<zgui_runtime::Runtime>) {
+    harness.deliver_to_first(SurfaceEvent::Wheel {
+        event: zgui_vocab::WheelEvent {
+            id: zgui_vocab::PointerId::MOUSE,
+            kind: zgui_vocab::PointerKind::Mouse,
+            position: Point::<CssPx, Css>::new(CssPx(100.0), CssPx(100.0)),
+            delta: zgui_vocab::ScrollDelta::Lines { x: 0.0, y: 3.0 },
+            phase: zgui_vocab::ScrollPhase::Discrete,
+        },
+        modifiers: Modifiers::NONE,
+        timestamp: Timestamp::ORIGIN,
+    });
+    for _ in 0..24 {
+        harness.advance(std::time::Duration::from_millis(20));
+        harness.pump();
+    }
+    harness.settle(4);
+}
+
+#[test]
+fn a_scroller_with_no_scrollbar_draws_no_bar_reserves_no_gutter_and_still_scrolls() {
+    let mut harness = page(BARE_CSS, false);
+    harness.settle(8);
+
+    assert_eq!(bars(&harness), [], "no track and no thumb");
+    assert_eq!(
+        filler_width(&harness),
+        400.0,
+        "the content takes the strip a gutter would have taken"
+    );
+
+    wheel(&mut harness);
+    assert!(
+        offset(&harness) > 0.0,
+        "the wheel moves the content without a bar to show it"
+    );
+}
+
+#[test]
+fn a_thin_scrollbar_reserves_and_paints_half_the_breadth() {
+    let mut harness = page(THIN_CSS, false);
+    harness.settle(8);
+
+    assert_eq!(
+        bar(&harness, ScrollbarPart::Track),
+        [400.0 - THIN_GUTTER, 0.0, THIN_GUTTER, 300.0]
+    );
+    assert_eq!(filler_width(&harness), 400.0 - THIN_GUTTER);
+    assert!(
+        painted(&harness, [400.0 - THIN_GUTTER / 2.0 - 1.5, 0.0, 3.0, 150.0]),
+        "the thumb is three pixels wide down the middle of the thin gutter"
+    );
+    assert!(!painted(&harness, THUMB), "and not the default six");
+}
+
+#[test]
+fn the_default_scrollbar_keeps_the_theme_breadth() {
+    let mut harness = page(CSS, false);
+    harness.settle(8);
+
+    assert_eq!(filler_width(&harness), 400.0 - GUTTER);
+    assert!(painted(&harness, THUMB));
+}
+
+#[test]
+fn a_class_that_hides_the_scrollbar_gives_the_gutter_back_and_takes_it_again() {
+    use zgui_reactive::prelude::{Get, Set};
+
+    let bare = zgui_reactive::RwSignal::new(false);
+    let css = "
+        root { display: block; width: 100%; height: 100% }
+        .page { display: block; width: 100%; height: 100%; overflow-x: hidden;
+                overflow-y: scroll }
+        .page.bare { --zgui-scrollbar-width: none }
+        .filler { display: block; width: 100%; height: 600px }
+    ";
+    let mut harness = support::app_with_text(css, move |cx: &mut BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .class("page")
+                .class_toggle(zgui_interned::ClassName::new("bare"), move || bare.get())
+                .child(zgui_elements::column().class("filler"))
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+    assert_eq!(filler_width(&harness), 400.0 - GUTTER);
+
+    bare.set(true);
+    harness.settle(8);
+    assert_eq!(bars(&harness), []);
+    assert_eq!(
+        filler_width(&harness),
+        400.0,
+        "a custom property alone moved, and the gutter went with it"
+    );
+
+    bare.set(false);
+    harness.settle(8);
+    assert_eq!(filler_width(&harness), 400.0 - GUTTER);
+    assert_eq!(bars(&harness).len(), 2, "a track and a thumb again");
+}

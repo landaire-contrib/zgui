@@ -131,13 +131,17 @@ fn scroll_lock_gutter() {
     // gutter the page was reserving is what the lock holds, and it is read from the layout that
     // reserved it rather than from the one about to be computed.
     let root = store.root().expect("a root");
-    let axes = gutter::reserved(&store, root);
-    assert_eq!(axes, (false, true), "the page was scrolling vertically");
+    let held = gutter::reserved(&store, root);
+    assert_eq!(
+        held.axes,
+        (false, true),
+        "the page was scrolling vertically"
+    );
 
     let locked = page("hidden");
     let mut locked_store = locked.box_tree();
     let locked_root = locked_store.root().expect("a root");
-    gutter::lock_axes(&mut locked_store, locked_root, axes);
+    gutter::lock_gutter(&mut locked_store, locked_root, held);
     assert!(gutter::is_locked(&locked_store, locked_root));
     let mut content = measurer();
     relayout(&mut frame, &mut locked_store, &mut content, 400.0, 300.0);
@@ -147,6 +151,54 @@ fn scroll_lock_gutter() {
         before,
         "locking the page must not move a single fragment"
     );
+}
+
+#[test]
+fn a_locked_thin_gutter_keeps_its_breadth() {
+    // A thin bar is thin only while its container scrolls. A style that stops it scrolling asks
+    // for the theme's breadth, so the lock holds the breadth as well as the axes.
+    let thin = page("auto; --zgui-scrollbar-width: thin");
+    let mut store = thin.box_tree();
+    let mut content = measurer();
+    let mut frame = lay_out(&mut store, &mut content, 400.0, 300.0);
+    let before = fragment_rects(&store, &frame);
+
+    let root = store.root().expect("a root");
+    let held = gutter::reserved(&store, root);
+    assert_eq!(held.axes, (false, true));
+    assert_eq!(
+        held.breadth.0, 8.0,
+        "half the theme's fifteen, on a whole pixel"
+    );
+
+    let locked = page("hidden; --zgui-scrollbar-width: thin");
+    let mut locked_store = locked.box_tree();
+    let locked_root = locked_store.root().expect("a root");
+    gutter::lock_gutter(&mut locked_store, locked_root, held);
+    let mut content = measurer();
+    relayout(&mut frame, &mut locked_store, &mut content, 400.0, 300.0);
+
+    assert_eq!(
+        fragment_rects(&locked_store, &frame),
+        before,
+        "locking a thin page must not move a single fragment"
+    );
+}
+
+#[test]
+fn a_lock_that_holds_no_gutter_lets_a_needed_one_appear() {
+    // Locked before anything was laid out, so the lock holds nothing, and the content then
+    // overflows. The gutter the content needs takes the theme's breadth, not the lock's none.
+    let scrolling = page("auto");
+    let mut store = scrolling.box_tree();
+    let root = store.root().expect("a root");
+    gutter::lock(&mut store, root);
+    assert!(gutter::is_locked(&store, root));
+
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 400.0, 300.0);
+    let layout = store.layout_of(root).expect("laid out");
+    assert_eq!(layout.scrollbar_size.width.0, 15.0);
 }
 
 #[test]

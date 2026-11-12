@@ -6,6 +6,7 @@ use crate::axis::Axis;
 use crate::fragment::FragList;
 use crate::inline::content::memo::Flattened;
 use crate::inline::resolved::InlineResolution;
+use crate::scroll_region::gutter::HeldGutter;
 use crate::style::convert::length::IntrinsicSizes;
 use crate::tree::store::LayoutStore;
 
@@ -122,7 +123,7 @@ pub(crate) struct BoxLayout {
     /// disappearing while its content is edited.
     pub(crate) auto_scroll: (bool, bool),
     /// The gutter this box keeps reserved while it is locked, if it is.
-    pub(crate) scroll_lock: Option<(bool, bool)>,
+    pub(crate) scroll_lock: Option<HeldGutter>,
 }
 
 /// The range of hit-order keys one box's subtree spans, as `(first, last)`.

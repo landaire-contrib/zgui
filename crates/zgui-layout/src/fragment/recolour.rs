@@ -8,7 +8,8 @@
 //! The proof is deliberately narrow. Every group must be equal apart from the text, border and
 //! outline colours and the background colour and images, which only the painter reads. A background
 //! also decides [`FragmentFlags::PAINTS_NOTHING`](crate::fragment::FragmentFlags::PAINTS_NOTHING),
-//! so a background that starts or stops painting gives no proof.
+//! so a background that starts or stops painting gives no proof. The scrollbar width is read from
+//! a custom property and sizes the gutter, so a change to it gives no proof either.
 //!
 //! Three kinds of box get no proof from a colour either, and the caller refuses them:
 //!
@@ -18,6 +19,7 @@
 //! - A box a mark reached with no new style. An animation or a text edit marks a repaint too.
 
 use zgui_css::ComputedStyle;
+use zgui_css::values::scrollbar::ScrollbarWidth;
 
 use crate::fragment::ink;
 
@@ -51,6 +53,7 @@ pub(crate) fn only_colours_differ(old: &ComputedStyle, new: &ComputedStyle) -> b
         && same_text(old, new)
         && same_border(old, new)
         && same_background(old, new)
+        && ScrollbarWidth::of(old) == ScrollbarWidth::of(new)
 }
 
 /// Whether the outline groups are equal apart from the colour.

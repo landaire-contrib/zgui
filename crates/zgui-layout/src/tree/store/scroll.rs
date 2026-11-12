@@ -2,6 +2,7 @@
 
 use zgui_dom::side::BoxKey;
 
+use crate::scroll_region::gutter::HeldGutter;
 use crate::tree::store::LayoutStore;
 
 impl LayoutStore {
@@ -14,7 +15,7 @@ impl LayoutStore {
     }
 
     /// The gutter one box keeps reserved while it is locked, if it is locked.
-    pub fn scroll_lock(&self, key: BoxKey) -> Option<(bool, bool)> {
+    pub fn scroll_lock(&self, key: BoxKey) -> Option<HeldGutter> {
         self.layout
             .get(key)
             .and_then(Option::as_ref)
@@ -30,9 +31,9 @@ impl LayoutStore {
     }
 
     /// Records, or clears, one box's held gutter.
-    pub(crate) fn set_scroll_lock(&mut self, key: BoxKey, axes: Option<(bool, bool)>) {
+    pub(crate) fn set_scroll_lock(&mut self, key: BoxKey, gutter: Option<HeldGutter>) {
         if let Some(state) = self.layout.get_mut(key).as_mut() {
-            state.scroll_lock = axes;
+            state.scroll_lock = gutter;
             self.touch_engine_style(key);
         }
     }
