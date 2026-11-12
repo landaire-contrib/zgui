@@ -413,6 +413,73 @@ fn a_smooth_scroll_travels_over_several_frames_and_parks_with_a_deadline() {
 }
 
 #[test]
+fn an_adjustment_during_a_smooth_scroll_moves_it_and_does_not_stop_it() {
+    let mut harness = listing(200);
+    harness.settle(8);
+
+    let container = {
+        let window = window(&harness);
+        let layout = window.layout().borrow();
+        layout
+            .keys()
+            .into_iter()
+            .find(|key| zgui_layout::scroll_region::region_of(&layout, *key).is_some())
+            .expect("the fixture has a scroll container")
+    };
+    let node = window(&harness)
+        .layout()
+        .borrow()
+        .node(container)
+        .source
+        .expect("the container came from an element");
+    let offset = |harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>| {
+        window(harness)
+            .scroll()
+            .borrow()
+            .offset_of(element_of(window(harness), container))
+            .y
+            .0
+    };
+
+    window(&harness).host().scroll_to(
+        zgui_view_dom::id::to_view(node),
+        zgui_view::ScrollTarget::Offset(Point::new(DevicePx(0.0), DevicePx(400.0))),
+        zgui_view::ScrollBehavior::Smooth,
+    );
+    harness.settle(4);
+    harness.advance(FRAME);
+    harness.settle(4);
+    let reached = offset(&harness);
+    assert!(
+        reached > 0.0 && reached < 400.0,
+        "it is on its way: {reached}"
+    );
+
+    // Content 40px tall appeared above the port.
+    window(&harness).host().scroll_to(
+        zgui_view_dom::id::to_view(node),
+        zgui_view::ScrollTarget::Adjust(Point::new(DevicePx(0.0), DevicePx(40.0))),
+        zgui_view::ScrollBehavior::Instant,
+    );
+    harness.settle(4);
+    assert_eq!(
+        offset(&harness),
+        reached + 40.0,
+        "the adjustment is made at once"
+    );
+
+    for _ in 0..30 {
+        harness.advance(FRAME);
+        harness.settle(4);
+    }
+    assert_eq!(
+        offset(&harness),
+        440.0,
+        "the scroll went on to its destination, moved with the content"
+    );
+}
+
+#[test]
 fn an_idle_document_with_a_scroll_container_in_it_parks_and_runs_no_frames() {
     let mut harness = listing(200);
     harness.settle(8);

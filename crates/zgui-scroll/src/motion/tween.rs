@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use zgui_geom::{Device, DevicePx, Point};
+use zgui_geom::{Device, DevicePx, Point, Size};
 
 use crate::motion::Step;
 
@@ -68,6 +68,35 @@ impl Tween {
         self.from = at;
         self.to = to;
         self.elapsed = Duration::ZERO;
+    }
+
+    /// Moves where it started and where it is going by `by`, keeping its progress.
+    ///
+    /// For content that moved under the scroll: the motion carries on as it was, over the moved
+    /// content.
+    ///
+    /// ```
+    /// use core::time::Duration;
+    /// use zgui_geom::{Device, DevicePx, Point, Size};
+    /// use zgui_scroll::motion::Tween;
+    ///
+    /// let at = |y: f32| Point::<DevicePx, Device>::new(DevicePx(0.0), DevicePx(y));
+    /// let mut tween = Tween::new(at(0.0), at(100.0));
+    /// let reached = tween.advance(Duration::from_millis(60)).to;
+    /// tween.translate(Size::new(DevicePx(0.0), DevicePx(40.0)));
+    /// assert_eq!(tween.destination(), at(140.0));
+    /// let now = tween.advance(Duration::ZERO).to;
+    /// assert!((now.y.0 - (reached.y.0 + 40.0)).abs() < 0.001);
+    /// ```
+    pub fn translate(&mut self, by: Size<DevicePx, Device>) {
+        self.from = Point::new(
+            DevicePx(self.from.x.0 + by.width.0),
+            DevicePx(self.from.y.0 + by.height.0),
+        );
+        self.to = Point::new(
+            DevicePx(self.to.x.0 + by.width.0),
+            DevicePx(self.to.y.0 + by.height.0),
+        );
     }
 
     /// Advances it by `elapsed`.

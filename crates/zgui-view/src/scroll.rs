@@ -69,6 +69,13 @@ pub enum ScrollTarget {
     Offset(Point<DevicePx, Device>),
     /// Scroll this container by a relative amount.
     By(Point<DevicePx, Device>),
+    /// Move this container by a relative amount at once, without stopping a motion it is on.
+    ///
+    /// For content that changed height above what is on screen: the offset moves with it so that
+    /// what is on screen stays put. A smooth scroll in progress keeps going to its destination,
+    /// moved by the same amount, and a fling keeps its speed. The [`ScrollBehavior`] it is asked
+    /// with is ignored.
+    Adjust(Point<DevicePx, Device>),
 }
 
 /// Whether a scroll animates or jumps.
