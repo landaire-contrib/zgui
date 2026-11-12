@@ -7,16 +7,17 @@ mod handles;
 
 pub(crate) use crate::surface::attributes::window as window_attributes;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use accesskit::TreeUpdate;
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::window::Window;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Point, Size};
 use zgui_platform::{
-    ColorScheme, CursorStyle, Decorations, FullscreenMode, GpuSurface, ResizeEdge, Surface,
-    SurfaceId, TextInput, TitleButtons, Unsupported, WindowIcon, WindowLevel,
+    ColorScheme, CursorStyle, DecorationSource, Decorations, FullscreenMode, GpuSurface,
+    ResizeEdge, Surface, SurfaceEvent, SurfaceId, TextInput, TitleButtons, Unsupported, WindowIcon,
+    WindowLevel,
 };
 
 use crate::waker::ProxyWaker;
@@ -49,14 +50,18 @@ pub struct WinitSurface {
     waker: Arc<ProxyWaker>,
     /// Whether the window was shown at least once.
     shown: AtomicBool,
+    /// Who draws the frame, from the last decorations asked for.
+    decoration_source: Mutex<DecorationSource>,
 }
 
 impl WinitSurface {
-    /// A surface over `window`, numbered `id`, with nothing listening to it yet.
+    /// A surface over `window`, numbered `id`, made with `decorations`, with nothing listening to
+    /// it yet.
     pub(crate) const fn new(
         id: SurfaceId,
         window: Arc<Window>,
         title_buttons: Option<TitleButtons>,
+        decorations: Decorations,
         waker: Arc<ProxyWaker>,
     ) -> Self {
         Self {
@@ -65,6 +70,7 @@ impl WinitSurface {
             title_buttons,
             waker,
             shown: AtomicBool::new(false),
+            decoration_source: Mutex::new(chrome::source(decorations)),
         }
     }
 
@@ -172,7 +178,26 @@ impl Surface for WinitSurface {
     }
 
     fn set_decorations(&self, decorations: Decorations) {
+        // Held until the event is sent, so concurrent callers report in the order they applied.
+        let mut current = self
+            .decoration_source
+            .lock()
+            .expect("the decoration source is not poisoned");
         self.window.set_decorations(chrome::decorated(decorations));
+        let source = chrome::source(decorations);
+        if core::mem::replace(&mut *current, source) != source {
+            self.waker.report(
+                self.window.id(),
+                SurfaceEvent::DecorationSourceChanged(source),
+            );
+        }
+    }
+
+    fn decoration_source(&self) -> DecorationSource {
+        *self
+            .decoration_source
+            .lock()
+            .expect("the decoration source is not poisoned")
     }
 
     fn set_resizable(&self, resizable: bool) {

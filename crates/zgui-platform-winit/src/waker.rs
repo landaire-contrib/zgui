@@ -4,13 +4,13 @@ use std::sync::Mutex;
 
 use winit::event_loop::EventLoopProxy;
 use winit::window::WindowId;
-use zgui_platform::{WakeReason, Waker};
+use zgui_platform::{SurfaceEvent, WakeReason, Waker};
 
 /// Something delivered to the loop from outside its own event stream.
 ///
-/// Three things arrive this way and they are unrelated: work finishing on another thread, the
-/// accessibility channel's own connection asking for something, and a frame for a window the
-/// platform does not paint. They share this type because the loop has exactly one way in for
+/// Four things arrive this way and they are unrelated: work finishing on another thread, the
+/// accessibility channel's own connection asking for something, a frame for a window the platform
+/// does not paint, and a change to a window that winit reports no event for. They share this type because the loop has exactly one way in for
 /// anything the platform does not report itself, and keeping that to one channel is what makes the
 /// wake path auditable.
 #[derive(Debug)]
@@ -23,6 +23,8 @@ pub enum UserEvent {
     /// A hidden window asks for a frame. Windows sends no paint message to a hidden window, so the
     /// loop delivers the frame request itself.
     Redraw(WindowId),
+    /// A window changed in a way winit reports no event for.
+    Surface(WindowId, SurfaceEvent),
 }
 
 impl From<accesskit_winit::Event> for UserEvent {
@@ -60,6 +62,14 @@ impl ProxyWaker {
         let proxy = self.proxy.lock().expect("the channel is not poisoned");
         if proxy.send_event(UserEvent::Redraw(window)).is_err() {
             tracing::debug!(target: "zgui::platform", "a redraw arrived after the loop had finished");
+        }
+    }
+
+    /// Delivers `event` for `window` on the loop's own thread.
+    pub(crate) fn report(&self, window: WindowId, event: SurfaceEvent) {
+        let proxy = self.proxy.lock().expect("the channel is not poisoned");
+        if proxy.send_event(UserEvent::Surface(window, event)).is_err() {
+            tracing::debug!(target: "zgui::platform", "a surface event arrived after the loop had finished");
         }
     }
 }

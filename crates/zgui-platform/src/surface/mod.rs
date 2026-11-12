@@ -205,6 +205,15 @@ pub trait Surface: Send + Sync + 'static {
         None
     }
 
+    /// Who draws the frame of this surface.
+    ///
+    /// A platform that can change the answer after the surface exists also reports each change
+    /// with [`SurfaceEvent::DecorationSourceChanged`]. The default is correct for a platform that
+    /// draws each frame that a surface asks for.
+    fn decoration_source(&self) -> DecorationSource {
+        DecorationSource::Platform
+    }
+
     /// Asks for the surface to sit at `level` in the stacking order.
     fn set_window_level(&self, level: WindowLevel) {
         let _ = level;

@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use accesskit::TreeUpdate;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Size};
 use zgui_platform::{
-    CursorStyle, Decorations, FullscreenMode, Surface, SurfaceAttributes, SurfaceId, TextInput,
+    CursorStyle, DecorationSource, Decorations, FullscreenMode, Surface, SurfaceAttributes,
+    SurfaceId, TextInput,
 };
 
 /// How many accessibility nodes the surface keeps across the updates it retains.
@@ -115,6 +116,8 @@ pub struct OffscreenSurface {
     /// can otherwise check about an application identifier, a window level or an icon is nothing at
     /// all, and an attribute nothing reads is an attribute that silently stops being sent.
     requested_attributes: Mutex<SurfaceAttributes>,
+    /// Who the platform says draws the frame.
+    decoration_source: Mutex<DecorationSource>,
 }
 
 impl OffscreenSurface {
@@ -135,6 +138,7 @@ impl OffscreenSurface {
             visible: AtomicBool::new(false),
             title: Mutex::new(String::new()),
             requested_attributes: Mutex::new(SurfaceAttributes::default()),
+            decoration_source: Mutex::new(DecorationSource::Platform),
         }
     }
 
@@ -289,6 +293,19 @@ impl OffscreenSurface {
         self.refresh_rate_millihertz
             .store(millihertz.unwrap_or(0), Ordering::Relaxed);
     }
+
+    /// Records who the platform says draws the frame.
+    ///
+    /// Delivering
+    /// [`SurfaceEvent::DecorationSourceChanged`](zgui_platform::SurfaceEvent::DecorationSourceChanged)
+    /// through the harness calls this before the event arrives, as a compositor that answers again
+    /// would.
+    pub(crate) fn set_decoration_source(&self, source: DecorationSource) {
+        *self
+            .decoration_source
+            .lock()
+            .expect("the decoration source is not poisoned") = source;
+    }
 }
 
 impl Surface for OffscreenSurface {
@@ -349,6 +366,13 @@ impl Surface for OffscreenSurface {
     fn set_minimized(&self, _minimized: bool) {}
 
     fn set_fullscreen(&self, _mode: Option<FullscreenMode>) {}
+
+    fn decoration_source(&self) -> DecorationSource {
+        *self
+            .decoration_source
+            .lock()
+            .expect("the decoration source is not poisoned")
+    }
 
     fn set_cursor(&self, cursor: CursorStyle) {
         self.cursor_log

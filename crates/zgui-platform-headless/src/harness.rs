@@ -171,10 +171,10 @@ impl<A: AppHandler> Harness<A> {
     /// This is the scripted-input half of the backend: a pointer move, a key, a resize or an
     /// occlusion arrives here rather than from a person.
     ///
-    /// An event that says the surface moved is applied to the surface before it is delivered,
-    /// because that is the order a window system does it in: the extent a window reports has
-    /// already changed by the time the notification arrives. Delivering the notification alone
-    /// would leave the surface saying one thing and the event saying another, and a test written
+    /// An event that says the surface changed is applied to the surface before it is delivered,
+    /// because that is the order a window system does it in: what a window reports has already
+    /// changed by the time the notification arrives. Delivering the notification alone would
+    /// leave the surface saying one thing and the event saying another, and a test written
     /// against that pair proves nothing about either.
     pub fn deliver(&mut self, surface: SurfaceId, event: SurfaceEvent) {
         let resized = self.apply_to_surface(surface, &event);
@@ -186,9 +186,10 @@ impl<A: AppHandler> Harness<A> {
         }
     }
 
-    /// Moves the surface to where `event` says it already is, and reports whether it was a configure.
+    /// Brings the surface to the state `event` says it is already in, and reports whether it was
+    /// a configure.
     ///
-    /// The order is the order a window system does it in: the extent a window reports has already
+    /// The order is the order a window system does it in: what a window reports has already
     /// changed by the time the notification arrives. Delivering the notification alone would leave
     /// the surface saying one thing and the event saying another, and a test written against that
     /// pair proves nothing about either.
@@ -205,6 +206,9 @@ impl<A: AppHandler> Harness<A> {
             SurfaceEvent::ScaleFactorChanged { scale_factor, size } => {
                 offscreen.set_scale_factor(*scale_factor);
                 offscreen.resize(*size);
+            }
+            SurfaceEvent::DecorationSourceChanged(source) => {
+                offscreen.set_decoration_source(*source);
             }
             _ => {}
         }

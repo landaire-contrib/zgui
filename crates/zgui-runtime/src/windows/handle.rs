@@ -6,8 +6,8 @@ use std::sync::{Arc, Weak};
 
 use zgui_geom::{Css, CssPx, Point, Size};
 use zgui_platform::{
-    ColorScheme, CursorStyle, Decorations, FullscreenMode, PlatformCapabilities, ResizeEdge,
-    Surface, WindowIcon, WindowLevel,
+    ColorScheme, CursorStyle, DecorationSource, Decorations, FullscreenMode, PlatformCapabilities,
+    ResizeEdge, Surface, WindowIcon, WindowLevel,
 };
 use zgui_reactive::prelude::*;
 use zgui_reactive::{ArcRwSignal, Signal};
@@ -80,6 +80,8 @@ pub(crate) struct WindowShared {
     pub(crate) fullscreen: ArcRwSignal<Option<FullscreenMode>>,
     /// The light or dark scheme the window's document is styled in.
     pub(crate) color_scheme: ArcRwSignal<ColorScheme>,
+    /// Who draws the window frame.
+    pub(crate) decoration_source: ArcRwSignal<DecorationSource>,
 }
 
 impl WindowHandle {
@@ -90,6 +92,8 @@ impl WindowHandle {
         capabilities: Rc<RefCell<PlatformCapabilities>>,
         zoom: Zoom,
     ) -> Self {
+        // Replaced by the answer of the surface when the window opens.
+        let decoration_source = ArcRwSignal::new(capabilities.borrow().decorations);
         Self {
             shared: Rc::new(WindowShared {
                 id,
@@ -110,6 +114,7 @@ impl WindowHandle {
                 fullscreen: ArcRwSignal::new(None),
                 // The scheme a window's document starts in until the desktop states one.
                 color_scheme: ArcRwSignal::new(ColorScheme::Light),
+                decoration_source,
             }),
         }
     }
@@ -132,6 +137,9 @@ impl WindowHandle {
         ));
         self.shared.maximized.set(surface.is_maximized());
         self.shared.fullscreen.set(surface.fullscreen());
+        self.shared
+            .decoration_source
+            .set(surface.decoration_source());
     }
 
     /// Takes the surface away, leaving the window named but not open.
@@ -205,6 +213,17 @@ impl WindowHandle {
         if self.shared.color_scheme.get_untracked() != scheme {
             self.shared.color_scheme.set(scheme);
         }
+    }
+
+    /// Records who the platform says draws the window frame.
+    ///
+    /// Reports whether the value changed.
+    pub(crate) fn set_decoration_source(&self, source: DecorationSource) -> bool {
+        let moved = self.shared.decoration_source.get_untracked() != source;
+        if moved {
+            self.shared.decoration_source.set(source);
+        }
+        moved
     }
 
     /// Asks the surface again whether it is maximised or full screen.
@@ -310,6 +329,17 @@ impl WindowHandle {
     /// platform reports a preference for the window.
     pub fn color_scheme(&self) -> Signal<ColorScheme> {
         self.shared.color_scheme.clone().into()
+    }
+
+    /// Who draws the title bar and the frame of this window.
+    ///
+    /// The value comes from the platform, for this window, and it can change while the window is
+    /// open. A window that asks for [`Decorations::Full`] and sees
+    /// [`DecorationSource::Application`] gets no frame from the platform. It must then draw its own
+    /// title bar, and give the user a way to move, resize and close the window. A Wayland
+    /// compositor without server-side decorations gives this answer.
+    pub fn decoration_source(&self) -> Signal<DecorationSource> {
+        self.shared.decoration_source.clone().into()
     }
 
     /// The surface, while there is one to act on.

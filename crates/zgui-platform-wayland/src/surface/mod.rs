@@ -26,8 +26,8 @@ use wayland_client::protocol::wl_region::WlRegion;
 use wayland_client::protocol::wl_surface::WlSurface;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Size};
 use zgui_platform::{
-    CursorStyle, Decorations, FullscreenMode, GpuSurface, PresentPacing, PresentationTiming,
-    Surface, SurfaceId, TextInput, Unsupported,
+    CursorStyle, DecorationSource, Decorations, FullscreenMode, GpuSurface, PresentPacing,
+    PresentationTiming, Surface, SurfaceId, TextInput, Unsupported,
 };
 
 use crate::driver::WaylandState;
@@ -484,6 +484,10 @@ impl Surface for WaylandSurface {
         self.shared()
             .fullscreen
             .then_some(FullscreenMode::Borderless)
+    }
+
+    fn decoration_source(&self) -> DecorationSource {
+        self.shared().decorations
     }
 
     fn focus(&self) {

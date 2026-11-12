@@ -6,6 +6,7 @@ use zgui_vocab::{
     PointerEvent, Timestamp, WheelEvent,
 };
 
+use crate::surface::chrome::DecorationSource;
 use crate::surface::drag::DragEvent;
 use crate::theme::ColorScheme;
 
@@ -70,6 +71,13 @@ pub enum SurfaceEvent {
     ResizingChanged(bool),
     /// The desktop's light or dark preference changed.
     ColorSchemeChanged(ColorScheme),
+    /// The platform changed who draws the frame of the surface.
+    ///
+    /// A Wayland compositor sends its answer after the surface exists, and it can change the
+    /// answer at any time. The new value is also what [`Surface::decoration_source`] returns.
+    ///
+    /// [`Surface::decoration_source`]: crate::Surface::decoration_source
+    DecorationSourceChanged(DecorationSource),
     /// A pointer did something.
     Pointer {
         /// What it did.

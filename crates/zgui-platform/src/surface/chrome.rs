@@ -109,6 +109,15 @@ pub enum WindowLevel {
 #[non_exhaustive]
 pub enum Decorations {
     /// The platform draws the title bar and the frame.
+    ///
+    /// Some platforms refuse this request. A Wayland compositor without server-side decorations
+    /// tells the window to draw its own frame. To find out, watch the decoration source of the
+    /// window: `WindowHandle::decoration_source` in the runtime, or [`Surface::decoration_source`]
+    /// and [`SurfaceEvent::DecorationSourceChanged`] on a surface. When it is
+    /// [`DecorationSource::Application`], draw a title bar with move, resize and close controls.
+    ///
+    /// [`Surface::decoration_source`]: crate::Surface::decoration_source
+    /// [`SurfaceEvent::DecorationSourceChanged`]: crate::SurfaceEvent::DecorationSourceChanged
     #[default]
     Full,
     /// The platform draws nothing, and the application draws its own frame.
@@ -136,6 +145,9 @@ impl Decorations {
 ///
 /// This is a capability rather than a preference: on a desktop that leaves it to the application,
 /// an application that does not draw one has no way to be moved or closed.
+///
+/// The platform can give a different answer for each window, and it can change the answer while
+/// the window is open.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum DecorationSource {

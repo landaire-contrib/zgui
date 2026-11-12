@@ -61,6 +61,9 @@ impl WaylandState {
         );
         surface.shared().ahead =
             crate::frame::Ahead::new(crate::frame::ahead::mode(attributes.compose_ahead));
+        if let Some(window) = surface.role().window() {
+            surface.shared().decorations = window.expected_source(attributes.decorations);
+        }
         apply(&surface, attributes);
         // The commit that asks to be configured. Nothing is attached to it, which is what makes it
         // the initial commit rather than a frame.

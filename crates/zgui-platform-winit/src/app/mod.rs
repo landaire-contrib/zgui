@@ -247,6 +247,14 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
                 );
                 None
             }
+            UserEvent::Surface(window, event) => {
+                if let Some(surface) = self.shared.by_window(window) {
+                    let cx = WinitCx::new(&self.shared, event_loop);
+                    self.handler
+                        .surface_event(&cx, Surface::id(surface.as_ref()), event);
+                }
+                None
+            }
         };
         let Some(reason) = reason else { return };
         // The desktop lays the title bar out once more as a change of full screen ends.
