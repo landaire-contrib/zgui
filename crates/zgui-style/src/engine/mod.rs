@@ -79,6 +79,8 @@ pub struct StyleEngine {
     ///
     /// Each keeps its hint until a restyle finds it in the document again.
     animation_waiting: Vec<zgui_dom::NodeKey>,
+    /// The ancestors the last settling of `animation_marks` raised the descent flag on.
+    animation_raised: crate::engine::animate::descent::Raised,
     /// The elements whose animations the last restyle gave new keyframe values.
     refreshed_animations: Vec<zgui_dom::NodeIndex>,
     /// What each rule chain reads and declares, kept from one restyle to the next.
@@ -133,6 +135,7 @@ impl StyleEngine {
             animations: Animations::new(),
             animation_marks: Vec::new(),
             animation_waiting: Vec::new(),
+            animation_raised: crate::engine::animate::descent::Raised::default(),
             refreshed_animations: Vec::new(),
             refs: crate::driver::traversal::RefsCache::default(),
             shared: crate::driver::share::SharedStyles::default(),

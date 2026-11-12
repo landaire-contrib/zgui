@@ -25,6 +25,7 @@ use zgui_dom::{Document, NodeIndex};
 use crate::driver::animations::tick;
 use crate::driver::animations::{AnimationReport, AnimationTime};
 use crate::engine::StyleEngine;
+use crate::engine::animate::descent::Standing;
 use crate::engine::guards;
 
 impl StyleEngine {
@@ -58,6 +59,10 @@ impl StyleEngine {
     /// the next restyle, which raises the descent flag that traversal reads on every ancestor of
     /// wherever the element stands by then. The flag is how the traversal gets from the root to an
     /// element that could be anywhere, and the hint alone reaches nothing.
+    ///
+    /// An element with no style is not marked. The traversal that reaches it matches and cascades
+    /// it in full, animations included, and until then it stands below a `display: none` ancestor
+    /// the animation-only traversal does not enter.
     pub fn mark_animation_restyle(&mut self, document: &Document, index: NodeIndex) {
         let node = document.node(index);
         let Some(element) = node.as_element() else {
@@ -68,7 +73,12 @@ impl StyleEngine {
         // sees through and a lint reports — while a block ends the borrow in both builds and says
         // why: nothing below this point may hold the element's data.
         {
-            let mut data = element.ensure_style_data();
+            let Some(mut data) = element.mutate_style_data() else {
+                return;
+            };
+            if !data.has_styles() {
+                return;
+            }
             data.hint
                 .insert(RestyleHint::RESTYLE_CSS_ANIMATIONS | RestyleHint::RESTYLE_CSS_TRANSITIONS);
         }
@@ -88,11 +98,16 @@ impl StyleEngine {
     /// the document has none the traversal can follow. The first is reached from its new place;
     /// the second waits, hint and all, for a restyle that finds it in the document again. Left
     /// unreached, its hint meets the ordinary traversal, which refuses it.
+    ///
+    /// An element below a `display: none` ancestor is not reached either, because the traversal
+    /// stops there. Its animation hint becomes a match, which the ordinary traversal does when
+    /// the ancestor is shown, and which reads the animation values the table then holds.
     pub(crate) fn settle_animation_marks(&mut self, document: &Document) -> bool {
         let mut marked = std::mem::take(&mut self.animation_marks);
         marked.append(&mut self.animation_waiting);
         let root = document.root().map(|root| root.index());
         let mut reachable = false;
+        self.animation_raised.clear();
         for key in marked {
             let Some(index) = document.store().index_of(key) else {
                 continue;
@@ -107,11 +122,21 @@ impl StyleEngine {
             if !pending {
                 continue;
             }
-            if descent::top_of(node).is_some_and(|top| Some(top) == root) {
-                descent::raise_to_root(node);
-                reachable = true;
-            } else if !self.animation_waiting.contains(&key) {
-                self.animation_waiting.push(key);
+            match self.animation_raised.settle(node, root) {
+                Standing::Reached => {
+                    reachable = true;
+                }
+                Standing::Hidden => {
+                    if let Some(mut data) = element.mutate_style_data() {
+                        data.hint.remove(RestyleHint::for_animations());
+                        data.hint.insert(RestyleHint::RESTYLE_SELF);
+                    }
+                }
+                Standing::Detached => {
+                    if !self.animation_waiting.contains(&key) {
+                        self.animation_waiting.push(key);
+                    }
+                }
             }
         }
         reachable

@@ -13,8 +13,9 @@
 //! place. It is cleared by the traversal that reads it, which is what makes storing it safe: one
 //! storage, one retirement, inside one traversal.
 
+use rustc_hash::FxHashSet;
 use style::dom::TNode;
-use zgui_dom::Node;
+use zgui_dom::{Node, NodeIndex};
 
 /// Records on every ancestor of `node` that an animation-only restyle is pending below it.
 ///
@@ -29,14 +30,80 @@ pub fn raise_to_root(node: Node<'_>) {
     }
 }
 
-/// The element at the top of `node`'s chain of traversal parents: the root for a node in the
-/// document, the top of the fragment for a node taken out of it.
-pub fn top_of(node: Node<'_>) -> Option<zgui_dom::NodeIndex> {
-    let mut top = node.as_element()?;
-    while let Some(parent) = top.traversal_parent() {
-        top = parent;
+/// Where an element stands for the animation-only traversal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Standing {
+    /// In the document and below no `display: none` ancestor. The traversal reaches it.
+    Reached,
+    /// In the document and below an ancestor whose style is `display: none`. The traversal stops
+    /// at that ancestor.
+    Hidden,
+    /// Out of the document, or not an element.
+    Detached,
+}
+
+/// The ancestors one settling pass has raised the descent flag on.
+///
+/// Each one is in the document and below no `display: none` ancestor, and so is every ancestor
+/// above it. Marked elements share most of their ancestors, so a walk stops at the first one
+/// already held, and each ancestor is read once per pass.
+#[derive(Debug, Default)]
+pub struct Raised {
+    /// The ancestors raised this pass.
+    held: FxHashSet<NodeIndex>,
+}
+
+impl Raised {
+    /// Starts a pass. The capacity stays for the next pass.
+    pub fn clear(&mut self) {
+        self.held.clear();
     }
-    Some(top.index())
+
+    /// Where `node` stands for the animation-only traversal that starts at `root`.
+    ///
+    /// When the traversal reaches `node`, raises the descent flag on each of its ancestors, as
+    /// [`raise_to_root`] does.
+    pub fn settle(&mut self, node: Node<'_>, root: Option<NodeIndex>) -> Standing {
+        let Some(mut top) = node.as_element() else {
+            return Standing::Detached;
+        };
+
+        let mut hidden = false;
+        let mut held = false;
+        while let Some(parent) = top.traversal_parent() {
+            if self.held.contains(&parent.index()) {
+                held = true;
+                break;
+            }
+            hidden |= parent
+                .borrow_style_data()
+                .is_some_and(|data| data.styles.is_display_none());
+            top = parent;
+        }
+
+        let standing = if !held && Some(top.index()) != root {
+            Standing::Detached
+        } else if hidden {
+            Standing::Hidden
+        } else {
+            Standing::Reached
+        };
+        if standing != Standing::Reached {
+            return standing;
+        }
+
+        // An ancestor already held has the flag, and so has every ancestor above it.
+        let mut ancestor = node.traversal_parent();
+        while let Some(element) = ancestor {
+            if !self.held.insert(element.index()) {
+                break;
+            }
+            element.note_animation_work_below();
+            ancestor = element.traversal_parent();
+        }
+
+        standing
+    }
 }
 
 /// Forgets that an animation-only restyle is pending below `element`.
@@ -54,7 +121,7 @@ mod tests {
     use zgui_dom::{Document, NodeKind};
     use zgui_interned::ElementName;
 
-    use super::{clear, raise_to_root};
+    use super::{Raised, Standing, clear, raise_to_root};
 
     #[test]
     fn the_flag_is_raised_on_every_ancestor_and_not_on_the_element_itself() {
@@ -82,5 +149,30 @@ mod tests {
 
         clear(document.node(middle));
         assert!(!document.node(middle).has_animation_work_below());
+    }
+
+    #[test]
+    fn one_pass_raises_the_flag_on_the_ancestors_of_every_reached_element() {
+        let mut document = Document::new();
+        let root = document.append(
+            document.document_index(),
+            NodeKind::Element,
+            ElementName::new("root"),
+        );
+        let middle = document.append(root, NodeKind::Element, ElementName::new("box"));
+        let first = document.append(middle, NodeKind::Element, ElementName::new("box"));
+        let side = document.append(middle, NodeKind::Element, ElementName::new("box"));
+        let second = document.append(side, NodeKind::Element, ElementName::new("box"));
+        let top = document.root().map(|root| root.index());
+
+        let mut raised = Raised::default();
+        assert_eq!(raised.settle(document.node(first), top), Standing::Reached);
+        assert_eq!(raised.settle(document.node(second), top), Standing::Reached);
+
+        for ancestor in [root, middle, side] {
+            assert!(document.node(ancestor).has_animation_work_below());
+        }
+        assert!(!document.node(first).has_animation_work_below());
+        assert!(!document.node(second).has_animation_work_below());
     }
 }
