@@ -13,7 +13,7 @@ use zgui::geom::{Device, DevicePx, Point, Rect};
 use zgui::prelude::*;
 use zgui::{component, view};
 use zgui_ui::prelude::*;
-use zgui_ui::toast::{Toast, ToastCorner, use_toaster};
+use zgui_ui::toast::{Toast, ToastAction, ToastCorner, use_toaster};
 use zgui_ui_tokens::prelude::*;
 
 use crate::desktop::stage::{HEIGHT, Stage};
@@ -154,9 +154,11 @@ fn Attempts() -> impl IntoView {
         column(class = "page") {
             Button(on:click = move |_| {
                 if let Some(toasts) = toasts {
-                    let toast = Toast::new("Upload failed")
-                        .persistent()
-                        .action("Retry", move || retried.update(|count| *count += 1));
+                    let retry = ToastAction::new("Retry", move || {
+                        retried.update(|count| *count += 1);
+                    })
+                    .keep_open();
+                    let toast = Toast::new("Upload failed").persistent().action_with(retry);
                     held.set(Some(toasts.push(toast)));
                 }
             }) {"start"}
@@ -536,6 +538,20 @@ fn alerts(stage: &Stage, title: &str) -> bool {
         .announced()
         .iter()
         .any(|node| node.role == "Alert" && node.name == title)
+}
+
+#[test]
+fn an_action_kept_open_runs_and_leaves_the_toast_shown() {
+    let mut stage = Stage::open(SHEET, || view! { Retrying() });
+    stage.click_saying("start");
+    stage.hold(ARRIVED);
+    stage.click_saying("Retry");
+    stage.hold(ARRIVED);
+    assert!(stage.shows("retried 1"), "the action ran once");
+    assert!(
+        alerts(&stage, "Upload failed") && stage.shows("Retry"),
+        "and the toast is still shown with its action"
+    );
 }
 
 #[test]

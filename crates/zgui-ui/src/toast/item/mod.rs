@@ -259,7 +259,9 @@ pub fn ToastItem(
                 tabindex = {Focus::Sequential},
                 on:click = move |_| {
                     button.run();
-                    dismiss();
+                    if button.dismisses() {
+                        dismiss();
+                    }
                 },
                 {..Attrs::new().a11y_from(A11yBinding::new(Role::Button).label(label.clone()))}
             ) {

@@ -105,6 +105,8 @@ pub struct ToastAction {
     run: Rc<dyn Fn()>,
     /// Whether pressing it destroys something.
     tone: ToastActionTone,
+    /// Whether pressing it also dismisses the toast.
+    dismisses: bool,
 }
 
 impl ToastAction {
@@ -115,7 +117,24 @@ impl ToastAction {
             label: label.into(),
             run: Rc::new(run),
             tone: ToastActionTone::Default,
+            dismisses: true,
         }
+    }
+
+    /// The same button. Pressing it leaves the toast shown.
+    ///
+    /// Use this for an action whose result the toast continues to show, such as "Retry" on a
+    /// persistent toast that the application removes when the work is done.
+    #[must_use]
+    pub const fn keep_open(mut self) -> Self {
+        self.dismisses = false;
+        self
+    }
+
+    /// Whether pressing it also dismisses the toast.
+    #[must_use]
+    pub const fn dismisses(&self) -> bool {
+        self.dismisses
     }
 
     /// The same button, in `tone`.
@@ -148,7 +167,10 @@ impl ToastAction {
 /// and there is no other answer a function has.
 impl PartialEq for ToastAction {
     fn eq(&self, other: &Self) -> bool {
-        self.label == other.label && self.tone == other.tone && Rc::ptr_eq(&self.run, &other.run)
+        self.label == other.label
+            && self.tone == other.tone
+            && self.dismisses == other.dismisses
+            && Rc::ptr_eq(&self.run, &other.run)
     }
 }
 
@@ -160,6 +182,7 @@ impl fmt::Debug for ToastAction {
             .debug_struct("ToastAction")
             .field("label", &self.label)
             .field("tone", &self.tone)
+            .field("dismisses", &self.dismisses)
             .finish_non_exhaustive()
     }
 }
@@ -255,6 +278,16 @@ impl Toast {
         self
     }
 
+    /// Adds `button` as the button that does the thing the message is about.
+    ///
+    /// Use this for a button built with [`ToastAction`] methods, such as
+    /// [`ToastAction::keep_open`].
+    #[must_use]
+    pub fn action_with(mut self, button: ToastAction) -> Self {
+        self.action = Some(button);
+        self
+    }
+
     /// Adds the button that puts the message away without doing anything.
     #[must_use]
     pub fn cancel(mut self, label: impl Into<String>, run: impl Fn() + 'static) -> Self {
@@ -301,7 +334,7 @@ impl Toast {
 
 #[cfg(test)]
 mod tests {
-    use super::{Toast, ToastActionTone, ToastKind};
+    use super::{Toast, ToastAction, ToastActionTone, ToastKind};
 
     #[test]
     fn an_action_is_ordinary_unless_it_destroys_something() {
@@ -314,6 +347,12 @@ mod tests {
         let tone = delete.action_button().map(|action| action.tone());
         assert_eq!(tone, Some(ToastActionTone::Destructive));
         assert_eq!(ToastActionTone::Destructive.name(), "destructive");
+    }
+
+    #[test]
+    fn an_action_dismisses_unless_it_is_kept_open() {
+        assert!(ToastAction::new("Undo", || {}).dismisses());
+        assert!(!ToastAction::new("Retry", || {}).keep_open().dismisses());
     }
 
     #[test]
