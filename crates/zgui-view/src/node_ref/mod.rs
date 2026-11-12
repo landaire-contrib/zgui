@@ -14,6 +14,7 @@ use core::ops::Range;
 use std::rc::Rc;
 
 use zgui_geom::{Device, DevicePx, Point, Rect, Size};
+use zgui_interned::AttrName;
 use zgui_reactive::prelude::*;
 use zgui_reactive::{ArcRwSignal, LocalStorage, RenderEffect, RwSignal, Signal, on_cleanup_local};
 use zgui_vocab::ListenerOptions;
@@ -265,6 +266,56 @@ impl NodeRef {
         let handle = Self::new();
         handle.bind(root, &bound.dom, &bound.host);
         Some(handle)
+    }
+
+    /// Sets the attribute `name` on this node to `value`.
+    ///
+    /// Use this on a node that the view did not build, for example the node from
+    /// [`NodeRef::window_root`]. The next style pass evaluates again the selectors that read
+    /// `name`. An attribute that a view binds on its own element replaces this value when the
+    /// binding updates.
+    ///
+    /// The node keeps the attribute after the calling scope ends. Remove it with
+    /// [`NodeRef::remove_attribute`]. When this handle is not bound, this does nothing.
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    /// use zgui_reactive::{Mounted, install};
+    /// use zgui_view::stub::{StubDom, StubHost};
+    /// use zgui_view::{AttrName, DocumentId, Dom, DomHandle, HostHandle, NodeRef};
+    /// use zgui_interned::ElementName;
+    ///
+    /// install().unwrap();
+    /// let backend = Rc::new(StubDom::new(DocumentId::FIRST));
+    /// let dom = DomHandle::from_rc(backend.clone());
+    /// let host = HostHandle::new(StubHost::default());
+    /// let window = Mounted::new();
+    ///
+    /// let mine = window.with(NodeRef::new);
+    /// let element = dom.create_element(ElementName::new("box"));
+    /// mine.bind(element, &dom, &host);
+    ///
+    /// let motion = AttrName::new("reduced-motion");
+    /// mine.set_attribute(motion, "");
+    /// assert_eq!(backend.attribute(element, motion).as_deref(), Some(""));
+    /// mine.remove_attribute(motion);
+    /// assert_eq!(backend.attribute(element, motion), None);
+    /// window.unmount();
+    /// ```
+    pub fn set_attribute(&self, name: AttrName, value: &str) {
+        if let Some(bound) = self.bound() {
+            bound.dom.set_attribute(bound.node, name, Some(value));
+        }
+    }
+
+    /// Removes the attribute `name` from this node.
+    ///
+    /// The next style pass evaluates again the selectors that read `name`. When this handle is not
+    /// bound, this does nothing.
+    pub fn remove_attribute(&self, name: AttrName) {
+        if let Some(bound) = self.bound() {
+            bound.dom.set_attribute(bound.node, name, None);
+        }
     }
 
     // ---- listening to a node this view did not create --------------------------------------
