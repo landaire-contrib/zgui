@@ -411,6 +411,12 @@ pub trait SurfaceRenderer: 'static {
         wgpu::TextureFormat::Rgba8Unorm
     }
 
+    /// The other formats the texture can be viewed as, for example the `*Srgb` twin of a plain
+    /// format, so that a render pass encodes through it.
+    fn view_formats(&self) -> &[wgpu::TextureFormat] {
+        &[]
+    }
+
     /// Usages the texture needs beyond those zgui always gives it, for example `COPY_SRC` to read
     /// it back or `STORAGE_BINDING` to write it from a compute pass.
     fn usage(&self) -> wgpu::TextureUsages {
@@ -988,7 +994,7 @@ impl WgpuSurfaces {
                             | wgpu::TextureUsages::TEXTURE_BINDING
                             | wgpu::TextureUsages::COPY_DST
                             | producer.usage(),
-                        view_formats: &[],
+                        view_formats: producer.view_formats(),
                     }));
                     *drawn = false;
                 }
