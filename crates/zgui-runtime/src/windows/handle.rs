@@ -78,6 +78,8 @@ pub(crate) struct WindowShared {
     pub(crate) maximized: ArcRwSignal<bool>,
     /// How the window fills the screen, if it does.
     pub(crate) fullscreen: ArcRwSignal<Option<FullscreenMode>>,
+    /// The light or dark scheme the window's document is styled in.
+    pub(crate) color_scheme: ArcRwSignal<ColorScheme>,
 }
 
 impl WindowHandle {
@@ -106,6 +108,8 @@ impl WindowHandle {
                 occluded: ArcRwSignal::new(false),
                 maximized: ArcRwSignal::new(false),
                 fullscreen: ArcRwSignal::new(None),
+                // The scheme a window's document starts in until the desktop states one.
+                color_scheme: ArcRwSignal::new(ColorScheme::Light),
             }),
         }
     }
@@ -191,6 +195,16 @@ impl WindowHandle {
     /// Records whether the desktop says nothing of the window is visible.
     pub(crate) fn set_occluded(&self, occluded: bool) {
         self.shared.occluded.set(occluded);
+    }
+
+    /// Records the scheme the window's document is styled in.
+    ///
+    /// The signal is written only when the value changed, because a desktop can state the same
+    /// preference again.
+    pub(crate) fn set_color_scheme(&self, scheme: ColorScheme) {
+        if self.shared.color_scheme.get_untracked() != scheme {
+            self.shared.color_scheme.set(scheme);
+        }
     }
 
     /// Asks the surface again whether it is maximised or full screen.
@@ -288,6 +302,14 @@ impl WindowHandle {
     /// How the window fills the screen, if it does.
     pub fn fullscreen(&self) -> Signal<Option<FullscreenMode>> {
         self.shared.fullscreen.clone().into()
+    }
+
+    /// The light or dark scheme the window's document is styled in.
+    ///
+    /// The `prefers-color-scheme` media query matches against this value. It is light until the
+    /// platform reports a preference for the window.
+    pub fn color_scheme(&self) -> Signal<ColorScheme> {
+        self.shared.color_scheme.clone().into()
     }
 
     /// The surface, while there is one to act on.

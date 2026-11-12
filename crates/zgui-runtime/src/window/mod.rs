@@ -632,6 +632,9 @@ impl Window {
         let size = surface.size();
         let viewport = Viewport::new(CssPx(size.width.0 / scale), CssPx(size.height.0 / scale))
             .at_scale(scale);
+        // A handle outlives a suspend, so the scheme it reports is reset to the new document's
+        // before the view reads it.
+        handle.set_color_scheme(scheme::to_platform(viewport.scheme));
 
         let mut engine = {
             let borrowed = document.borrow();
