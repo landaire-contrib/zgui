@@ -5,7 +5,7 @@
 
 mod support;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use zgui_geom::{DevicePx, Point};
@@ -229,4 +229,80 @@ fn a_scroll_into_view_measures_the_relayout_an_observation_asks_for() {
     harness.settle(8);
     // Row 30 spans 600px to 620px, so the 200px scrollport ends at its bottom edge.
     assert_eq!(scrolled(&harness), 420.0);
+}
+
+/// A list scrolled 200px down, with a third row that grows from 20px to 60px.
+const GROWING_CSS: &str = "
+root { display: block; width: 400px; height: 300px }
+.list { display: block; width: 400px; height: 200px; overflow-y: auto }
+.row { display: block; height: 20px }
+.grown { height: 60px }
+";
+
+#[test]
+fn a_scroll_an_observation_reader_asks_for_is_drawn_in_the_frame_that_measured() {
+    // As a virtualised list does: a row above the port grows, and the reader of its height scrolls
+    // by the growth so that the rows on screen stay where they are.
+    let slot: Rc<RefCell<Option<RwSignal<bool, zgui_reactive::LocalStorage>>>> = Rc::default();
+    let handed = Rc::clone(&slot);
+    let mut harness = support::app_with_text(GROWING_CSS, move |cx: &mut BuildCx<'_>| {
+        let grown = RwSignal::new_local(false);
+        *handed.borrow_mut() = Some(grown);
+        let list = NodeRef::new();
+        let row = NodeRef::new();
+        core::mem::forget(RenderEffect::new(move |_| {
+            if list.get().is_some() {
+                list.scroll_to(
+                    ScrollTarget::Offset(Point::new(DevicePx(0.0), DevicePx(200.0))),
+                    ScrollBehavior::Instant,
+                );
+            }
+        }));
+        let size = row.observe_border_size();
+        let last = Rc::new(Cell::new(None));
+        core::mem::forget(RenderEffect::new(move |_| {
+            let Some(size) = size.get() else {
+                return;
+            };
+            let Some(before) = last.replace(Some(size.height.0)) else {
+                return;
+            };
+            let growth = size.height.0 - before;
+            if growth != 0.0 {
+                list.scroll_to(
+                    ScrollTarget::By(Point::new(DevicePx(0.0), DevicePx(growth))),
+                    ScrollBehavior::Instant,
+                );
+            }
+        }));
+        let mut column = zgui_elements::column().class("list").node_ref(list);
+        for index in 0..40 {
+            let element = zgui_elements::column().class("row");
+            column = column.child(if index == 2 {
+                element
+                    .class_toggle(zgui_view::ClassName::new("grown"), move || grown.get())
+                    .node_ref(row)
+            } else {
+                element
+            });
+        }
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(column)
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+    assert_eq!(scrolled(&harness), 200.0);
+
+    let grown = slot.borrow().expect("the view was built");
+    grown.set(true);
+    assert_eq!(harness.pump(), 1);
+    assert_eq!(
+        scrolled(&harness),
+        240.0,
+        "the frame that measured the row drew the list before the reader's scroll"
+    );
 }
