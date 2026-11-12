@@ -23,9 +23,12 @@
 
 mod support;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use zgui_platform::{ColorScheme, PlatformCx, SurfaceEvent, WakeReason};
 use zgui_reactive::RwSignal;
-use zgui_reactive::prelude::{Get, Set};
+use zgui_reactive::prelude::{Get, GetUntracked, Set};
 use zgui_view::{AttrName, BuildCx, IntoView, View};
 
 /// Four elements holding text, three naming their own colour and one inheriting, and a theme
@@ -312,6 +315,46 @@ fn under_scheme(
     support::app_with_text_on(platform, SCHEME_CSS, move |cx: &mut BuildCx<'_>| {
         four_strings(cx, never)
     })
+}
+
+/// A settled window of the four strings, with its handle and what its view read as it was built.
+struct SchemeWindow {
+    /// The application.
+    harness: zgui_platform_headless::Harness<zgui_runtime::Runtime>,
+    /// The handle of the window the strings are mounted in.
+    handle: zgui_runtime::WindowHandle,
+    /// The value of the handle's scheme signal at each build of the view, in order.
+    built_in: Rc<RefCell<Vec<ColorScheme>>>,
+}
+
+/// The same four strings under `scheme`, settled.
+fn settled_under_scheme(scheme: Option<ColorScheme>) -> SchemeWindow {
+    let platform = zgui_platform_headless::Headless::new();
+    platform.set_color_scheme(scheme);
+    let held: Rc<RefCell<Option<zgui_runtime::WindowHandle>>> = Rc::default();
+    let stored = Rc::clone(&held);
+    let built_in: Rc<RefCell<Vec<ColorScheme>>> = Rc::default();
+    let seen = Rc::clone(&built_in);
+    let never = RwSignal::new(false);
+    let mut harness =
+        support::app_with_text_on(platform, SCHEME_CSS, move |cx: &mut BuildCx<'_>| {
+            let window = zgui_runtime::use_window();
+            seen.borrow_mut()
+                .push(window.color_scheme().get_untracked());
+            *stored.borrow_mut() = Some(window);
+            four_strings(cx, never)
+        });
+    harness.settle(8);
+    let handle = held
+        .borrow_mut()
+        .take()
+        .expect("the view was built inside its window");
+
+    SchemeWindow {
+        harness,
+        handle,
+        built_in,
+    }
 }
 
 #[test]
@@ -725,4 +768,81 @@ fn a_window_opened_on_a_dark_desktop_is_dark_in_its_first_frame() {
         DARK,
         "the window was opened on a dark desktop and drew its first frame in the light tokens"
     );
+}
+
+#[test]
+fn the_window_s_color_scheme_signal_agrees_with_the_media_query() {
+    let SchemeWindow {
+        mut harness,
+        handle,
+        ..
+    } = settled_under_scheme(None);
+    let scheme = handle.color_scheme();
+    let surface = surface_of(&harness);
+
+    assert_eq!(scheme.get_untracked(), ColorScheme::Light);
+    assert_eq!(drawn_greys(&harness), LIGHT);
+
+    harness.platform().set_color_scheme(Some(ColorScheme::Dark));
+    harness.deliver(surface, SurfaceEvent::ColorSchemeChanged(ColorScheme::Dark));
+    harness.settle(8);
+
+    assert_eq!(
+        scheme.get_untracked(),
+        ColorScheme::Dark,
+        "a scheme change addressed to the surface did not reach the signal"
+    );
+    assert_eq!(drawn_greys(&harness), DARK);
+
+    harness
+        .platform()
+        .set_color_scheme(Some(ColorScheme::Light));
+    harness
+        .platform()
+        .waker()
+        .wake(WakeReason::ColorSchemeChanged);
+    harness.settle(8);
+
+    assert_eq!(
+        scheme.get_untracked(),
+        ColorScheme::Light,
+        "a desktop-wide scheme change did not reach the signal"
+    );
+    assert_eq!(drawn_greys(&harness), LIGHT);
+}
+
+#[test]
+fn a_window_opened_on_a_dark_desktop_reports_dark() {
+    let window = settled_under_scheme(Some(ColorScheme::Dark));
+
+    assert_eq!(
+        window.handle.color_scheme().get_untracked(),
+        ColorScheme::Dark
+    );
+    assert_eq!(drawn_greys(&window.harness), DARK);
+}
+
+#[test]
+fn a_resumed_window_builds_its_view_in_the_scheme_of_its_new_document() {
+    let SchemeWindow {
+        mut harness,
+        handle,
+        built_in,
+    } = settled_under_scheme(Some(ColorScheme::Dark));
+    assert_eq!(handle.color_scheme().get_untracked(), ColorScheme::Dark);
+    assert_eq!(built_in.borrow().len(), 1);
+
+    // The desktop states no preference when the surface comes back, so the new document is light.
+    harness.suspend();
+    harness.platform().set_color_scheme(None);
+    harness.resume();
+    harness.settle(8);
+
+    assert_eq!(
+        built_in.borrow().get(1).copied(),
+        Some(ColorScheme::Light),
+        "the view was rebuilt while the signal held the scheme of the old document"
+    );
+    assert_eq!(handle.color_scheme().get_untracked(), ColorScheme::Light);
+    assert_eq!(drawn_greys(&harness), LIGHT);
 }

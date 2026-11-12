@@ -38,6 +38,7 @@ impl Window {
         }
         self.scheme = scheme;
         self.viewport = self.viewport.in_scheme(scheme);
+        self.handle.set_color_scheme(to_platform(scheme));
         true
     }
 
@@ -55,9 +56,18 @@ pub(crate) fn from_platform(scheme: zgui_platform::ColorScheme) -> zgui_style::C
     }
 }
 
+/// The platform's spelling of the scheme the style engine applies.
+pub(crate) fn to_platform(scheme: zgui_style::ColorScheme) -> zgui_platform::ColorScheme {
+    match scheme {
+        zgui_style::ColorScheme::Light => zgui_platform::ColorScheme::Light,
+        zgui_style::ColorScheme::Dark => zgui_platform::ColorScheme::Dark,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::from_platform;
+    use super::to_platform;
 
     #[test]
     fn both_preferences_survive_the_crossing() {
@@ -69,5 +79,11 @@ mod tests {
             from_platform(zgui_platform::ColorScheme::Light),
             zgui_style::ColorScheme::Light
         );
+        for scheme in [
+            zgui_style::ColorScheme::Light,
+            zgui_style::ColorScheme::Dark,
+        ] {
+            assert_eq!(from_platform(to_platform(scheme)), scheme);
+        }
     }
 }

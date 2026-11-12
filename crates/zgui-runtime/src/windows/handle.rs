@@ -93,6 +93,8 @@ pub(crate) struct WindowShared {
     pub(crate) input_region: RefCell<Option<Region>>,
     /// The last opaque region the application gave, if it gave one.
     pub(crate) opaque_region: RefCell<Option<Region>>,
+    /// The light or dark scheme the window's document is styled in.
+    pub(crate) color_scheme: ArcRwSignal<ColorScheme>,
 }
 
 /// A region in CSS pixels, or `None` for the whole window.
@@ -131,6 +133,8 @@ impl WindowHandle {
                 lock_keys: ArcRwSignal::new(Modifiers::NONE),
                 input_region: RefCell::new(None),
                 opaque_region: RefCell::new(None),
+                // The scheme a window's document starts in until the desktop states one.
+                color_scheme: ArcRwSignal::new(ColorScheme::Light),
             }),
         }
     }
@@ -248,6 +252,16 @@ impl WindowHandle {
     pub(crate) fn set_presented(&self) {
         if !self.shared.presented.get_untracked() {
             self.shared.presented.set(true);
+        }
+    }
+
+    /// Records the scheme the window's document is styled in.
+    ///
+    /// The signal is written only when the value changed, because a desktop can state the same
+    /// preference again.
+    pub(crate) fn set_color_scheme(&self, scheme: ColorScheme) {
+        if self.shared.color_scheme.get_untracked() != scheme {
+            self.shared.color_scheme.set(scheme);
         }
     }
 
@@ -400,6 +414,14 @@ impl WindowHandle {
     /// when it closes.
     pub fn close_reason(&self) -> Signal<Option<CloseReason>> {
         self.shared.close_reason.clone().into()
+    }
+
+    /// The light or dark scheme the window's document is styled in.
+    ///
+    /// The `prefers-color-scheme` media query matches against this value. It is light until the
+    /// platform reports a preference for the window.
+    pub fn color_scheme(&self) -> Signal<ColorScheme> {
+        self.shared.color_scheme.clone().into()
     }
 
     /// The surface, while there is one to act on.
