@@ -15,6 +15,17 @@ use zgui_platform::DragEvent;
 /// So the paths are gathered as they arrive and handed over as one event when the turn of the loop
 /// that delivered them is finished. That is the earliest moment at which the set is known to be
 /// complete, because the platform delivers a drag's files within a single turn.
+///
+/// # What a drop target gets
+///
+/// * [`DragEvent::Entered`] with every path, at the end of the turn that reported them.
+/// * No [`DragEvent::Moved`]. winit reports no pointer motion while an external drag is over the
+///   window, so `Entered` and `Dropped` have the last pointer position the window got before the
+///   drag.
+/// * [`DragEvent::Left`] when the platform cancels the hover.
+/// * [`DragEvent::Dropped`] with every path.
+///
+/// winit reports no external drags on Wayland. `zgui-platform-wayland` reports them.
 #[derive(Debug, Default)]
 pub struct Drag {
     /// Paths reported as hovering and not yet announced.
