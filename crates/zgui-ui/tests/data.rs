@@ -386,6 +386,77 @@ fn a_thousand_scroll_steps_leave_the_owner_tree_and_the_element_count_where_they
     }
 }
 
+/// A list whose rows differ in height lets each row be as tall as its content, and decides its
+/// window and its extent from the heights its rows are laid out at.
+#[test]
+fn a_measured_list_decides_its_window_from_the_heights_its_rows_are_laid_out_at() {
+    let harness = Harness::open();
+    let port = NodeRef::new();
+    let count = harness
+        .window
+        .scope
+        .with(|| RwSignal::new_local(1_000_usize));
+    let handle = harness.window.scope.with(|| port);
+    harness.mount(move || {
+        view! {
+            VirtualList(
+                count = count,
+                measured = MeasuredRows::new(ROW),
+                overscan = 2_usize,
+                node_ref = handle,
+                row = move |index: usize| view! { text {{move || format!("row {index}")}} }
+            )
+        }
+    });
+    let scroll = harness.find("zui-virtual-list");
+    harness
+        .window
+        .dom
+        .deliver(scroll, ObservedValue::ScrollPosition(scrolled(0.0, 1_000)));
+    harness.window.frame();
+
+    let declared = harness
+        .window
+        .dom
+        .tree()
+        .custom_property(scroll, CustomPropertyName::new("zui-virtual-row"));
+    assert_eq!(
+        declared.as_deref(),
+        Some("auto"),
+        "a measured row is as tall as its content"
+    );
+    assert_eq!(
+        indices_of(&harness, "zui-virtual-list__row"),
+        (0..22).collect::<Vec<_>>(),
+        "twenty rows of the estimate fill the port, and two of slack"
+    );
+
+    // Every row is laid out at twice the estimate.
+    for row in all_with(&harness, "zui-virtual-list__row") {
+        harness.window.dom.deliver(
+            row,
+            ObservedValue::BorderSize(Size::new(DevicePx(300.0), DevicePx(ROW * 2.0))),
+        );
+    }
+    harness.window.frame();
+
+    assert_eq!(
+        indices_of(&harness, "zui-virtual-list__row"),
+        (0..12).collect::<Vec<_>>(),
+        "ten rows fill the port now"
+    );
+    let pane = harness.find("zui-virtual-list__pane");
+    let trail = harness
+        .window
+        .dom
+        .tree()
+        .style_property(pane, "padding-bottom")
+        .expect("the trailing spacer is written");
+    // The 22 rows that were laid out count at their measurement, and the others at the estimate.
+    let total = 22.0 * ROW * 2.0 + 978.0 * ROW;
+    assert_eq!(trail, format!("{}px", total - 12.0 * ROW * 2.0));
+}
+
 // ---- the table ---------------------------------------------------------------------------------
 
 /// One row of the fixture.

@@ -7,8 +7,8 @@ use zgui::reactive::LocalStorage;
 use zgui::view::CustomPropertyName;
 use zgui::{component, view};
 
-use crate::virtualize::Virtualize;
 use crate::virtualize::style::VirtualListStyle;
+use crate::virtualize::{MeasuredRows, MeasuredVirtualize, Virtualize};
 
 /// What the virtualised list's rules are installed under.
 const SHEET: &str = "zui-virtual-list";
@@ -55,6 +55,34 @@ const SHEET: &str = "zui-virtual-list";
 /// therefore reaches the rows on screen through a rebuild of the list, which is what a keyed list
 /// builds every row again for. A `row` closure that reads a signal updates without one.
 ///
+/// # Rows that differ in height
+///
+/// With `measured`, each row is as tall as its content and is measured as it is built. A row that
+/// has not been built stands at the estimate `measured` gives it. When a row above the first
+/// visible one changes height, the list scrolls by the same amount, so the rows on screen stay
+/// where they are. [`MeasuredRows`] says what the measurements cost.
+///
+/// ```
+/// use zgui::prelude::*;
+/// use zgui::reactive::RwSignal;
+/// use zgui::{component, view};
+/// use zgui_ui::prelude::*;
+///
+/// /// Every message of a long thread, each as tall as its text.
+/// #[component]
+/// fn Thread() -> impl IntoView {
+///     let messages = RwSignal::new_local(20_000_usize);
+///     view! {
+///         VirtualList(
+///             count = messages,
+///             measured = MeasuredRows::new(48.0),
+///             label = "Thread",
+///             row = move |index: usize| view! { text {{move || format!("message {index}")}} }
+///         )
+///     }
+/// }
+/// ```
+///
 /// # Keyboard
 ///
 /// None of its own. A virtualised list is a scroll container, and scrolling is the framework's;
@@ -73,9 +101,13 @@ pub fn VirtualList<V, F>(
     /// Declared rather than measured: the window is decided before its rows are built, so a height
     /// taken from the rows would mean building all of them to find out which to build. The list
     /// writes the declaration into `--zui-virtual-row`, which is what makes every row that tall, so
-    /// a signal here moves the rows and the scroll extent together.
+    /// a signal here moves the rows and the scroll extent together. Unused when `measured` is
+    /// given.
     #[prop(into, default = Signal::stored_local(32.0))]
     row_size: Signal<f32, LocalStorage>,
+    /// Measures each row as it is built, so that the rows can differ in height.
+    #[prop(optional)]
+    measured: Option<MeasuredRows>,
     /// How many rows beyond each edge of the port to build, so a fast scroll shows rows rather
     /// than a gap.
     #[prop(default = 4)]
@@ -101,7 +133,13 @@ where
 {
     install_stylesheet(SHEET, VirtualListStyle::CSS);
     let viewport = node_ref.unwrap_or_default();
-    let seen = Virtualize::new(viewport, count, row_size, overscan);
+    let seen = match measured {
+        Some(measured) => {
+            Seen::Measured(MeasuredVirtualize::new(viewport, count, measured, overscan))
+        }
+        None => Seen::Declared(Virtualize::new(viewport, count, row_size, overscan)),
+    };
+    let measuring = seen.measured();
     let row = Rc::new(row);
 
     let mut semantics = A11yBinding::new(Role::List);
@@ -109,16 +147,20 @@ where
         semantics = semantics.label(text);
     }
 
+    // A measured row is as tall as its content, and `auto` is the height that says so.
     let own = Attrs::new()
         .class_toggle(zgui::view::ClassName::new("zui-virtual-list"), true)
         .custom_property(CustomPropertyName::new("zui-virtual-row"), move || {
+            if measuring.is_some() {
+                return Some("auto".to_owned());
+            }
             row_size.try_get().map(|size| format!("{size}px"))
         })
         .a11y_from(semantics);
 
     // Read once per frame into one value, so the two paddings and the row set are three reads of
     // one memo rather than three independent recomputations of the same window.
-    let window = Signal::derive_local(move || seen.window());
+    let window = Signal::derive_local(move || seen.span());
 
     view! {
         scroll(node_ref = viewport, class = VirtualListStyle::CLASS, {..own}, {..attrs}, class = class) {
@@ -129,10 +171,73 @@ where
             ) {
                 for index in move || window.try_get().map(|seen| seen.indices()).unwrap_or_default(),
                     key = |index: &usize| *index {
-                    Row(index = index, total = count, row = Rc::clone(&row), {..Attrs::new()})
+                    Row(index = index, total = count, row = Rc::clone(&row), measured = measuring, {..Attrs::new()})
                 }
             }
         }
+    }
+}
+
+/// The window a [`VirtualList`] follows, whichever way its rows are sized.
+#[derive(Copy, Clone)]
+enum Seen {
+    /// Every row is the declared height.
+    Declared(Virtualize),
+    /// Each row is measured.
+    Measured(MeasuredVirtualize),
+}
+
+impl Seen {
+    /// The rows to build and the space around them, subscribing to it.
+    fn span(self) -> Span {
+        match self {
+            Self::Declared(seen) => {
+                let window = seen.window();
+                Span {
+                    first: window.first,
+                    count: window.count,
+                    lead: window.lead,
+                    trail: window.trail,
+                }
+            }
+            Self::Measured(seen) => {
+                let window = seen.window();
+                Span {
+                    first: window.first,
+                    count: window.count,
+                    lead: window.lead,
+                    trail: window.trail,
+                }
+            }
+        }
+    }
+
+    /// The handle that measures the rows, when they are measured.
+    const fn measured(self) -> Option<MeasuredVirtualize> {
+        match self {
+            Self::Declared(_) => None,
+            Self::Measured(seen) => Some(seen),
+        }
+    }
+}
+
+/// The rows a [`VirtualList`] builds and the two spacers around them, in CSS pixels.
+#[derive(Copy, Clone, PartialEq, Debug)]
+struct Span {
+    /// The index of the first row that is built.
+    first: usize,
+    /// How many rows are built.
+    count: usize,
+    /// The height of everything before the first built row.
+    lead: f32,
+    /// The height of everything after the last built row.
+    trail: f32,
+}
+
+impl Span {
+    /// The indices that are built, in order.
+    fn indices(self) -> Vec<usize> {
+        (self.first..self.first + self.count).collect()
     }
 }
 
@@ -150,6 +255,8 @@ fn Row<V, F>(
     total: Signal<usize, LocalStorage>,
     /// What builds the row's content.
     row: Rc<F>,
+    /// The list's measured window, which measures the row, when its rows differ in height.
+    measured: Option<MeasuredVirtualize>,
     /// Anything else the caller forwarded.
     #[prop(attrs)]
     attrs: Attrs,
@@ -172,7 +279,17 @@ where
         )
         .a11y_from(semantics);
 
-    view! { box({..own}, {..attrs}) {{row(index)}} }
+    let element = zgui::elements::r#box()
+        .attrs(own)
+        .attrs(attrs)
+        .child(row(index));
+    let Some(measured) = measured else {
+        return element;
+    };
+
+    let node = NodeRef::new();
+    measured.measure(index, node);
+    element.node_ref(node)
 }
 
 /// A length as CSS text.

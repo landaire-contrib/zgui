@@ -16,6 +16,29 @@ use zgui::reactive::LocalStorage;
 /// filter or an insertion, names a key for each row with [`MeasuredRows::keyed`], and a measurement
 /// then follows its row.
 ///
+/// ```
+/// use zgui::prelude::*;
+/// use zgui::reactive::RwSignal;
+/// use zgui::{component, view};
+/// use zgui_ui::prelude::*;
+///
+/// /// Notes of any length, each wrapped to as many lines as it needs.
+/// #[component]
+/// fn Notes() -> impl IntoView {
+///     let notes = RwSignal::new_local(vec![(7_u64, "short".to_owned())]);
+///     view! {
+///         VirtualList(
+///             count = Signal::derive_local(move || notes.with(Vec::len)),
+///             measured = MeasuredRows::new(24.0).keyed(move |index| notes.with(|notes| notes[index].0)),
+///             label = "Notes",
+///             row = move |index: usize| view! {
+///                 text {{move || notes.with(|notes| notes[index].1.clone())}}
+///             }
+///         )
+///     }
+/// }
+/// ```
+///
 /// # Cost
 ///
 /// The list keeps a height and a running total for each row: about thirteen bytes a row, and one
