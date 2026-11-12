@@ -30,7 +30,7 @@ pub use crate::error::Error;
 /// desktop cannot carry out — so none of this needs a branch per platform.
 pub use zgui_runtime::windows::{
     CloseGuard, FocusGuard, LayerOptions, PopupOptions, WindowHandle, WindowId, WindowOptions,
-    Windows, on_close_request, try_use_window, try_use_windows, use_input_region, use_window,
+    Windows, Zoom, on_close_request, try_use_window, try_use_windows, use_input_region, use_window,
     use_windows,
 };
 

@@ -158,6 +158,8 @@ pub struct App {
     text_antialiasing: crate::TextAntialiasing,
     /// Whether the application opens a window when it starts.
     primary_window: bool,
+    /// The zoom the window opens at.
+    zoom: crate::windows::Zoom,
 }
 
 impl Default for App {
@@ -185,6 +187,7 @@ impl App {
             layout_threads: None,
             text_antialiasing: crate::TextAntialiasing::default(),
             primary_window: true,
+            zoom: crate::windows::Zoom::ONE,
         }
     }
 
@@ -347,6 +350,15 @@ impl App {
     /// Sets the size the window starts at, in CSS pixels.
     pub fn with_size(mut self, width: f32, height: f32) -> Self {
         self.attributes.size = Some(Size::<CssPx, Css>::new(CssPx(width), CssPx(height)));
+        self
+    }
+
+    /// The zoom the window opens at.
+    ///
+    /// See [`WindowHandle::set_zoom`](crate::WindowHandle::set_zoom), which changes it while the
+    /// window runs.
+    pub fn with_zoom(mut self, zoom: crate::windows::Zoom) -> Self {
+        self.zoom = zoom;
         self
     }
 
@@ -705,6 +717,7 @@ impl Runtime {
                     token,
                     commands.clone(),
                     Rc::clone(windows_api.capabilities_slot()),
+                    app.zoom,
                 ),
             });
         }
@@ -874,7 +887,8 @@ impl Runtime {
         let scale = surface.scale_factor();
         let size = first_extent(surface.size(), self.live[index].spec.attributes.size, scale);
         let translucent = self.live[index].spec.attributes.transparent;
-        let target = RenderTarget::new(size, zgui_geom::Scale::new(scale as f32));
+        let zoom = self.live[index].handle.requested_zoom();
+        let target = RenderTarget::new(size, zgui_geom::Scale::new(scale as f32 * zoom.get()));
         // A window asked to be transparent is composed translucent from its first frame: the
         // renderer picks a premultiplied presentation for it, and the paint gives its text ordinary
         // coverage.
@@ -1004,6 +1018,7 @@ impl Runtime {
                             token,
                             self.commands.clone(),
                             Rc::clone(self.windows_api.capabilities_slot()),
+                            crate::windows::Zoom::ONE,
                         )
                     });
                     self.live.push(LiveWindow {
@@ -1043,6 +1058,22 @@ impl Runtime {
                 }
                 // Carried out below, once every window this drain opens or closes has.
                 WindowCommand::SyncGrabs => {}
+                WindowCommand::Zoom(token) => {
+                    // A window that has not opened yet reads the requested zoom when it opens.
+                    let Some(index) = self.live_index(token) else {
+                        continue;
+                    };
+                    let Some(surface) = self.live[index].surface else {
+                        continue;
+                    };
+                    let zoom = self.live[index].handle.requested_zoom();
+                    let Some(window) = self.window_mut(surface) else {
+                        continue;
+                    };
+                    if window.set_zoom(zoom) {
+                        window.request_frame();
+                    }
+                }
                 WindowCommand::Quit => cx.request_exit(),
             }
         }

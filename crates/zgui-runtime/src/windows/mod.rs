@@ -31,6 +31,7 @@ mod layer;
 mod options;
 pub(crate) mod popup;
 mod region;
+mod zoom;
 
 pub use crate::windows::focus::FocusGuard;
 pub use crate::windows::handle::{WindowHandle, WindowId};
@@ -38,6 +39,7 @@ pub use crate::windows::layer::LayerOptions;
 pub use crate::windows::options::WindowOptions;
 pub use crate::windows::popup::PopupOptions;
 pub use crate::windows::region::use_input_region;
+pub use crate::windows::zoom::Zoom;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -90,6 +92,7 @@ impl Windows {
             on_close_request,
             hidden,
             popup_parent,
+            zoom,
         } = options;
         if let Some(callback) = on_close_request {
             close.borrow_mut().insert(callback);
@@ -97,8 +100,12 @@ impl Windows {
         // Named before it is asked for, so that the handle this answers with is the one the window
         // is filled into when it opens rather than a second name for the same window.
         let token = self.commands.mint();
-        let handle =
-            WindowHandle::pending(token, self.commands.clone(), Rc::clone(&self.capabilities));
+        let handle = WindowHandle::pending(
+            token,
+            self.commands.clone(),
+            Rc::clone(&self.capabilities),
+            zoom,
+        );
         let view = Box::new(move |cx: &mut BuildCx<'_>| -> Box<dyn Anchor> {
             Box::new(view().into_view().build(cx))
         });

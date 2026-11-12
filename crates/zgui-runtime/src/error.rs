@@ -55,6 +55,18 @@ impl From<zgui_reactive::InstallError> for AppError {
     }
 }
 
+/// A window zoom factor outside the range [`Zoom`](crate::windows::Zoom) accepts.
+#[derive(Clone, Copy, Debug, Error, PartialEq)]
+#[error("the zoom factor {factor} is outside the range {min} to {max}")]
+pub struct ZoomOutOfRange {
+    /// The factor that was given.
+    pub factor: f32,
+    /// The smallest factor accepted.
+    pub min: f32,
+    /// The largest factor accepted.
+    pub max: f32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::AppError;

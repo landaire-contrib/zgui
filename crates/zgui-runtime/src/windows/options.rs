@@ -9,6 +9,7 @@ use zgui_vocab::SharedString;
 
 use crate::commands::CloseResponse;
 use crate::window::WindowContent;
+use crate::windows::Zoom;
 use crate::windows::handle::{WindowHandle, WindowId};
 use crate::windows::layer::LayerOptions;
 use crate::windows::popup::PopupOptions;
@@ -30,6 +31,8 @@ pub struct WindowOptions {
     pub(crate) hidden: bool,
     /// The window a pop-up is placed against.
     pub(crate) popup_parent: Option<WindowId>,
+    /// The zoom the window opens at.
+    pub(crate) zoom: Zoom,
 }
 
 impl WindowOptions {
@@ -41,6 +44,7 @@ impl WindowOptions {
             on_close_request: None,
             hidden: false,
             popup_parent: None,
+            zoom: Zoom::ONE,
         }
     }
 
@@ -200,6 +204,12 @@ impl WindowOptions {
         self
     }
 
+    /// The zoom the window opens at. See [`WindowHandle::set_zoom`](crate::WindowHandle::set_zoom).
+    pub fn with_zoom(mut self, zoom: Zoom) -> Self {
+        self.zoom = zoom;
+        self
+    }
+
     /// Asks `callback` before a close the user asked for is carried out.
     ///
     /// Answering [`CloseResponse::Veto`] keeps the window: what a document with unsaved work does
@@ -221,6 +231,7 @@ impl core::fmt::Debug for WindowOptions {
         formatter
             .debug_struct("WindowOptions")
             .field("attributes", &self.attributes)
+            .field("zoom", &self.zoom)
             .finish_non_exhaustive()
     }
 }

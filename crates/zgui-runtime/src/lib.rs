@@ -108,7 +108,7 @@ pub use crate::editing::Editors;
 pub use crate::embed::{
     EmbedHost, EmbedMaintenanceCx, EmbedMemoryReport, EmbedSyncCx, EmbedSyncReport, NoEmbeds,
 };
-pub use crate::error::AppError;
+pub use crate::error::{AppError, ZoomOutOfRange};
 pub use crate::frame_callbacks::FrameCallbacks;
 pub use crate::grab::{ClearedGuard, FocusGrab};
 pub use crate::host::RuntimeHost;
@@ -128,7 +128,7 @@ pub use crate::window::resize::ResizePace;
 pub use crate::window::text_aa::TextAntialiasing;
 pub use crate::window::{MAINTENANCE_DELAY, Window, WindowContent};
 pub use crate::windows::{
-    CloseGuard, FocusGuard, WindowHandle, WindowId, Windows, on_close_request, try_use_window,
-    try_use_windows, use_input_region, use_window, use_windows,
+    CloseGuard, FocusGuard, WindowHandle, WindowId, Windows, Zoom, on_close_request,
+    try_use_window, try_use_windows, use_input_region, use_window, use_windows,
 };
 pub use crate::windows::{LayerOptions, PopupOptions, WindowOptions};

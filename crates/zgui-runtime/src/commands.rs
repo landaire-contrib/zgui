@@ -184,6 +184,8 @@ pub(crate) enum WindowCommand {
     Lock(Rc<crate::lock::LockEntry>),
     /// Unlock the session and close the lock windows.
     Unlock(Rc<crate::lock::LockEntry>),
+    /// Apply the zoom the window's handle holds.
+    Zoom(WindowToken),
     /// Stop the application.
     Quit,
 }
@@ -327,6 +329,15 @@ impl WindowCommands {
             .borrow_mut()
             .queue
             .push_back(WindowCommand::Unlock(lock));
+        self.ping();
+    }
+
+    /// Asks for a window to apply the zoom its handle holds.
+    pub(crate) fn zoom(&self, token: WindowToken) {
+        self.inner
+            .borrow_mut()
+            .queue
+            .push_back(WindowCommand::Zoom(token));
         self.ping();
     }
 

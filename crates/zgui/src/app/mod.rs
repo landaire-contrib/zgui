@@ -228,6 +228,22 @@ impl App {
         self
     }
 
+    /// Sets the zoom the window starts at.
+    ///
+    /// ```
+    /// use zgui::prelude::*;
+    ///
+    /// let app = app().with_zoom(Zoom::new(1.25).expect("1.25 is in range"));
+    /// # let _ = app;
+    /// ```
+    ///
+    /// See [`WindowHandle::set_zoom`](zgui_runtime::WindowHandle::set_zoom), which changes it
+    /// while the window runs.
+    pub fn with_zoom(mut self, zoom: zgui_runtime::Zoom) -> Self {
+        self.inner = self.inner.with_zoom(zoom);
+        self
+    }
+
     /// The smallest size the user may drag the window to, in CSS pixels.
     pub fn with_min_size(mut self, width: f32, height: f32) -> Self {
         self.inner.attributes_mut().min_size = Some(css_size(width, height));

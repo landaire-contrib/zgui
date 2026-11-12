@@ -119,7 +119,7 @@ impl Window {
             self.request_frame();
         }
         let wants_a_frame = match &event {
-            zgui_platform::SurfaceEvent::Resized(size) => self.resized(*size, self.scale),
+            zgui_platform::SurfaceEvent::Resized(size) => self.resized(*size, self.platform_scale),
             zgui_platform::SurfaceEvent::ScaleFactorChanged { scale_factor, size } => {
                 self.resized(*size, *scale_factor as f32)
             }
@@ -961,8 +961,9 @@ impl Window {
     /// so the whole surface is damaged.
     fn settle_text_coverage(&mut self) {
         let order = if self.renderer.capabilities().subpixel_text && !self.translucent {
+            // The display's own density. The zoom does not change which pixels the display has.
             self.text_antialiasing
-                .order(self.surface.subpixel_layout(), self.scale)
+                .order(self.surface.subpixel_layout(), self.platform_scale)
         } else {
             None
         };
@@ -1103,14 +1104,14 @@ impl Window {
     /// it before the scan-out that might have shown it. What it leaves behind — the level, and the
     /// obligation in `reconfigure` — is what the deadline discharges, and the frame that discharges
     /// it reads the surface rather than this event.
-    fn resized(&mut self, size: Size<DevicePx, Device>, scale: f32) -> bool {
-        if !self.resize(size, scale) {
+    pub(super) fn resized(&mut self, size: Size<DevicePx, Device>, platform_scale: f32) -> bool {
+        if !self.resize(size, platform_scale) {
             return false;
         }
         // What the handle reports, from the size that was actually taken. Maximising and leaving
         // full screen usually resize the window, so the state is read here too. A change that
         // keeps the size comes as a `SurfaceStateChanged` wake.
-        self.handle.set_geometry(size, scale);
+        self.handle.set_geometry(size, platform_scale, self.zoom);
         self.handle.refresh_window_state();
         let admitted = self.pace.admit(self.clock.now(), self.refresh_interval());
         if !admitted {
@@ -1131,8 +1132,11 @@ impl Window {
         admitted
     }
 
-    /// Records a new surface extent, and reports whether it moved.
-    fn resize(&mut self, size: Size<DevicePx, Device>, scale: f32) -> bool {
+    /// Records a new surface extent and platform scale, and reports whether either moved the
+    /// window.
+    fn resize(&mut self, size: Size<DevicePx, Device>, platform_scale: f32) -> bool {
+        self.platform_scale = platform_scale;
+        let scale = platform_scale * self.zoom.get();
         if self.extent == Some(size) && scale == self.scale {
             zgui_profile::latency::mark("w.resize.same");
             return false;

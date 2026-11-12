@@ -6,6 +6,9 @@
 //! wrong from that moment, and everything it measures in CSS pixels is untouched — so the change
 //! is a *boundary*, and this module is where it is drawn.
 //!
+//! The ratio is the platform scale times the window's zoom, so a change of zoom crosses the same
+//! boundary.
+//!
 //! | State | Unit | What the change does to it |
 //! |---|---|---|
 //! | the cascade's computed styles | CSS px | nothing: `font-size: 12px` is twelve CSS pixels at every ratio |

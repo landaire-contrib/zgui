@@ -14,6 +14,7 @@ use zgui_reactive::{ArcRwSignal, Signal};
 use zgui_vocab::Modifiers;
 
 use crate::commands::{WindowCommands, WindowToken};
+use crate::windows::Zoom;
 
 /// Which window this is.
 ///
@@ -61,10 +62,15 @@ pub(crate) struct WindowShared {
     pub(crate) commands: WindowCommands,
     /// What this desktop can do, once the platform has said.
     pub(crate) capabilities: Rc<RefCell<PlatformCapabilities>>,
-    /// The content size, in CSS pixels.
+    /// The content size, in CSS pixels at the current zoom.
     pub(crate) size: ArcRwSignal<Size<CssPx, Css>>,
-    /// How many physical pixels there are to a CSS pixel.
+    /// How many physical pixels there are to a CSS pixel on the display, without the zoom.
     pub(crate) scale: ArcRwSignal<f32>,
+    /// The zoom the window draws at, written together with `size`.
+    pub(crate) zoom: ArcRwSignal<Zoom>,
+    /// The zoom the application asked for, which the runtime applies on the next turn of the loop
+    /// or when the window opens.
+    pub(crate) requested_zoom: Cell<Zoom>,
     /// Whether the window holds the keyboard.
     pub(crate) focused: ArcRwSignal<bool>,
     /// What hears about the window gaining and losing the keyboard.
@@ -98,6 +104,7 @@ impl WindowHandle {
         id: WindowId,
         commands: WindowCommands,
         capabilities: Rc<RefCell<PlatformCapabilities>>,
+        zoom: Zoom,
     ) -> Self {
         Self {
             shared: Rc::new(WindowShared {
@@ -109,6 +116,8 @@ impl WindowHandle {
                 capabilities,
                 size: ArcRwSignal::new(Size::new(CssPx(0.0), CssPx(0.0))),
                 scale: ArcRwSignal::new(1.0),
+                zoom: ArcRwSignal::new(zoom),
+                requested_zoom: Cell::new(zoom),
                 // A window is opened focused until the desktop says otherwise, which is the same
                 // assumption the window itself starts from. A shell window is the exception, and
                 // the runtime says so when it opens one.
@@ -134,10 +143,13 @@ impl WindowHandle {
         *self.shared.surface.borrow_mut() = Some(Arc::downgrade(surface));
         let scale = surface.scale_factor() as f32;
         let size = surface.size();
+        let zoom = self.shared.requested_zoom.get();
+        let css = scale * zoom.get();
         self.shared.scale.set(scale);
+        self.shared.zoom.set(zoom);
         self.shared.size.set(Size::new(
-            CssPx(size.width.0 / scale),
-            CssPx(size.height.0 / scale),
+            CssPx(size.width.0 / css),
+            CssPx(size.height.0 / css),
         ));
         self.shared.maximized.set(surface.is_maximized());
         self.shared.fullscreen.set(surface.fullscreen());
@@ -181,15 +193,30 @@ impl WindowHandle {
     pub(crate) fn set_geometry(
         &self,
         size: zgui_geom::Size<zgui_geom::DevicePx, zgui_geom::Device>,
-        scale: f32,
+        platform_scale: f32,
+        zoom: Zoom,
     ) {
-        if self.shared.scale.get_untracked() != scale {
-            self.shared.scale.set(scale);
+        if self.shared.scale.get_untracked() != platform_scale {
+            self.shared.scale.set(platform_scale);
         }
-        let size = Size::new(CssPx(size.width.0 / scale), CssPx(size.height.0 / scale));
+        if self.shared.zoom.get_untracked() != zoom {
+            self.shared.zoom.set(zoom);
+        }
+        let css = platform_scale * zoom.get();
+        let size = Size::new(CssPx(size.width.0 / css), CssPx(size.height.0 / css));
         if self.shared.size.get_untracked() != size {
             self.shared.size.set(size);
         }
+    }
+
+    /// The zoom the application asked for, which the window opens at or changes to.
+    pub(crate) fn requested_zoom(&self) -> Zoom {
+        self.shared.requested_zoom.get()
+    }
+
+    /// Records a zoom the window was given directly, so a reopened window opens at it.
+    pub(crate) fn note_zoom(&self, zoom: Zoom) {
+        self.shared.requested_zoom.set(zoom);
     }
 
     /// Records whether the window holds the keyboard.
@@ -261,14 +288,43 @@ impl WindowHandle {
         self.surface().is_some()
     }
 
-    /// The content size, in CSS pixels.
+    /// The content size, in CSS pixels at the current zoom.
+    ///
+    /// This is the viewport the document is laid out in: the surface size in device pixels divided
+    /// by [`WindowHandle::scale`] and by [`WindowHandle::zoom`].
     pub fn size(&self) -> Signal<Size<CssPx, Css>> {
         self.shared.size.clone().into()
     }
 
     /// How many physical pixels there are to a CSS pixel on this window's display.
+    ///
+    /// This is the platform scale factor. It does not include the zoom.
     pub fn scale(&self) -> Signal<f32> {
         self.shared.scale.clone().into()
+    }
+
+    /// How much the window scales its content.
+    ///
+    /// This changes together with [`WindowHandle::size`], when the window applies a zoom that
+    /// [`WindowHandle::set_zoom`] asked for.
+    pub fn zoom(&self) -> Signal<Zoom> {
+        self.shared.zoom.clone().into()
+    }
+
+    /// Scales the window's content by `zoom`, as a browser's zoom control does.
+    ///
+    /// The zoom multiplies the platform scale factor. The document is laid out again in the CSS
+    /// viewport at the new zoom, text is rasterised again at the new size, and pointer positions
+    /// are mapped through the zoom. The window's own size on the desktop does not change.
+    ///
+    /// The window applies the zoom on the next turn of the loop. A window that has not opened yet
+    /// opens at `zoom`.
+    pub fn set_zoom(&self, zoom: Zoom) {
+        if self.shared.closed.get() || self.shared.requested_zoom.get() == zoom {
+            return;
+        }
+        self.shared.requested_zoom.set(zoom);
+        self.shared.commands.zoom(self.shared.id);
     }
 
     /// Whether the window holds the keyboard.
@@ -373,7 +429,8 @@ impl WindowHandle {
     /// Asks for a different content size, in CSS pixels.
     ///
     /// A request: a desktop may answer with a different size, or refuse. Watch
-    /// [`WindowHandle::size`] for what was actually taken.
+    /// [`WindowHandle::size`] for what was actually taken. The size is in the desktop's CSS
+    /// pixels, which do not include the zoom.
     pub fn request_size(&self, width: f32, height: f32) {
         self.act(|surface| {
             surface.request_size(Size::new(CssPx(width), CssPx(height)));
