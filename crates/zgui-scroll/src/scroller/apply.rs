@@ -105,6 +105,42 @@ impl Scroller {
         }
     }
 
+    /// Moves one container by `delta` at once, and keeps any motion it is on.
+    ///
+    /// For content that changed height above the scrollport, which the offset follows so that what
+    /// is on screen stays put. A smooth scroll keeps going, its start and destination moved by as
+    /// much as the offset was. A fling reads the offset as it advances, so it keeps its speed.
+    ///
+    /// Returns where it landed, or nothing when the container does not scroll at all.
+    pub fn adjust_by(
+        &mut self,
+        store: &LayoutStore,
+        container: NodeKey,
+        delta: Size<DevicePx, Device>,
+    ) -> Option<Point<DevicePx, Device>> {
+        let limit = code_region_of_element(store, container)?.limit();
+        let at = self.offset_of(container);
+        let clamped = Point::new(
+            DevicePx((at.x.0 + delta.width.0).clamp(0.0, limit.x.0)),
+            DevicePx((at.y.0 + delta.height.0).clamp(0.0, limit.y.0)),
+        );
+        if at == clamped {
+            return Some(clamped);
+        }
+
+        let landed = self.offsets.scroll_to(store, container, clamped);
+        if let Some(Motion::Smooth(tween)) = self.motion_mut(container) {
+            tween.translate(Size::new(
+                DevicePx(landed.x.0 - at.x.0),
+                DevicePx(landed.y.0 - at.y.0),
+            ));
+        }
+        self.compose(container);
+        self.record(container, at, landed);
+
+        Some(landed)
+    }
+
     /// Hands one container the speed a gesture let go of it with, in device pixels per second.
     ///
     /// A fling towards an edge the container is already at is not installed: it would spend the

@@ -1445,6 +1445,8 @@ impl Window {
             }
             outcome.ran()
         };
+        // Before the clamp: see `carry_out_owed_adjustments`.
+        self.carry_out_owed_adjustments();
         // Between the two halves, and it can be nowhere else. A held offset is clamped against an
         // extent this pass has just recomputed, and the pass below composes every fragment against
         // whatever the offsets say — so an offset left past the end here is a subtree translated

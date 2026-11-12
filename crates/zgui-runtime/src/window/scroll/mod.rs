@@ -230,6 +230,12 @@ impl Window {
         let Some(key) = zgui_view_dom::id::to_document(node) else {
             return;
         };
+        if let zgui_view::ScrollTarget::Adjust(by) = target {
+            if self.adjust(key, by) {
+                self.mark_scrolled(&[key]);
+            }
+            return;
+        }
         let Some((container, to)) = self.destination(key, target) else {
             return;
         };
@@ -261,6 +267,34 @@ impl Window {
         !self.owed_scrolls.is_empty()
     }
 
+    /// Carries out the queued adjustments that come first for their container, against the layout
+    /// pass that has just run.
+    ///
+    /// Called by [`Window::lay_out`] before the offsets are clamped to the new extents. An
+    /// adjustment follows content that changed height above the scrollport, and the extent has
+    /// changed by the same amount, so the adjusted offset is inside it. Clamped first, an offset at
+    /// the end of content that shrank would move back by the shrink, and then by the adjustment a
+    /// second time. An adjustment queued behind another scroll of its container waits for that
+    /// scroll, in [`Window::carry_out_owed_scrolls`].
+    pub(crate) fn carry_out_owed_adjustments(&mut self) {
+        let owes = self
+            .owed_scrolls
+            .iter()
+            .any(|(_, target, _)| matches!(target, zgui_view::ScrollTarget::Adjust(_)));
+        if !owes {
+            return;
+        }
+
+        for (node, target, behavior) in core::mem::take(&mut self.owed_scrolls) {
+            let waits = self.owed_scrolls.iter().any(|(held, _, _)| *held == node);
+            let (zgui_view::ScrollTarget::Adjust(by), false) = (target, waits) else {
+                self.owed_scrolls.push((node, target, behavior));
+                continue;
+            };
+            self.adjust_in_frame(node, by);
+        }
+    }
+
     /// Carries out every queued scroll against the layout pass that has just run.
     ///
     /// Called by [`Window::lay_out`] after the offsets are clamped to the new extents and before
@@ -272,6 +306,10 @@ impl Window {
             return;
         }
         for (node, target, behavior) in core::mem::take(&mut self.owed_scrolls) {
+            if let zgui_view::ScrollTarget::Adjust(by) = target {
+                self.adjust_in_frame(node, by);
+                continue;
+            }
             // A relative scroll moves again each time it is carried out.
             if !matches!(target, zgui_view::ScrollTarget::By(_)) {
                 self.carried_scrolls.push((node, target, behavior));
@@ -522,6 +560,42 @@ impl Window {
         }
     }
 
+    /// Moves one container by `by` at once without stopping its motion. Answers whether it moved.
+    ///
+    /// The caller marks it: from inside a frame, the fragment pass still to run composes the mark,
+    /// and from outside one it asks for a frame.
+    fn adjust(
+        &mut self,
+        container: NodeKey,
+        by: Point<zgui_geom::DevicePx, zgui_geom::Device>,
+    ) -> bool {
+        if self.is_frozen(container) {
+            return false;
+        }
+        let before = self.scroll.borrow().offset_of(container);
+        let delta = zgui_geom::Size::new(by.x, by.y);
+        let moved = {
+            let layout = self.layout.borrow();
+            self.scroll
+                .borrow_mut()
+                .adjust_by(&layout, container, delta)
+        };
+        moved.is_some() && self.scroll.borrow().offset_of(container) != before
+    }
+
+    /// The same as [`Window::adjust`], from inside the frame that composes it, which the mark is
+    /// for.
+    fn adjust_in_frame(
+        &mut self,
+        container: NodeKey,
+        by: Point<zgui_geom::DevicePx, zgui_geom::Device>,
+    ) {
+        if self.adjust(container, by) {
+            let mut document = self.document.borrow_mut();
+            zgui_scroll::mark::scrolled(&mut document, &[container]);
+        }
+    }
+
     /// Advances every smooth scroll and every elastic edge, and marks what moved.
     ///
     /// A gap longer than [`PARKED_FOR`] intervals is spent on nothing rather than on the motion,
@@ -652,7 +726,7 @@ impl Window {
             zgui_view::ScrollTarget::Offset(to) => {
                 return Some((node, to));
             }
-            zgui_view::ScrollTarget::By(delta) => {
+            zgui_view::ScrollTarget::By(delta) | zgui_view::ScrollTarget::Adjust(delta) => {
                 let container = node;
                 let at = self.scroll.borrow().offset_of(container);
                 return Some((
