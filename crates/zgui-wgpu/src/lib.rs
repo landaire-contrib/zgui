@@ -83,6 +83,14 @@ impl GpuShare {
         self.gpu.queue()
     }
 
+    /// The adapter the device came from: its name, backend, device type and PCI ids.
+    ///
+    /// Use it to show which graphics device the interface draws on, or to make a decision that
+    /// depends on the vendor.
+    pub fn adapter_info(&self) -> wgpu::AdapterInfo {
+        self.gpu.adapter().get_info()
+    }
+
     /// The device epoch; two shares with different generations share nothing.
     pub fn generation(&self) -> u64 {
         self.generation
@@ -406,6 +414,11 @@ pub struct SurfaceRenderCx<'a> {
     pub scale: f32,
     /// The frame's clock, the same one animations read.
     pub timestamp: Timestamp,
+    /// The device epoch, as [`GpuShare::generation`] reports it. It changes when the device was
+    /// rebuilt, and every resource made on an older generation is gone.
+    pub generation: u64,
+    /// The adapter the device was opened on.
+    pub adapter_info: &'a wgpu::AdapterInfo,
     /// Whether another frame was asked for; written through
     /// [`request_animation_frame`](SurfaceRenderCx::request_animation_frame).
     animate: &'a mut bool,
@@ -569,6 +582,8 @@ pub struct WgpuSurfaces {
     device: Option<usize>,
     /// The device generation handed out in [`GpuShare`]s.
     generation: u64,
+    /// The current device's adapter, read once per generation.
+    adapter_info: Option<wgpu::AdapterInfo>,
     /// The next external-texture name.
     next_external: u64,
 }
@@ -581,6 +596,7 @@ impl WgpuSurfaces {
             scanned_at: None,
             device: None,
             generation: 0,
+            adapter_info: None,
             next_external: 1,
         }
     }
@@ -611,6 +627,7 @@ impl EmbedHost for WgpuSurfaces {
                 let lost = self.device.is_some();
                 self.device = Some(identity);
                 self.generation += 1;
+                self.adapter_info = Some(share.adapter_info());
                 let share = GpuShare {
                     gpu: Arc::clone(&share.gpu),
                     generation: self.generation,
@@ -647,8 +664,9 @@ impl EmbedHost for WgpuSurfaces {
             self.rescan(cx);
         }
 
+        let current = share.as_ref().zip(self.adapter_info.as_ref());
         for (&node, binding) in &mut self.bindings {
-            let outcome = Self::sync_one(node, binding, cx, share.as_ref());
+            let outcome = Self::sync_one(node, binding, cx, current);
             report.animating |= outcome;
         }
         report
@@ -863,7 +881,7 @@ impl WgpuSurfaces {
         node: NodeKey,
         binding: &mut Binding,
         cx: &mut EmbedSyncCx<'_>,
-        share: Option<&GpuShare>,
+        current: Option<(&GpuShare, &wgpu::AdapterInfo)>,
     ) -> bool {
         let id = ReplacedId::new(node);
 
@@ -915,7 +933,7 @@ impl WgpuSurfaces {
         if resized {
             let was_bound = binding.last_size.is_some();
             binding.last_size = size;
-            if let (Producer::Handle(state), Some(share)) = (&binding.producer, share) {
+            if let (Producer::Handle(state), Some((share, _))) = (&binding.producer, current) {
                 let size = size.expect("resized implies a size");
                 let event = if was_bound {
                     SurfaceEvent::Resized {
@@ -942,7 +960,7 @@ impl WgpuSurfaces {
             }
         }
 
-        let Some(share) = share else {
+        let Some((share, adapter_info)) = current else {
             return false;
         };
         let gpu = Arc::clone(&share.gpu);
@@ -1043,6 +1061,8 @@ impl WgpuSurfaces {
                         size,
                         scale: cx.scale,
                         timestamp: cx.timestamp,
+                        generation: share.generation,
+                        adapter_info,
                         animate,
                     };
                     producer.render(&mut cx_render);
