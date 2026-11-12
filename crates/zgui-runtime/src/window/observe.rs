@@ -26,6 +26,7 @@ use zgui_bits::Dirty;
 use zgui_dom::side::observed::{ObservationSlots, ObservedMask};
 use zgui_profile::{Counter, counter};
 use zgui_view::ObservedValue;
+use zgui_vocab::Timestamp;
 
 use crate::window::Window;
 
@@ -39,7 +40,11 @@ impl Window {
     /// finish, or a delivery that did not settle inside the pass budget. Both are otherwise
     /// silent — the flush here runs with wakes folded into the frame, and its outcome is the
     /// only record of what it left behind.
-    pub(crate) fn deliver_observations(&mut self) -> bool {
+    ///
+    /// The commands a reader issues are carried out before the relayout, as a scroll handler's
+    /// are. A list that scrolls to keep a row in place when that row's measured height changes is
+    /// then drawn in place in the frame that measured it.
+    pub(crate) fn deliver_observations(&mut self, timestamp: Timestamp) -> bool {
         // The registry is the authority on whether anything is watching. The per-node column is
         // the fast path the walk below probes; it is not a second registry.
         if self.dom.observation_count() == 0 {
@@ -60,6 +65,7 @@ impl Window {
                 zgui_reactive::flush,
             )
             .needs_another_frame;
+            self.carry_out_commands(timestamp);
             self.restyle_and_relayout_after_delivery();
         }
         // The last pass delivered and laid out again. Whether that moved anything watched is a

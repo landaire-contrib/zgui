@@ -500,7 +500,7 @@ impl Window {
         mark("f.dispatch_scroll");
         self.dispatch_scroll(timestamp);
         mark("f.observe");
-        let observed = self.deliver_observations();
+        let observed = self.deliver_observations(timestamp);
         self.forget_carried_scrolls();
         // A second settle, for what the scroll and observation deliveries produced: both flush
         // and relayout mid-frame precisely so a virtualised list renders this frame's rows, and
