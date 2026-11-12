@@ -9,13 +9,24 @@ struct ExternalParams {
     // The quad, in device pixels: origin then extent.
     bounds: vec4<f32>,
     // x: the clip chain; y: the transform; z: the multiplier on the texture's alpha;
-    // w: non-zero when the texture's colours are already scaled by its alpha.
+    // w: flags. Bit 0: the texture's colours are already scaled by its alpha. Bit 1: the
+    // sampler decodes sRGB, so samples are linear.
     control: vec4<f32>,
 }
 
 @group(1) @binding(0) var<uniform> foreign: ExternalParams;
 @group(1) @binding(1) var external_texture: texture_2d<f32>;
 @group(1) @binding(2) var external_sampler: sampler;
+
+const EXTERNAL_PREMULTIPLIED: u32 = 1u;
+const EXTERNAL_DECODED_SRGB: u32 = 2u;
+
+fn external_encode_srgb_channel(value: f32) -> f32 {
+    if value <= 0.0031308 {
+        return value * 12.92;
+    }
+    return 1.055 * pow(value, 1.0 / 2.4) - 0.055;
+}
 
 struct ExternalVarying {
     @builtin(position) position: vec4<f32>,
@@ -40,7 +51,26 @@ fn fs_external(in: ExternalVarying) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0);
     }
     var texel = textureSampleLevel(external_texture, external_sampler, in.uv, 0.0);
-    if foreign.control.w == 0.0 {
+    let flags = u32(foreign.control.w);
+    let premultiplied = (flags & EXTERNAL_PREMULTIPLIED) != 0u;
+    if (flags & EXTERNAL_DECODED_SRGB) != 0u {
+        // The frame blends gamma-encoded values, and an sRGB view hands back linear ones. The
+        // encoding applies to the straight colour, so a premultiplied texel is divided first.
+        var color = texel.rgb;
+        if premultiplied {
+            color = select(vec3<f32>(0.0), color / texel.a, texel.a > 0.0);
+        }
+        color = vec3<f32>(
+            external_encode_srgb_channel(color.r),
+            external_encode_srgb_channel(color.g),
+            external_encode_srgb_channel(color.b),
+        );
+        if premultiplied {
+            color = color * texel.a;
+        }
+        texel = vec4<f32>(color, texel.a);
+    }
+    if !premultiplied {
         // Everything composites premultiplied. Blending straight bytes as though they were
         // premultiplied makes a half-covered edge contribute a full-intensity colour, which is the
         // bright fringe seen around anything with a soft edge.

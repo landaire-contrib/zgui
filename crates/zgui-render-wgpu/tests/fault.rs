@@ -275,6 +275,77 @@ fn a_transformed_external_texture_is_clipped_where_it_lands() {
 }
 
 #[test]
+fn an_srgb_external_texture_composites_as_its_stored_bytes() {
+    // The frame blends gamma-encoded values. An `*Srgb` view decodes on sampling, so its bytes
+    // reach the frame only if the shader encodes them back; the plain format is the control.
+    let Some(mut renderer) = plain_renderer() else {
+        return;
+    };
+    let gpu = std::sync::Arc::clone(renderer.gpu());
+    let stored = [200, 128, 40, 255];
+    for (index, format) in [
+        wgpu::TextureFormat::Rgba8Unorm,
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("test.external"),
+            size: wgpu::Extent3d {
+                width: 2,
+                height: 2,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        gpu.queue().write_texture(
+            texture.as_image_copy(),
+            &stored.repeat(4),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(8),
+                rows_per_image: Some(2),
+            },
+            wgpu::Extent3d {
+                width: 2,
+                height: 2,
+                depth_or_array_layers: 1,
+            },
+        );
+        let id = zgui_scene::ExternalTextureId(10 + index as u64);
+        renderer.register_external(zgui_render::ExternalTexture {
+            id,
+            handle: zgui_render::TextureHandle(0),
+            size: Size::new(2, 2),
+            premultiplied: true,
+        });
+        assert!(renderer.attach_external(id, &texture));
+
+        let mut scene = Scene::new();
+        scene.begin_frame(Size::new(SIDE, SIDE));
+        scene.push_external(zgui_scene::ExternalQuad::new(
+            rect(0.0, 0.0, SIDE as f32, SIDE as f32),
+            id,
+        ));
+        scene.finish(&DamageSet::full());
+
+        let shown = present(&mut renderer, &scene).rgba(SIDE / 2, SIDE / 2);
+        for (channel, (&got, &want)) in shown.iter().zip(&stored).enumerate() {
+            assert!(
+                got.abs_diff(want) <= 1,
+                "{format:?} channel {channel}: shown {shown:?}, stored {stored:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn an_answer_that_changed_the_surface_makes_the_next_frame_redraw_all_of_it() {
     // Two of the seven answers say the surface is no longer the one the frame was composed
     // against, and nothing observed what the compositor did with it in between — so what the

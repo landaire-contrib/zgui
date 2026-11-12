@@ -15,6 +15,7 @@ use crate::frame::pass::{Recorded, Recorder};
 use crate::frame::plan::plan_segments;
 use crate::frame::present;
 use crate::gpu::timing::{GpuTimer, PassQueries, TimedWork};
+use crate::pipeline::external::ExternalSource;
 use crate::pipeline::kind::PipelineKind;
 use crate::renderer::{WgpuRenderer, readback};
 use crate::target::acquire::{Acquisition, SurfaceAction};
@@ -222,7 +223,12 @@ impl Renderer for WgpuRenderer {
         };
         self.marks_scratch
             .ensure(&self.gpu, marks.extent, marks.pages);
-        let externals = |id| self.externals.get(&id).map(|attached| attached.texture);
+        let externals = |id| {
+            self.externals.get(&id).map(|attached| ExternalSource {
+                texture: attached.texture,
+                sampling: attached.sampling,
+            })
+        };
         let plan = {
             let builder = PlanBuilder::new(
                 &self.gpu,

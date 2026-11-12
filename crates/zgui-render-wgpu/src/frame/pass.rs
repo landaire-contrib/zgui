@@ -40,6 +40,8 @@ pub struct AttachedTexture {
     pub texture: zgui_render::ExternalTexture,
     /// A view of it.
     pub view: wgpu::TextureView,
+    /// What the view returns when sampled.
+    pub sampling: crate::pipeline::external::ExternalSampling,
 }
 
 /// Everything a planned frame is recorded against.
