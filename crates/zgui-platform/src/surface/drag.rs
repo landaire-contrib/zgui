@@ -12,6 +12,11 @@ use zgui_geom::{Css, CssPx, Point};
 /// decide whether it *would* accept the drop while the pointer is still moving, which is what
 /// makes a highlight appear before the user lets go rather than after.
 ///
+/// A drag over a surface ends with [`DragEvent::Left`] or [`DragEvent::Dropped`]. A backend sends
+/// [`DragEvent::Entered`] when it knows the paths. This can be some time after the pointer
+/// arrived, and a drop before that has no `Entered`. A backend that gets no pointer motion during
+/// a drag sends no [`DragEvent::Moved`]. The backend documentation tells what each backend sends.
+///
 /// ```
 /// use std::path::PathBuf;
 /// use zgui_geom::{CssPx, Point};

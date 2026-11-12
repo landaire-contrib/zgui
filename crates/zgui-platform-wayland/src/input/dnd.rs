@@ -20,6 +20,15 @@ use zgui_platform::{DragEvent, SurfaceId};
 /// `Entered` event is produced when it finishes. A drag whose read has not finished by the time
 /// the user drops is still delivered — the drop waits for the same read rather than arriving with
 /// nothing.
+///
+/// # What a drop target gets
+///
+/// * [`DragEvent::Entered`] with every path, when the read finishes before the drop. It has the
+///   latest pointer position.
+/// * [`DragEvent::Moved`] for each pointer motion after `Entered`. Motion before it is not sent.
+/// * [`DragEvent::Left`] when the drag leaves after `Entered`.
+/// * [`DragEvent::Dropped`] with every path, when the user lets go and the read is finished. A
+///   drop before the read finishes sends `Dropped` without an `Entered` before it.
 #[derive(Debug, Default)]
 pub struct Drag {
     /// The session, while one is over a window.
