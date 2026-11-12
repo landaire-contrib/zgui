@@ -11,22 +11,33 @@
 //! writes a signal would otherwise ask the loop for a frame from inside the frame that is already
 //! running, once per write.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::fmt;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use zgui_platform::{SurfaceId, WakeReason, Waker};
 use zgui_reactive::FrameWaker;
 
+// The `loom` feature uses the model checker's atomic, so a test can explore each interleaving of a
+// wake with a frame.
+#[cfg(feature = "loom")]
+use loom::sync::atomic::AtomicU8;
+#[cfg(not(feature = "loom"))]
+use std::sync::atomic::AtomicU8;
+
 /// Whether a frame is in flight, and whether one is owed when it ends.
 ///
 /// Shared with every waker built over it, and read from arbitrary threads: a wake arrives from
 /// wherever the work finished, which is precisely why this cannot be thread-local state.
+///
+/// The two facts share one atomic state. A request tests for a frame in flight and records itself
+/// in one step, so a frame cannot end between the test and the record. A request releases, and
+/// [`requests_serviced`](Self::requests_serviced) and [`end_frame`](Self::end_frame) acquire, so
+/// the frame that takes a request also sees the work published before it.
 #[derive(Debug, Default)]
 pub struct FrameGate {
-    /// Whether a frame is between its first phase and its last.
-    in_frame: AtomicBool,
-    /// Whether anything asked for a frame while one was in flight.
-    another_frame: AtomicBool,
+    /// Whether a frame is in flight, and whether another is owed.
+    state: AtomicGateState,
 }
 
 impl FrameGate {
@@ -37,12 +48,12 @@ impl FrameGate {
 
     /// Whether a frame is in flight.
     pub fn in_frame(&self) -> bool {
-        self.in_frame.load(Ordering::Relaxed)
+        self.state.load(Ordering::Relaxed) != GateState::Idle
     }
 
     /// Whether another frame is owed.
     pub fn needs_another_frame(&self) -> bool {
-        self.another_frame.load(Ordering::Relaxed)
+        self.state.load(Ordering::Relaxed) == GateState::Owed
     }
 
     /// Records that a request arrived, and reports whether it was deferred rather than forwarded.
@@ -52,12 +63,12 @@ impl FrameGate {
     /// flush itself — so that the frame's last phase converts all of them into exactly one request
     /// rather than each of them producing one.
     pub fn request(&self) -> bool {
-        if self.in_frame() {
-            self.another_frame.store(true, Ordering::Relaxed);
-            true
-        } else {
-            false
-        }
+        self.state
+            .fetch_update(Ordering::Release, Ordering::Relaxed, |state| match state {
+                GateState::Idle => None,
+                GateState::InFrame | GateState::Owed => Some(GateState::Owed),
+            })
+            .is_ok()
     }
 
     /// Records that the stage which services what has been asked for is about to run.
@@ -74,19 +85,23 @@ impl FrameGate {
     /// it. Called *after* the flush, the same line would lose the work of anything that arrived in
     /// between.
     pub fn requests_serviced(&self) {
-        self.another_frame.store(false, Ordering::Relaxed);
+        // The closure stores a state for each state, so the update always succeeds and acquires.
+        let _ =
+            self.state
+                .fetch_update(Ordering::Acquire, Ordering::Relaxed, |state| match state {
+                    GateState::Owed => Some(GateState::InFrame),
+                    GateState::Idle | GateState::InFrame => Some(state),
+                });
     }
 
     /// Marks the start of a frame, clearing what the last one owed.
     pub fn begin_frame(&self) {
-        self.in_frame.store(true, Ordering::Relaxed);
-        self.another_frame.store(false, Ordering::Relaxed);
+        self.state.swap(GateState::InFrame, Ordering::Relaxed);
     }
 
     /// Marks the end of a frame, and reports whether anything asked for another during it.
     pub fn end_frame(&self) -> bool {
-        self.in_frame.store(false, Ordering::Relaxed);
-        self.another_frame.swap(false, Ordering::Relaxed)
+        self.state.swap(GateState::Idle, Ordering::Acquire) == GateState::Owed
     }
 }
 
@@ -150,6 +165,87 @@ impl FrameWaker for RuntimeWaker {
         self.platform.wake(WakeReason::ReactiveWork {
             surfaces: surfaces.into_boxed_slice(),
         });
+    }
+}
+
+/// The state of a [`FrameGate`].
+///
+/// A request is owed only while a frame is in flight, so there is no state for an owed request
+/// with no frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+enum GateState {
+    /// No frame is in flight.
+    Idle = 0,
+    /// A frame is in flight and owes nothing.
+    InFrame = 1,
+    /// A frame is in flight, and something asked for another frame during it.
+    Owed = 2,
+}
+
+impl GateState {
+    /// The state that `bits` encodes.
+    fn from_bits(bits: u8) -> Self {
+        match bits {
+            0 => Self::Idle,
+            1 => Self::InFrame,
+            2 => Self::Owed,
+            _ => unreachable!("an AtomicGateState stores only GateState values, not {bits}"),
+        }
+    }
+}
+
+/// A [`GateState`] that threads read and write atomically.
+struct AtomicGateState(AtomicU8);
+
+impl AtomicGateState {
+    /// An atomic that holds `state`.
+    fn new(state: GateState) -> Self {
+        Self(AtomicU8::new(state as u8))
+    }
+
+    /// The state, read with `order`.
+    fn load(&self, order: Ordering) -> GateState {
+        GateState::from_bits(self.0.load(order))
+    }
+
+    /// Stores `state` with `order`, and gives the state it replaced.
+    fn swap(&self, state: GateState, order: Ordering) -> GateState {
+        GateState::from_bits(self.0.swap(state as u8, order))
+    }
+
+    /// Stores the state that `update` gives for the current state. Where another thread changes
+    /// the state between the read and the store, it reads the state again and calls `update` again.
+    ///
+    /// Gives `Ok` with the replaced state, or `Err` with the current state where `update` gives
+    /// `None`. The orderings are those of [`AtomicU8::fetch_update`].
+    fn fetch_update(
+        &self,
+        set_order: Ordering,
+        fetch_order: Ordering,
+        mut update: impl FnMut(GateState) -> Option<GateState>,
+    ) -> Result<GateState, GateState> {
+        self.0
+            .fetch_update(set_order, fetch_order, |bits| {
+                update(GateState::from_bits(bits)).map(|state| state as u8)
+            })
+            .map(GateState::from_bits)
+            .map_err(GateState::from_bits)
+    }
+}
+
+impl Default for AtomicGateState {
+    fn default() -> Self {
+        Self::new(GateState::Idle)
+    }
+}
+
+impl fmt::Debug for AtomicGateState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("AtomicGateState")
+            .field(&self.load(Ordering::Relaxed))
+            .finish()
     }
 }
 
