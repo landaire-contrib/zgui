@@ -29,6 +29,7 @@ mod select;
 mod sheets;
 mod surface_focus;
 mod value;
+mod zoom;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -411,8 +412,15 @@ pub struct Window {
     /// scale, and dividing and multiplying by a fractional scale does not return the number that
     /// went in. This is what an arriving resize is compared against to tell a move from a repeat.
     extent: Option<Size<DevicePx, Device>>,
-    /// How many device pixels there are to a CSS pixel.
+    /// How many device pixels there are to a CSS pixel: the platform scale times the zoom.
     scale: f32,
+    /// The scale the platform reports for the surface, without the zoom.
+    ///
+    /// What the platform converts its own CSS pixels with: pointer positions arrive in them, and
+    /// the input method's caret area is reported in them.
+    platform_scale: f32,
+    /// How much the window scales its content.
+    zoom: crate::windows::Zoom,
     /// The light or dark preference the surface is being presented under.
     ///
     /// Kept beside the viewport because the viewport is rebuilt from the surface's extent every
@@ -618,7 +626,9 @@ impl Window {
         )));
         let scroll = Rc::new(RefCell::new(zgui_scroll::Scroller::new()));
 
-        let scale = surface.scale_factor() as f32;
+        let platform_scale = surface.scale_factor() as f32;
+        let zoom = handle.requested_zoom();
+        let scale = platform_scale * zoom.get();
         let size = surface.size();
         let viewport = Viewport::new(CssPx(size.width.0 / scale), CssPx(size.height.0 / scale))
             .at_scale(scale);
@@ -765,6 +775,8 @@ impl Window {
             view_sheets: rustc_hash::FxHashMap::default(),
             viewport,
             scale,
+            platform_scale,
+            zoom,
             scheme: viewport.scheme,
             translucent: false,
             occluded: false,
@@ -1127,6 +1139,8 @@ impl Window {
     }
 
     /// How many device pixels there are to a CSS pixel.
+    ///
+    /// This is the platform scale factor times the zoom.
     pub fn scale(&self) -> Scale<zgui_geom::Css, zgui_geom::Device> {
         Scale::new(self.scale)
     }

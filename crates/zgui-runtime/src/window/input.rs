@@ -106,7 +106,10 @@ impl Window {
         }
         let events = core::mem::take(&mut self.queued);
         let last = events.len().saturating_sub(1);
-        for (position, queued) in events.iter().enumerate() {
+        for (position, mut queued) in events.into_iter().enumerate() {
+            // Here and not where the event was queued, so the zoom is the one this frame lays out
+            // at.
+            self.unzoom(&mut queued);
             self.dispatch_one(&queued.event, &queued.samples, timestamp);
             if position < last {
                 owed |= self.settle_between_events(timestamp);
@@ -558,6 +561,8 @@ impl Window {
     /// not been attached, has no such rectangle, and the honest answer for it is the box its text
     /// is in: a candidate window beside the field rather than beside the insertion point is
     /// visible, and is not wrong about which surface or which element is being typed into.
+    ///
+    /// The area is in the platform's CSS pixels, which do not include the zoom.
     fn caret_area(&self, node: zgui_dom::NodeKey) -> Option<zgui_platform::TextInput> {
         // A secure field asks the input method for a password purpose: no prediction, no learning.
         let purpose = if self.editors.is_secure(node) {
@@ -569,7 +574,7 @@ impl Window {
             return Some(zgui_input::ime::caret_area(
                 caret.origin,
                 caret.size.height,
-                zgui_geom::Scale::new(self.scale),
+                zgui_geom::Scale::new(self.platform_scale),
                 purpose,
             ));
         }
@@ -579,7 +584,7 @@ impl Window {
         Some(zgui_input::ime::caret_area(
             box_.origin,
             box_.size.height,
-            zgui_geom::Scale::new(self.scale),
+            zgui_geom::Scale::new(self.platform_scale),
             purpose,
         ))
     }
