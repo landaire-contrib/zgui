@@ -12,6 +12,8 @@
 //! reported reached again on the next turn and on every turn after it, and the loop spins while
 //! running no frames at all.
 
+mod drag;
+
 use std::time::{Duration, Instant};
 
 use zgui_platform::{AppHandler, Clock, IdlePolicy, PlatformCx, SurfaceEvent, SurfaceId};
