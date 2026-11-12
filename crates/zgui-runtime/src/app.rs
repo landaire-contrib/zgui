@@ -536,6 +536,8 @@ pub struct Runtime {
     timers: Rc<RefCell<Timers>>,
     /// Where a wake from another thread goes.
     waker: Option<Arc<RuntimeWaker>>,
+    /// The registration of `waker` on this thread, held while the runtime has surfaces.
+    wake_registration: Option<zgui_reactive::FrameWakerRegistration>,
     /// The clock every phase reads.
     clock: Option<Arc<dyn Clock>>,
     /// The deadline each surface was parked on, as of the last park.
@@ -739,6 +741,7 @@ impl Runtime {
             gate: Arc::new(FrameGate::new()),
             timers: Rc::new(RefCell::new(Timers::new())),
             waker: None,
+            wake_registration: None,
             clock: None,
             style_pool,
             layout_pool,
@@ -1335,7 +1338,9 @@ impl AppHandler for Runtime {
         // between frames is queued with nothing to ask for the frame that would poll it.
         self.clock = Some(cx.clock());
         let waker = Arc::new(RuntimeWaker::new(cx.waker(), Arc::clone(&self.gate)));
-        zgui_reactive::set_frame_waker(Arc::clone(&waker) as Arc<dyn zgui_reactive::FrameWaker>);
+        self.wake_registration = Some(zgui_reactive::register_frame_waker(
+            Arc::clone(&waker) as Arc<dyn zgui_reactive::FrameWaker>
+        ));
         self.waker = Some(waker);
         self.commands.set_platform(cx.waker());
         self.clipboards.set_platform(cx.waker());
@@ -1371,6 +1376,7 @@ impl AppHandler for Runtime {
     }
 
     fn surfaces_lost(&mut self, _cx: &dyn PlatformCx) {
+        self.wake_registration = None;
         // The surfaces are gone, not the windows: what the application asked for is kept so that
         // the next `surfaces_available` opens all of it again. A suspend is not a close, and
         // applying the exit policy here would stop an application that is only in the background.

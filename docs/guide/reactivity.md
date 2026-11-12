@@ -63,10 +63,12 @@ budget and reports whether another frame is owed. Thus, one listener can write f
 causing five restyles: one flush settles all five writes.
 
 A wake that arrives from **anywhere else** — a worker thread, a completed download, a timer — is
-routed to the `FrameWaker`, which asks the platform for a redraw. Without that second edge, a task
-made ready by a worker thread would be marked ready and then wait for the user to move the mouse.
-An implementation of `FrameWaker` must be callable from any thread, must not block, and must be
-idempotent: a hundred wakes between two frames must cost one frame, not a hundred.
+routed to each `FrameWaker` registered on the thread, which asks the platform for a redraw. Without
+that second edge, a task made ready by a worker thread would be marked ready and then wait for the
+user to move the mouse. Each runtime registers its waker with `register_frame_waker` and drops the
+registration when it stops, so several runtimes can share one thread. An implementation of
+`FrameWaker` must be callable from any thread, must not block, and must be idempotent: a hundred
+wakes between two frames must cost one frame, not a hundred.
 
 ```rust,ignore
 let (count, doubled, _effect) = root.with(|| {

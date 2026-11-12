@@ -7,7 +7,7 @@
 //!
 //! Three properties follow, and each has a guard:
 //!
-//! * work that becomes ready between frames still gets a frame — see [`set_frame_waker`];
+//! * work that becomes ready between frames still gets a frame — see [`register_frame_waker`];
 //! * a cycle of effects cannot hold the frame — see [`FlushOutcome::budget_exhausted`];
 //! * nothing runs on the wrong thread — see [`assert_ui_thread`].
 //!
@@ -31,7 +31,9 @@ pub use context::{PollContext, set_poll_context};
 pub use frame::{FlushOutcome, flush};
 pub use shutdown::shutdown;
 pub use ui_thread::is_ui_thread;
-pub use wake::{FrameWaker, TestWaker, set_frame_waker};
+pub use wake::{
+    FrameWaker, FrameWakerRegistration, TestWaker, register_frame_waker, set_frame_waker,
+};
 
 pub(crate) use assert::{note_owner_children, note_owner_depth};
 
@@ -64,11 +66,11 @@ thread_local! {
 ///
 /// Call once, before creating any signal, from the thread that owns the window. Calling it
 /// again on the same thread does nothing and succeeds. Each thread that installs gets its own
-/// pool, its own current owner and its own frame waker; a test may therefore run a complete
+/// pool, its own current owner and its own frame wakers; a test may therefore run a complete
 /// reactive runtime per test.
 ///
 /// After this returns, [`is_ui_thread`] is true here, [`flush`] works, and spawning is
-/// permitted. Install a [`FrameWaker`] too, or work that becomes ready between frames will
+/// permitted. Register a [`FrameWaker`] too, or work that becomes ready between frames will
 /// never be asked for a frame.
 ///
 /// # Errors

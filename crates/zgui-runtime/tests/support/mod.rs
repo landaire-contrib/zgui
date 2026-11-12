@@ -22,14 +22,21 @@ pub fn app<V>(css: &str, view: V) -> Harness<Runtime>
 where
     V: FnMut(&mut BuildCx<'_>) -> Box<dyn Anchor> + 'static,
 {
-    let handler = App::new()
+    Harness::new(handler(css, view))
+}
+
+/// The runtime [`app`] drives, for a test that drives it without a harness.
+pub fn handler<V>(css: &str, view: V) -> Runtime
+where
+    V: FnMut(&mut BuildCx<'_>) -> Box<dyn Anchor> + 'static,
+{
+    App::new()
         .with_title("test")
         .with_size(400.0, 300.0)
         .with_stylesheet(css)
         .with_renderer(Box::new(capture))
         .into_handler(view)
-        .expect("the reactive runtime installs");
-    Harness::new(handler)
+        .expect("the reactive runtime installs")
 }
 
 /// The same, with a text engine and a rasteriser behind it.
