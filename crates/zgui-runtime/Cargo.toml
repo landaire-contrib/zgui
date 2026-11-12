@@ -22,6 +22,9 @@ include.workspace = true
 rustc-hash.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# Only ever switched on by the `loom` feature below, which swaps the frame gate's atomic for the
+# model checker's instrumented one.
+loom = { workspace = true, optional = true }
 # The accessibility projection. A frame publishes the tree and routes the actions that come back,
 # and both are frame-loop concerns: only the loop knows when the document and its geometry agree,
 # and an action has to be dispatched where listeners can be called.
@@ -74,6 +77,13 @@ zgui-platform-headless = { path = "../zgui-platform-headless", version = "0.1.0"
 zgui-profile = { path = "../zgui-profile", version = "0.1.0", features = ["counters"] }
 # A renderer that records instead of drawing, so the whole loop runs with no graphics device.
 zgui-testkit-scene = { path = "../zgui-testkit-scene", version = "0.1.0" }
+
+[features]
+# Builds the frame gate's atomic out of `loom`'s instrumented primitive so the model check in
+# `tests/frame_gate_loom.rs` can explore every interleaving of a wake with a frame. A build with
+# this feature on panics wherever a gate is made outside `loom::model`, so it is for
+# `cargo test --features loom --test frame_gate_loom` and nothing else.
+loom = ["dep:loom"]
 
 [lints]
 workspace = true

@@ -165,7 +165,7 @@ jobs:
         run: cargo xtask tsan
 
   loom:
-    # The `DirtyCell` model checks only compile with the `loom` feature.
+    # The `DirtyCell` and frame gate model checks only compile with the `loom` feature.
     name: Loom
     runs-on: ubuntu-24.04
     steps:
@@ -173,6 +173,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test -p zgui-bits --features loom
+      - name: Test zgui-runtime
+        run: cargo test -p zgui-runtime --features loom --test frame_gate_loom
 
   features:
     # Builds and lints the optional features that no other job turns on.
@@ -183,6 +185,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Lint zgui-bits with loom
         run: cargo clippy -p zgui-bits --all-targets --features loom -- -D warnings
+      - name: Lint zgui-runtime with loom
+        run: cargo clippy -p zgui-runtime --features loom --test frame_gate_loom -- -D warnings
       - name: Lint zgui-profile with counters
         run: cargo clippy -p zgui-profile --all-targets --features counters -- -D warnings
       - name: Test zgui-profile with counters

@@ -34,6 +34,7 @@ they cover:
 cargo miri test -p zgui-arena                     # arena aliasing
 cargo miri test -p zgui-dom --test cells          # document aliasing (see ci.yml for the flags)
 cargo test -p zgui-bits --features loom           # DirtyCell interleavings
+cargo test -p zgui-runtime --features loom --test frame_gate_loom
 cargo test -p zgui-profile --release --features counters
 cargo xtask tsan                                  # threaded targets under ThreadSanitizer
 ```
