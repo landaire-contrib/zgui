@@ -10,6 +10,8 @@ mod support;
 use std::rc::Rc;
 use std::time::Duration;
 
+use zgui_platform::AppHandler;
+use zgui_platform_headless::Headless;
 use zgui_reactive::prelude::{Get, GetUntracked, Set};
 use zgui_view::{Anchor, BuildCx, IntoView, View};
 
@@ -95,6 +97,68 @@ fn a_write_from_another_thread_reaches_the_loop_as_a_wake() {
         "the wake was delivered and asked for nothing"
     );
     assert_eq!(count.get_untracked(), 7, "the write landed on the signal");
+}
+
+/// A view whose text is whatever `count` says, for a signal a worker thread can write.
+fn shared_counting(
+    count: zgui_reactive::ArcRwSignal<i32>,
+) -> impl FnMut(&mut BuildCx<'_>) -> Box<dyn Anchor> {
+    move |cx| {
+        let read = count.clone();
+        let view = zgui_elements::column()
+            .class("root")
+            .child(zgui_elements::text().child(move || read.get().to_string()));
+        Box::new(view.into_view().build(cx))
+    }
+}
+
+/// Writes `value` to `count` from a worker thread.
+fn write_from_worker(count: &zgui_reactive::ArcRwSignal<i32>, value: i32) {
+    let sent = count.clone();
+    std::thread::spawn(move || sent.set(value))
+        .join()
+        .expect("joined");
+}
+
+#[test]
+fn every_runtime_on_one_thread_hears_a_write_from_another_thread() {
+    // Two applications on one thread share that thread's reactive wakes. A runtime that misses a
+    // wake stalls until something else gives it a frame. The second runtime is driven by hand so
+    // that its platform outlives it.
+    let count = zgui_reactive::ArcRwSignal::new(0);
+    let mut first = support::app(CSS, shared_counting(count.clone()));
+    let second_platform = Headless::new();
+    let mut second = support::handler(CSS, shared_counting(count.clone()));
+    second.surfaces_available(&second_platform);
+    first.settle(8);
+    second_platform.drain_wakes();
+    assert!(!first.platform().has_pending_wakes());
+
+    write_from_worker(&count, 1);
+
+    assert!(
+        first.platform().has_pending_wakes(),
+        "the runtime started first was not woken"
+    );
+    assert!(
+        second_platform.has_pending_wakes(),
+        "the runtime started second was not woken"
+    );
+    first.settle(8);
+    second_platform.drain_wakes();
+
+    drop(second);
+    write_from_worker(&count, 2);
+
+    assert!(
+        first.platform().has_pending_wakes(),
+        "the remaining runtime was not woken after the other one was dropped"
+    );
+    assert!(
+        !second_platform.has_pending_wakes(),
+        "the dropped runtime is still registered for this thread's wakes"
+    );
+    assert!(first.settle(8) >= 1, "the wake produced no frame");
 }
 
 #[test]
