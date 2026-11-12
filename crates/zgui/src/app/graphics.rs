@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use zgui_platform::{PlatformError, Surface};
 use zgui_render::{RenderTarget, Renderer};
+use zgui_render_wgpu::gpu::adapter;
 use zgui_render_wgpu::{
-    GraphicsOptions, GroupPrecision, PresentPacing, SharedGraphics, renderer::PrePresent,
+    AdapterPreference, GraphicsOptions, GroupPrecision, PresentPacing, SharedGraphics,
+    renderer::PrePresent, wgpu,
 };
 use zgui_runtime::{AppError, RendererFactory};
 
@@ -66,8 +68,8 @@ fn pre_present_callback(notify: impl Fn(RenderTarget) + Send + Sync + 'static) -
 /// because which adapter is usable is only known against something to present to.
 ///
 /// Each renderer gets the group precision the application set in `precision`.
-/// [`GroupPrecision::VARIABLE`] overrides it. Each device gets the request that `options` states,
-/// also a device that replaces a lost one.
+/// [`GroupPrecision::VARIABLE`] overrides it. Each device gets the request and the adapter
+/// preference that `options` states, also a device that replaces a lost one.
 ///
 /// # Errors
 ///
@@ -84,6 +86,27 @@ pub(crate) fn factory(
         .or(precision)
         .unwrap_or_default();
     Box::new(move |surface, target| renderer(&graphics, surface, target, precision))
+}
+
+/// Returns the graphics adapters of this machine, in the order that the default renderer tries
+/// them under `preference`.
+///
+/// Use it for a diagnostic list, for example a `--list-gpus` option. The list contains the
+/// adapters of each backend that `ZGUI_BACKENDS` allows, also the GL fallback, so the call can take
+/// some time.
+///
+/// ```no_run
+/// use zgui::AdapterPreference;
+///
+/// for info in zgui::app::adapters(&AdapterPreference::Automatic) {
+///     println!(
+///         "{} ({:?}, {:?}, vendor 0x{:04x}, device 0x{:04x})",
+///         info.name, info.device_type, info.backend, info.vendor, info.device
+///     );
+/// }
+/// ```
+pub fn adapters(preference: &AdapterPreference) -> Vec<wgpu::AdapterInfo> {
+    adapter::enumerate(adapter::requested_backends(), preference)
 }
 
 /// Opens a renderer for `surface` on the shared graphics.
