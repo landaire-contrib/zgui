@@ -16,6 +16,8 @@
 //! frame to trim its resources, and draws nothing then. The harness counts that resume apart from
 //! the ones that ask for a frame: each frame allows one of each.
 
+mod drag;
+
 use web_time::{Duration, Instant};
 
 use zgui_platform::{AppHandler, Clock, IdlePolicy, PlatformCx, SurfaceEvent, SurfaceId};
