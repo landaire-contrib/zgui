@@ -1,7 +1,7 @@
 //! The register's rows, and the probe each one is checked by.
 
 use crate::parity::engine::{EngineStatus, status_of};
-use crate::parity::gap::{inherited_svg, scrollbar_gutter, text_decoration};
+use crate::parity::gap::{inherited_svg, scrollbar_gutter, scrollbar_width, text_decoration};
 use crate::parity::probe::{media_feature_is_accepted, selector_is_accepted};
 use crate::parity::record::Registration;
 
@@ -207,5 +207,21 @@ pub static GAPS: &[Gap] = &[
         owner: "the style engine, then zgui-layout and zgui-view",
         status: GapStatus::OutOfReachThenWork,
         probe: GapProbe::LonghandsUnknown(scrollbar_gutter::REGISTERED),
+    },
+    Gap {
+        subject: "scrollbar-width",
+        reason: "a strip of tabs that scrolls sideways must scroll by wheel, by touch and to keep \
+                 the selected tab in view, and must not show a bar under the tabs. The property \
+                 that removes the bar is generated only for another engine, so its name is unknown \
+                 to the parser and a declaration using it is dropped whole",
+        instead: "write `--zgui-scrollbar-width` on the scroll container. It takes the same three \
+                  keywords: `none` draws no bar and reserves no gutter while the content still \
+                  scrolls, and `thin` draws a bar half as broad. A custom property inherits, so a \
+                  scroll container inside one that hides its bar writes `auto` to show its own",
+        patch: "generate the property for this engine, and read the longhand in place of the \
+                custom property",
+        owner: "the style engine, then zgui-css",
+        status: GapStatus::OutOfReachThenWork,
+        probe: GapProbe::LonghandsUnknown(scrollbar_width::REGISTERED),
     },
 ];

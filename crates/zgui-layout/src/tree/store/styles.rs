@@ -12,6 +12,7 @@
 
 use rustc_hash::FxHashMap;
 use zgui_css::ComputedStyle;
+use zgui_css::values::scrollbar::ScrollbarWidth;
 use zgui_profile::{Counter, counter};
 
 use crate::fragment::custom_properties::CustomProperties;
@@ -22,11 +23,12 @@ use crate::style::lowered::LayoutStyle;
 
 /// The identity of everything a layout lowering reads.
 ///
-/// Every field but the last is the address of one shared group of computed values; the cascade
+/// Every field but the last two is the address of one shared group of computed values; the cascade
 /// shares a group rather than copying it, so equal addresses hold equal values. Of the inherited
 /// text group only `text-align` is read, and it is keyed by value so that a colour change, which
-/// moves that group, does not move the key. An entry holds its style, which keeps every group the
-/// key names allocated for as long as the key is filed.
+/// moves that group, does not move the key. The scrollbar width comes from a custom property, which
+/// no group holds, so it is keyed by value too. An entry holds its style, which keeps every group
+/// the key names allocated for as long as the key is filed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct LayoutKey {
     box_: usize,
@@ -36,6 +38,7 @@ struct LayoutKey {
     border: usize,
     inherited_box: usize,
     text_align: u8,
+    scrollbar_width: ScrollbarWidth,
 }
 
 impl LayoutKey {
@@ -51,6 +54,7 @@ impl LayoutKey {
             border: address(style.get_border()),
             inherited_box: address(style.get_inherited_box()),
             text_align: style.get_inherited_text().text_align as u8,
+            scrollbar_width: ScrollbarWidth::of(style),
         }
     }
 }
@@ -381,6 +385,23 @@ mod tests {
             table.lowered(slots[0]).template.text_align,
             table.lowered(slots[1]).template.text_align
         );
+    }
+
+    #[test]
+    fn two_scrollers_that_differ_in_scrollbar_width_lower_apart() {
+        let mut table = StyleTable::default();
+        let mut first = StyleDraft::initial();
+        first.box_group().overflow_y = zgui_css::values::size::OverflowValue::Scroll;
+        let first = first.build();
+        // Every group is the first's own allocation; only the custom property map differs.
+        let second = StyleDraft::from_style(&first)
+            .with_custom_property("zgui-scrollbar-width", "none")
+            .build();
+        let slots = [table.intern(&first), table.intern(&second)];
+        table.ensure_lowered(DeviceStyle::default());
+        assert_eq!(table.by_layout.len(), 2);
+        assert_eq!(table.lowered(slots[0]).template.scrollbar_width, 15.0);
+        assert_eq!(table.lowered(slots[1]).template.scrollbar_width, 0.0);
     }
 
     #[test]

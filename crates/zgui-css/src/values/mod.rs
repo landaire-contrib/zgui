@@ -20,6 +20,7 @@
 //! | [`text`] | spacing, wrapping and alignment |
 //! | [`color`] | the one conversion into the colour type the rest of the tree draws with |
 //! | [`ui`] | what the pointer and the caret interact with |
+//! | [`scrollbar`] | how broad a scroll container's scrollbars are |
 
 pub mod align;
 pub mod border;
@@ -33,6 +34,7 @@ pub mod grid;
 pub mod image;
 pub mod length;
 pub mod list;
+pub mod scrollbar;
 pub mod size;
 pub mod text;
 pub mod transform;

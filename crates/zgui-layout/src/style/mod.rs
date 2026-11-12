@@ -34,10 +34,11 @@ pub(crate) fn same_cascade(held: &ComputedStyle, style: &ComputedStyle) -> bool 
 pub struct DeviceStyle {
     /// Device pixels per CSS pixel.
     pub scale: f32,
-    /// How wide a scrollbar is, in device pixels.
+    /// How wide an `auto` scrollbar is, in device pixels.
     ///
-    /// This is not a CSS property in this build — the longhand that would carry it is generated
-    /// only for another engine — so it comes from the theme.
+    /// This is not a CSS property in this build: the longhand that would carry it is generated only
+    /// for another engine, so it comes from the theme. A scroll container asks for a thin bar or
+    /// for none with [`SCROLLBAR_WIDTH`](zgui_css::values::scrollbar::SCROLLBAR_WIDTH).
     pub scrollbar_width: f32,
 }
 

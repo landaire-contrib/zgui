@@ -8,6 +8,7 @@
 pub mod inherited_svg;
 pub mod rows;
 pub mod scrollbar_gutter;
+pub mod scrollbar_width;
 pub mod text_decoration;
 
 pub use crate::parity::gap::rows::{GAPS, Gap, GapProbe, GapStatus};

@@ -1,5 +1,6 @@
 //! `overflow`, and the one value the layout algorithms have no representation for.
 
+use zgui_css::values::scrollbar::ScrollbarWidth;
 use zgui_css::values::size::OverflowValue;
 
 /// How overflowing content affects layout.
@@ -29,7 +30,13 @@ pub fn is_undecided(value: OverflowValue) -> bool {
 /// a scrollport whose gutter is never revised, which shows up as content that overflows a container
 /// with no scrollbar in it — see [`axes_of`](crate::intrinsic::keywords::axes_of) for the same
 /// argument made at greater length.
+///
+/// A box whose scrollbar width is `none` has a gutter of no breadth, so it has nothing to decide.
 pub fn undecided_axes(style: &zgui_css::ComputedStyle) -> (bool, bool) {
+    if ScrollbarWidth::of(style) == ScrollbarWidth::None {
+        return (false, false);
+    }
+
     let box_ = style.get_box();
     (is_undecided(box_.overflow_x), is_undecided(box_.overflow_y))
 }

@@ -10,10 +10,32 @@
 //! layout keeps reserving whatever gutter it was reserving when the lock was taken, whatever the
 //! style now says. Nothing else changes — the container really does stop scrolling — and the
 //! content keeps the width it had.
+//!
+//! The lock keeps the breadth of the gutter as well as its axes. A thin scrollbar is only thin
+//! while the container scrolls, so a style that stops it scrolling would otherwise give the locked
+//! gutter the theme's full breadth.
 
 use zgui_dom::side::BoxKey;
+use zgui_geom::DevicePx;
 
 use crate::tree::store::LayoutStore;
+
+/// The gutter one container reserves.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HeldGutter {
+    /// Whether the horizontal and the vertical axis reserve a gutter.
+    pub axes: (bool, bool),
+    /// How broad the gutter is.
+    pub breadth: DevicePx,
+}
+
+impl HeldGutter {
+    /// No gutter on either axis.
+    pub const NONE: Self = Self {
+        axes: (false, false),
+        breadth: DevicePx(0.0),
+    };
+}
 
 /// Stops `key` scrolling without letting its content change width.
 ///
@@ -22,33 +44,39 @@ use crate::tree::store::LayoutStore;
 /// container that reserves no gutter is not an error and costs nothing: there is no space to keep.
 pub fn lock(store: &mut LayoutStore, key: BoxKey) {
     let reserved = reserved(store, key);
-    lock_axes(store, key, reserved);
+    lock_gutter(store, key, reserved);
 }
 
-/// The same, for a caller that knows which axes to hold rather than reading them from a layout.
+/// The same, for a caller that knows which gutter to hold rather than reading it from a layout.
 ///
 /// This is what a modal opening across a document rebuild needs: the container it is locking has
 /// been laid out, but not necessarily in the store the lock is being taken in.
-pub fn lock_axes(store: &mut LayoutStore, key: BoxKey, axes: (bool, bool)) {
-    store.set_scroll_lock(key, Some(axes));
+pub fn lock_gutter(store: &mut LayoutStore, key: BoxKey, gutter: HeldGutter) {
+    store.set_scroll_lock(key, Some(gutter));
 }
 
-/// Which axes of one container are reserving a gutter as it currently stands.
+/// The gutter one container reserves as it currently stands.
 ///
-/// A scrollbar on the block axis takes width off the content, so the answer is read from the
+/// A scrollbar on the block axis takes width off the content, so the axes are read from the
 /// perpendicular extent — which is the one place that has to be got the right way round, and it is
-/// got right once here rather than at each caller.
-pub fn reserved(store: &LayoutStore, key: BoxKey) -> (bool, bool) {
+/// got right once here rather than at each caller. A container that has not been laid out, or
+/// whose gutter has no breadth, reserves nothing.
+pub fn reserved(store: &LayoutStore, key: BoxKey) -> HeldGutter {
+    let Some(layout) = store.layout_of(key) else {
+        return HeldGutter::NONE;
+    };
+
+    let size = layout.scrollbar_size;
+    let breadth = size.width.0.max(size.height.0);
+    if breadth <= 0.0 {
+        return HeldGutter::NONE;
+    }
+
     let held = store.auto_scroll(key);
-    store
-        .layout_of(key)
-        .map(|layout| {
-            (
-                held.0 || layout.scrollbar_size.height.0 > 0.0,
-                held.1 || layout.scrollbar_size.width.0 > 0.0,
-            )
-        })
-        .unwrap_or(held)
+    HeldGutter {
+        axes: (held.0 || size.height.0 > 0.0, held.1 || size.width.0 > 0.0),
+        breadth: DevicePx(breadth),
+    }
 }
 
 /// Lets `key` size itself by its own style again.

@@ -18,8 +18,10 @@ use cephal::style::{
 use cephal::{Point, Rect, Size};
 use zgui_css::ComputedStyle;
 use zgui_css::values::flex::{FlexDirectionValue, FlexWrapValue};
+use zgui_css::values::scrollbar::ScrollbarWidth;
 use zgui_css::values::size::{BoxSizingValue, ClearValue, FloatValue, PositionValue};
 use zgui_css::values::text::TextAlignKeyword;
+use zgui_geom::DevicePx;
 
 use crate::node::box_node::BoxNode;
 use crate::node::kind::FormattingContext;
@@ -40,10 +42,19 @@ pub(crate) struct Variant {
     pub(crate) item_is_replaced: bool,
     /// The natural proportions of the box's content, if it has any.
     pub(crate) natural_ratio: Option<f32>,
-    /// Which axes layout has decided reserve a scrollbar gutter.
-    pub(crate) gutter: (bool, bool),
+    /// The scrollbar gutter layout has decided the box reserves.
+    pub(crate) gutter: Gutter,
     /// What the intrinsic pre-pass measured for the box.
     pub(crate) measured: MeasuredSizes,
+}
+
+/// The scrollbar gutter layout has decided one box reserves.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Gutter {
+    /// Whether the horizontal and the vertical axis reserve a gutter.
+    pub(crate) axes: (bool, bool),
+    /// The breadth a lock holds, in place of the breadth the style asks for.
+    pub(crate) breadth: Option<DevicePx>,
 }
 
 /// The part of the engine style that follows from the cascade result and the device alone.
@@ -113,7 +124,7 @@ pub(crate) fn template(
         },
         item_is_table: false,
         item_is_replaced: false,
-        scrollbar_width: device.scrollbar_width,
+        scrollbar_width: ScrollbarWidth::of(style).breadth(device.scrollbar_width),
         aspect_ratio: None,
         size: Size {
             width: length::size(&position.width, scale, calc),
@@ -233,7 +244,7 @@ pub(crate) fn variant(
     node: &BoxNode,
     lowered: &LayoutStyle,
     natural_ratio: Option<f32>,
-    gutter: (bool, bool),
+    gutter: Gutter,
     measured: MeasuredSizes,
 ) -> Variant {
     Variant {
@@ -255,11 +266,14 @@ pub(crate) fn engine_style(lowered: &LayoutStyle, variant: &Variant) -> Style {
     style.aspect_ratio = lowered.aspect_ratio(variant.natural_ratio);
     // An axis layout has decided reserves a gutter is `scroll` to the engine whatever the style
     // says, because reserving the space is what that value means to it.
-    if variant.gutter.0 {
+    if variant.gutter.axes.0 {
         style.overflow.x = Overflow::Scroll;
     }
-    if variant.gutter.1 {
+    if variant.gutter.axes.1 {
         style.overflow.y = Overflow::Scroll;
+    }
+    if let Some(breadth) = variant.gutter.breadth {
+        style.scrollbar_width = breadth.0;
     }
     let inset = lowered.intrinsic_inset;
     let measured = MeasuredSizes {
@@ -291,6 +305,7 @@ mod tests {
     use zgui_css::StyleDraft;
     use zgui_css::values::length::{Length, LengthPercentage as CssLp, NonNegative};
     use zgui_css::values::size::{MaxSizeValue, OverflowValue, SizeValue};
+    use zgui_geom::DevicePx;
 
     use crate::node::box_node::BoxNode;
     use crate::node::kind::FormattingContext;
@@ -300,7 +315,7 @@ mod tests {
     use crate::style::lowered::LayoutStyle;
     use crate::style::{DeviceStyle, MeasuredSizes};
 
-    use super::{Variant, engine_style};
+    use super::{Gutter, Variant, engine_style};
 
     fn lower_with(device: DeviceStyle, mutate: impl FnOnce(&mut StyleDraft)) -> LayoutStyle {
         let mut draft = StyleDraft::initial();
@@ -360,7 +375,10 @@ mod tests {
             item_is_table: false,
             item_is_replaced: false,
             natural_ratio: Some(2.0),
-            gutter: (false, true),
+            gutter: Gutter {
+                axes: (false, true),
+                breadth: Some(DevicePx(8.0)),
+            },
             measured: MeasuredSizes {
                 horizontal: Some(IntrinsicSizes {
                     min: 30.0,
@@ -372,6 +390,10 @@ mod tests {
         let style = engine_style(&lowered, &variant);
         assert_eq!(style.display, Display::Flex);
         assert_eq!(style.overflow.y, Overflow::Scroll);
+        assert_eq!(
+            style.scrollbar_width, 8.0,
+            "a held breadth replaces the style's"
+        );
         assert_eq!(style.overflow.x, Overflow::Visible);
         assert_eq!(style.min_size.width, LengthPercentageAuto::length(90.0));
         assert_eq!(

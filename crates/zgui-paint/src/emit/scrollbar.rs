@@ -154,7 +154,8 @@ pub fn paint_for(dark: bool) -> ScrollbarPaint {
 /// The paint for the bars of a box whose style says `style`, in a window whose bars take `window`.
 ///
 /// A scroll container that names one `color-scheme` takes that scheme's paint, and the colours a
-/// style sheet set replace the default ones. A box that says neither keeps `window`.
+/// style sheet set replace the default ones. A box that says neither keeps `window`. A thin bar
+/// paints its thumb half as thick.
 pub fn resolve(window: ScrollbarPaint, style: &ScrollbarStyle) -> ScrollbarPaint {
     let mut paint = match style.scheme {
         ScrollbarScheme::Window => window,
@@ -171,6 +172,7 @@ pub fn resolve(window: ScrollbarPaint, style: &ScrollbarStyle) -> ScrollbarPaint
         paint.thumb = colors.thumb.unwrap_or(paint.thumb);
         paint.track = colors.track.unwrap_or(paint.track);
     }
+    paint.thumb_thickness = style.width.breadth(paint.thumb_thickness);
     paint
 }
 
@@ -327,25 +329,40 @@ mod tests {
 
         let dark = ScrollbarStyle {
             scheme: ScrollbarScheme::Dark,
-            colors: None,
+            ..ScrollbarStyle::default()
         };
         assert_eq!(resolve(window, &dark), dark_paint());
         let light = ScrollbarStyle {
             scheme: ScrollbarScheme::Light,
-            colors: None,
+            ..ScrollbarStyle::default()
         };
         assert_eq!(resolve(dark_paint(), &light), default_paint());
 
         let lime = Color::srgb(0.0, 1.0, 0.0, 1.0);
         let themed = ScrollbarStyle {
-            scheme: ScrollbarScheme::Window,
             colors: Some(Arc::new(ScrollbarColors {
                 thumb: Some(lime),
                 track: None,
             })),
+            ..ScrollbarStyle::default()
         };
         let paint = resolve(window, &themed);
         assert_eq!(paint.thumb, lime);
         assert_eq!(paint.track, window.track, "the track keeps its default");
+    }
+
+    #[test]
+    fn a_thin_style_paints_a_thumb_half_as_thick() {
+        use zgui_css::values::scrollbar::ScrollbarWidth;
+
+        use crate::lower::scrollbar::ScrollbarStyle;
+
+        let thin = ScrollbarStyle {
+            width: ScrollbarWidth::Thin,
+            ..ScrollbarStyle::default()
+        };
+        let paint = resolve(default_paint(), &thin);
+        assert_eq!(paint.thumb_thickness, 3.0);
+        assert_eq!(paint.thumb, default_paint().thumb);
     }
 }
