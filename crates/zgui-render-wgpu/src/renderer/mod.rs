@@ -27,6 +27,7 @@ use crate::bind::globals::SubpixelOrder;
 use crate::frame::fault::FaultInjector;
 use crate::frame::pass::AttachedTexture;
 use crate::frame::vector::VectorSource;
+use crate::pipeline::external::ExternalSampling;
 
 /// A backend companion's lazy vector-rasteriser constructor.
 pub type VectorFactory = fn(&Arc<Gpu>, Size<i32, Device>) -> Box<dyn VectorSource>;
@@ -461,6 +462,7 @@ impl WgpuRenderer {
             AttachedTexture {
                 texture: described,
                 view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                sampling: ExternalSampling::of(texture.format()),
             },
         );
         true

@@ -3,7 +3,6 @@
 use zgui_bits::DamageSet;
 use zgui_geom::{Device, DevicePx, Edges, Rect};
 use zgui_profile::{Counter, counter};
-use zgui_render::ExternalTexture;
 use zgui_scene::{BackdropFilter, Batch, Filter, GroupBoundary, MarkPlan, PrimitiveKind, Scene};
 
 use crate::filter::chain::Chain;
@@ -15,7 +14,7 @@ use crate::frame::segment::PlannedDraw;
 use crate::frame::target::TargetRef;
 use crate::frame::vector;
 use crate::pipeline::composite::CompositeParams;
-use crate::pipeline::external::ExternalParams;
+use crate::pipeline::external::{ExternalParams, ExternalSource};
 use crate::pipeline::marks::{MarkDraw, MarkKind};
 use crate::target::scale::TargetScale;
 
@@ -70,7 +69,7 @@ pub fn plan_segments(
     damage: &DamageSet,
     marks: &MarkPlan,
     used: Rect<i32, Device>,
-    externals: &dyn Fn(zgui_scene::ExternalTextureId) -> Option<ExternalTexture>,
+    externals: &dyn Fn(zgui_scene::ExternalTextureId) -> Option<ExternalSource>,
     vectors: Option<&zgui_render::VectorPlan>,
 ) -> FramePlan {
     // A backdrop reads the target beneath it, so the rectangles have to cover what it reads.
@@ -240,7 +239,7 @@ fn plan_rect(
     marks: &MarkPlan,
     rect: Rect<i32, Device>,
     used: Rect<i32, Device>,
-    externals: &dyn Fn(zgui_scene::ExternalTextureId) -> Option<ExternalTexture>,
+    externals: &dyn Fn(zgui_scene::ExternalTextureId) -> Option<ExternalSource>,
     vectors: Option<&zgui_render::VectorPlan>,
 ) {
     let mut stack: Vec<OpenGroup> = Vec::new();
