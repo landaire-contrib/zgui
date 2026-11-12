@@ -1,4 +1,7 @@
-//! The data surfaces: tables, charts, dates and a list with a hundred thousand rows.
+//! The data surfaces: tables, charts, dates, a list with a hundred thousand rows, and a list
+//! whose rows differ in height.
+
+use std::collections::BTreeSet;
 
 use zgui::prelude::*;
 use zgui::reactive::RwSignal;
@@ -69,6 +72,10 @@ pub(crate) fn Data() -> impl IntoView {
 
         Panel(title = "Virtualised list", note = "a hundred thousand rows, of which a couple of dozen exist") {
             Ledger()
+        }
+
+        Panel(title = "Measured list", note = "rows as tall as their content, measured as they are built") {
+            Journal()
         }
     }
 }
@@ -214,5 +221,43 @@ fn Ledger() -> impl IntoView {
                 }
             }
         }
+    }
+}
+
+/// Ten thousand entries of different heights. Each one opens to show its details.
+#[component]
+fn Journal() -> impl IntoView {
+    let open = RwSignal::new_local(BTreeSet::<usize>::new());
+
+    view! {
+        VirtualList(
+            class = "tall frame",
+            count = 10_000_usize,
+            measured = MeasuredRows::new(36.0),
+            label = "Journal",
+            row = move |index: usize| view! {
+                column {
+                    row(class = "row__items") {
+                        text {{format!("Entry {index}")}}
+                        Button(
+                            variant = ButtonVariant::Ghost,
+                            on:click = move |_| open.update(|open| {
+                                if !open.remove(&index) {
+                                    open.insert(index);
+                                }
+                            })
+                        ) {
+                            {move || if open.with(|open| open.contains(&index)) { "Hide" } else { "Details" }}
+                        }
+                    }
+                    if move || index.is_multiple_of(3) {
+                        text {"A longer note that wraps onto a second line when the panel is narrow."}
+                    } else {}
+                    if move || open.with(|open| open.contains(&index)) {
+                        text {{format!("Entry {index} was written on day {} of the year.", index % 365 + 1)}}
+                    } else {}
+                }
+            }
+        )
     }
 }
