@@ -85,6 +85,9 @@ impl WaylandState {
             shared.ladder.seed(seed);
             shared.scale = shared.ladder.factor();
         }
+        if let Some(window) = surface.role().window() {
+            surface.shared().decorations = window.expected_source(attributes.decorations);
+        }
         apply(&surface, attributes);
         // The commit that asks to be configured. Nothing is attached to it, which makes it the
         // initial commit. A lock surface is configured unasked, and a commit before it

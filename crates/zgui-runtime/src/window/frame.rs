@@ -148,6 +148,11 @@ impl Window {
                 self.handle.set_presented();
                 false
             }
+            // The frame asked for here runs the effects that read the source, so a title bar the
+            // application draws in answer appears without waiting for other work.
+            zgui_platform::SurfaceEvent::DecorationSourceChanged(source) => {
+                self.handle.set_decoration_source(*source)
+            }
             // Keyboard focus is a level as well, and it is one whose *edges* do work that must not
             // be done twice: losing it settles the field being typed into, which is the event a
             // form validates on, and a window system that re-states the focus it already reported

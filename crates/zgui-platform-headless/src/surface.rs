@@ -7,8 +7,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use accesskit::TreeUpdate;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Rect, Size};
 use zgui_platform::{
-    CursorStyle, Decorations, FullscreenMode, InputSerial, LayerPatch, LayerPlacement,
-    PopupPlacement, Surface, SurfaceAttributes, SurfaceId, SurfaceRole, TextInput, Unsupported,
+    CursorStyle, DecorationSource, Decorations, FullscreenMode, InputSerial, LayerPatch,
+    LayerPlacement, PopupPlacement, Surface, SurfaceAttributes, SurfaceId, SurfaceRole, TextInput,
+    Unsupported,
 };
 
 /// How many accessibility nodes the surface keeps across the updates it retains.
@@ -133,6 +134,8 @@ pub struct OffscreenSurface {
     requested_attributes: Mutex<SurfaceAttributes>,
     /// The token of the latest press, as a test sets it.
     input_serial: Mutex<Option<InputSerial>>,
+    /// Who the platform says draws the frame.
+    decoration_source: Mutex<DecorationSource>,
 }
 
 impl OffscreenSurface {
@@ -159,6 +162,7 @@ impl OffscreenSurface {
             title: Mutex::new(String::new()),
             requested_attributes: Mutex::new(SurfaceAttributes::default()),
             input_serial: Mutex::new(None),
+            decoration_source: Mutex::new(DecorationSource::Platform),
         }
     }
 
@@ -376,6 +380,19 @@ impl OffscreenSurface {
         self.refresh_rate_millihertz
             .store(millihertz.unwrap_or(0), Ordering::Relaxed);
     }
+
+    /// Records who the platform says draws the frame.
+    ///
+    /// Delivering
+    /// [`SurfaceEvent::DecorationSourceChanged`](zgui_platform::SurfaceEvent::DecorationSourceChanged)
+    /// through the harness calls this before the event arrives, as a compositor that answers again
+    /// would.
+    pub(crate) fn set_decoration_source(&self, source: DecorationSource) {
+        *self
+            .decoration_source
+            .lock()
+            .expect("the decoration source is not poisoned") = source;
+    }
 }
 
 impl Surface for OffscreenSurface {
@@ -454,6 +471,13 @@ impl Surface for OffscreenSurface {
             .input_serial
             .lock()
             .expect("the serial is not poisoned")
+    }
+
+    fn decoration_source(&self) -> DecorationSource {
+        *self
+            .decoration_source
+            .lock()
+            .expect("the decoration source is not poisoned")
     }
 
     fn set_cursor(&self, cursor: CursorStyle) {

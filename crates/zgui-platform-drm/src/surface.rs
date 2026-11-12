@@ -13,8 +13,8 @@ use raw_window_handle::{
 use zgui_drm::Device as DrmDevice;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Size};
 use zgui_platform::{
-    CursorStyle, Decorations, FullscreenMode, GpuSurface, PresentPacing, PresentationTiming,
-    Surface, SurfaceId, TextInput, refresh_interval,
+    CursorStyle, DecorationSource, Decorations, FullscreenMode, GpuSurface, PresentPacing,
+    PresentationTiming, Surface, SurfaceId, TextInput, refresh_interval,
 };
 
 use crate::output::Output;
@@ -234,6 +234,11 @@ impl Surface for DrmSurface {
 
     /// Does nothing: no window manager draws a frame or a title bar.
     fn set_decorations(&self, _decorations: Decorations) {}
+
+    /// The application: no window manager draws a frame.
+    fn decoration_source(&self) -> DecorationSource {
+        DecorationSource::Application
+    }
 
     /// Does nothing: no window manager offers a drag to resize with.
     fn set_resizable(&self, _resizable: bool) {}

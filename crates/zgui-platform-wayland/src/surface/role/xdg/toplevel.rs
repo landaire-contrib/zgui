@@ -143,6 +143,16 @@ impl Toplevel {
         }
     }
 
+    /// Who draws the frame until the compositor answers a request for `decorations`.
+    ///
+    /// Without the decoration protocol the compositor draws no frame and sends no answer.
+    pub const fn expected_source(&self, decorations: Decorations) -> DecorationSource {
+        match self.decoration {
+            Some(_) => source(mode(decorations)),
+            None => DecorationSource::Application,
+        }
+    }
+
     /// Hands a move of the window over to the compositor.
     pub fn begin_move(&self, seat: &WlSeat, serial: u32) {
         self.toplevel._move(seat, serial);
@@ -271,5 +281,24 @@ impl Dispatch<ZxdgToplevelDecorationV1, SurfaceId> for WaylandState {
         {
             state.decorated_by(*id, source(mode));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Mode, mode, source};
+    use zgui_platform::{DecorationSource, Decorations};
+
+    #[test]
+    fn only_a_full_frame_asks_the_compositor_to_draw_it() {
+        assert_eq!(mode(Decorations::Full), Mode::ServerSide);
+        assert_eq!(mode(Decorations::None), Mode::ClientSide);
+        assert_eq!(mode(Decorations::NoTitleBar), Mode::ClientSide);
+    }
+
+    #[test]
+    fn the_answer_of_the_compositor_names_who_draws_the_frame() {
+        assert_eq!(source(Mode::ServerSide), DecorationSource::Platform);
+        assert_eq!(source(Mode::ClientSide), DecorationSource::Application);
     }
 }

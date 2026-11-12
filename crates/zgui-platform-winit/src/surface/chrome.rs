@@ -2,7 +2,7 @@
 
 use winit::window::{CursorIcon, Fullscreen, Icon, ResizeDirection, Window};
 use zgui_platform::{
-    CursorStyle, Decorations, FullscreenMode, ResizeEdge, WindowIcon, WindowLevel,
+    CursorStyle, DecorationSource, Decorations, FullscreenMode, ResizeEdge, WindowIcon, WindowLevel,
 };
 
 /// What the pointer should look like.
@@ -99,11 +99,33 @@ pub(crate) const fn decorated(decorations: Decorations) -> bool {
     matches!(decorations, Decorations::Full)
 }
 
+/// Who draws the frame for this request.
+pub(crate) const fn source(decorations: Decorations) -> DecorationSource {
+    if decorated(decorations) {
+        DecorationSource::Platform
+    } else {
+        DecorationSource::Application
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{cursor, level, resize};
+    use super::{cursor, level, resize, source};
     use winit::window::{CursorIcon, ResizeDirection};
-    use zgui_platform::{CursorStyle, ResizeEdge, WindowLevel};
+    use zgui_platform::{CursorStyle, DecorationSource, Decorations, ResizeEdge, WindowLevel};
+
+    #[test]
+    fn a_window_without_a_platform_frame_draws_its_own() {
+        assert_eq!(source(Decorations::Full), DecorationSource::Platform);
+        assert_eq!(source(Decorations::None), DecorationSource::Application);
+        // Only macOS keeps the frame and hides the title bar inside it.
+        let without_title_bar = if cfg!(target_os = "macos") {
+            DecorationSource::Platform
+        } else {
+            DecorationSource::Application
+        };
+        assert_eq!(source(Decorations::NoTitleBar), without_title_bar);
+    }
 
     #[test]
     fn hiding_the_pointer_is_not_a_cursor() {

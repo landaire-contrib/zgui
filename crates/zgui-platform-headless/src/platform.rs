@@ -276,6 +276,7 @@ impl PlatformCx for Headless {
         let surface = Arc::new(OffscreenSurface::new(id, size));
         surface.set_title(attributes.title.as_str());
         surface.set_requested_attributes(attributes);
+        surface.set_decoration_source(self.capabilities.decorations);
         self.surfaces
             .lock()
             .expect("the surface list is not poisoned")

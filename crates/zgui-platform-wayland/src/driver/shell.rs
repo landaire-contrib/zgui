@@ -35,15 +35,37 @@ impl WaylandState {
         }
     }
 
-    /// Records who the compositor decided draws the frame.
+    /// Records who the compositor decided draws the frame of a window, without acting on it.
+    ///
+    /// The answer takes effect with the next configure of the shell surface, as the decoration
+    /// protocol requires.
+    pub(crate) fn decorated_by(&mut self, id: SurfaceId, source: DecorationSource) {
+        if let Some(surface) = self.live.surface(id) {
+            surface.shared().pending_decorations = Some(source);
+        }
+    }
+
+    /// Applies who the compositor decided draws the frame of a window, and reports a change.
     ///
     /// The request may be refused, and an application that assumed a server-drawn frame was granted
-    /// shows a window with no title bar at all. So the answer is what the capability reports.
-    pub(crate) fn decorated_by(&mut self, id: SurfaceId, source: DecorationSource) {
-        let _ = id;
+    /// shows a window with no title bar at all. So the answer is what the window and the capability
+    /// report. The compositor can send a new answer at any time, and each change is reported.
+    fn apply_decorations(&mut self, id: SurfaceId, source: DecorationSource) {
         if self.live.capabilities.decorations != source {
             self.live.capabilities.decorations = source;
             tracing::debug!(?source, "the compositor settled who draws window frames");
+        }
+        let Some(surface) = self.live.surface(id) else {
+            return;
+        };
+        let moved = {
+            let mut shared = surface.shared();
+            let moved = shared.decorations != source;
+            shared.decorations = source;
+            moved
+        };
+        if moved {
+            self.report(id, SurfaceEvent::DecorationSourceChanged(source));
         }
     }
 
@@ -67,10 +89,15 @@ impl WaylandState {
             tracing::debug!(?id, serial, "dropped a configure sent before the unmap");
             return;
         }
+        // Taken after the check above, so a decoration answer waits for a configure that applies.
+        let decorations = surface.shared().pending_decorations.take();
         let Some(pending) = pending else {
             // A surface acknowledging a description it never received would be acknowledging
             // nothing; the compositor sends the two halves together.
             surface.role().ack(serial);
+            if let Some(source) = decorations {
+                self.apply_decorations(id, source);
+            }
             return;
         };
 
@@ -113,6 +140,9 @@ impl WaylandState {
 
         if let Some(event) = visibility {
             self.report(id, event);
+        }
+        if let Some(source) = decorations {
+            self.apply_decorations(id, source);
         }
         // The two drag edges straddle the resize they ride with. The start edge goes ahead, so
         // the runtime knows the configure that follows belongs to a drag; the release edge goes

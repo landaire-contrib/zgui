@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Size};
-use zgui_platform::{PresentationTiming, SurfaceEvent};
+use zgui_platform::{DecorationSource, PresentationTiming, SurfaceEvent};
 
 use crate::frame::{Ahead, Pacer, Timing, Visibility, Watchdog};
 use crate::surface::role::toplevel;
@@ -160,6 +160,8 @@ pub(crate) struct Shared {
     pub(crate) resizing: bool,
     /// Whether the application has been told a drag is running.
     pub(crate) told_resizing: bool,
+    /// Who the compositor last said draws the frame.
+    pub(crate) decorations: DecorationSource,
     /// The smallest and largest extents the user may drag to.
     ///
     /// Remembered because the shell takes them as two requests and this contract sets them one at
@@ -168,6 +170,8 @@ pub(crate) struct Shared {
     pub(crate) bounds: Bounds,
     /// A configure that has arrived and not yet been applied.
     pub(crate) pending_configure: Option<Pending>,
+    /// A decoration answer that has arrived and not yet been applied.
+    pub(crate) pending_decorations: Option<DecorationSource>,
     /// The outputs the compositor says the surface is on.
     pub(crate) outputs: Vec<WlOutput>,
     /// How the colour stripes of those outputs are arranged.
@@ -231,8 +235,12 @@ impl Shared {
             fullscreen: false,
             resizing: false,
             told_resizing: false,
+            // A surface without a decoration object gets no frame from the compositor. A window
+            // that has one is given its expected answer when it is made.
+            decorations: DecorationSource::Application,
             bounds: (None, None),
             pending_configure: None,
+            pending_decorations: None,
             outputs: Vec::new(),
             subpixel: zgui_platform::SubpixelLayout::Unknown,
             bound: None,
