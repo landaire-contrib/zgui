@@ -19,6 +19,17 @@ use zgui_view::{NodeId, ObservationSink, Observed, ObservedValue};
 /// One registration's number, which is what deregisters it.
 pub type Registration = u64;
 
+/// What [`Observations::remove`] takes out.
+pub struct Removed {
+    /// The node's whole mask afterwards.
+    pub mask: ObservedMask,
+    /// The channel of the registration.
+    ///
+    /// The caller drops it after it releases the registry. A channel can own a view's scope, and
+    /// the scope's cleanups can deregister other observations from the same registry.
+    pub sink: ObservationSink,
+}
+
 /// Everything watching one measurement of one node.
 #[derive(Default)]
 struct Watchers {
@@ -87,7 +98,7 @@ impl Observations {
         (registration, self.mask_of(node))
     }
 
-    /// Removes one registration, and reports the node's whole mask afterwards.
+    /// Removes one registration, and returns its channel and the node's whole mask afterwards.
     ///
     /// `None` when there was no such registration, which is what a second drop of the same handle
     /// would be — and which must not be turned into a mask write, because the mask it would write
@@ -97,17 +108,21 @@ impl Observations {
         node: NodeId,
         what: Observed,
         registration: Registration,
-    ) -> Option<ObservedMask> {
+    ) -> Option<Removed> {
         let watchers = self.entries.get_mut(&(node, what))?;
         let position = watchers
             .sinks
             .iter()
             .position(|(held, _)| *held == registration)?;
-        watchers.sinks.remove(position);
+        let (_, sink) = watchers.sinks.remove(position);
         if watchers.sinks.is_empty() {
             self.entries.remove(&(node, what));
         }
-        Some(self.mask_of(node))
+
+        Some(Removed {
+            mask: self.mask_of(node),
+            sink,
+        })
     }
 
     /// Hands `value` to everything watching that measurement of `node`.
@@ -131,14 +146,19 @@ impl Observations {
         }
     }
 
-    /// Forgets every observation of a node `document` no longer has.
+    /// Removes every observation of a node `document` no longer has, and returns the channels.
     ///
     /// The same reasoning as for a listener's handler: a view that took its nodes out of the
     /// document has nothing left to deregister against, and an entry kept past its node goes on
     /// holding a signal that nothing will ever write again.
-    pub fn retain_live(&mut self, document: &Document) {
+    ///
+    /// The caller drops the channels after it releases the registry and the document, for the
+    /// reason given on [`Removed::sink`].
+    pub fn take_dead(&mut self, document: &Document) -> Vec<ObservationSink> {
         self.entries
-            .retain(|(node, _), _| crate::id::is_live(document, *node));
+            .extract_if(|(node, _), _| !crate::id::is_live(document, *node))
+            .flat_map(|(_, watchers)| watchers.sinks.into_iter().map(|(_, sink)| sink))
+            .collect()
     }
 
     /// Which of `node`'s measurements are being watched.
