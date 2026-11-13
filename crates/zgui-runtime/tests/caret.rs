@@ -225,11 +225,16 @@ impl Script {
     /// so this refuses a rectangle with nothing under it rather than passing on the strength of an
     /// empty `all`, which is how a depth claim goes vacuous.
     fn band_over(&self, rect: Rect<DevicePx, Device>) -> bool {
+        self.band_in(rect, INK, BAND_ALPHA)
+    }
+
+    /// Whether a selection band covering `rect` is drawn behind the glyphs in a given fill.
+    fn band_in(&self, rect: Rect<DevicePx, Device>, components: [f32; 3], alpha: f32) -> bool {
         let under = self.glyphs_under(rect);
         !under.is_empty()
             && self.quads().iter().any(|quad| {
                 quad.covers(rect)
-                    && quad.filled_with(INK, BAND_ALPHA)
+                    && quad.filled_with(components, alpha)
                     && under.iter().all(|&order| quad.order < order)
             })
     }
@@ -307,8 +312,13 @@ impl Painted {
 
 /// A window holding an editor with `content` in it, focused, with its caret at the start.
 fn scripted(content: &'static str) -> Script {
+    scripted_with(CSS, content)
+}
+
+/// [`scripted`], styled by `css`.
+fn scripted_with(css: &'static str, content: &'static str) -> Script {
     let editor = NodeRef::new();
-    let harness = support::app_with_text(CSS, move |cx: &mut BuildCx<'_>| {
+    let harness = support::app_with_text(css, move |cx: &mut BuildCx<'_>| {
         Box::new(
             zgui_elements::column()
                 .class("root")
@@ -498,6 +508,29 @@ fn a_drag_selects_the_range_between_its_two_points_and_paints_a_band_over_it() {
         script.selection(),
         Some(0..3),
         "a move after the release went on extending the selection"
+    );
+}
+
+#[test]
+fn a_selection_background_token_colours_the_band() {
+    const TOKENED: &str = "root { display: block; width: 400px; height: 300px; padding: 12px 20px;
+                                  --zgui-selection: rgb(255, 204, 0) }
+                           editor { display: block; width: 200px; height: 40px; color: rgb(0, 102, 204) }
+                           text { display: block; color: rgb(0, 102, 204) }";
+    let mut script = scripted_with(TOKENED, "abcdef");
+    let line = script.line();
+    let y = line.origin.y.0 + line.size.height.0 / 2.0;
+    script.point(PointerAction::Pressed, line.origin.x.0 + ADVANCE * 0.2, y);
+    script.point(PointerAction::Moved, line.origin.x.0 + ADVANCE * 3.2, y);
+    assert_eq!(script.selection(), Some(0..3));
+    let expected = Rect::new(
+        line.origin,
+        zgui_geom::Size::new(DevicePx(ADVANCE * 3.0), line.size.height),
+    );
+    assert!(
+        script.band_in(expected, [1.0, 0.8, 0.0], 1.0),
+        "the band ignored the ::selection background: {:?}",
+        script.quads()
     );
 }
 

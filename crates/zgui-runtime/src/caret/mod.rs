@@ -283,6 +283,8 @@ impl Carets {
 
 /// Builds the plan for one editable element's selection.
 ///
+/// `band` is the `::selection` background; without one the band is the text's colour, faded.
+///
 /// `visible` is the blink phase: the caret is left out entirely while it is off, rather than drawn
 /// transparent, so that a frame in the dark phase pushes no primitive at all. The selection is not
 /// blinked — it marks what a keystroke would replace, and marking that intermittently would be a
@@ -291,9 +293,11 @@ pub fn plan_for(
     located: &Located,
     selection: zgui_edit::Selection,
     color: Color,
+    band: Option<Color>,
     scale: f32,
     visible: bool,
 ) -> Plan {
+    let band_color = band.unwrap_or_else(|| color.with_alpha(color.alpha() * BAND_ALPHA));
     let mut marks = Vec::new();
     for band in located.bands(selection.range()) {
         let Some(origin) = located.line_origin(band.line) else {
@@ -306,7 +310,7 @@ pub fn plan_for(
                 DevicePx(band.origin.y.0 - origin.y.0),
             ),
             size: Size::new(DevicePx(band.size.width.0), DevicePx(band.size.height.0)),
-            color: color.with_alpha(color.alpha() * BAND_ALPHA),
+            color: band_color,
             layer: HighlightLayer::Behind,
         });
     }
