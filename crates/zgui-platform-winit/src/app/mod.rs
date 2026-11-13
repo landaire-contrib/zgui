@@ -169,7 +169,10 @@ impl<A: AppHandler> WinitApp<A> {
             let Some(state) = self.windows.get_mut(&id) else {
                 continue;
             };
-            let events = state.drag.take(state.pointer);
+            let position = state
+                .drag
+                .position(Surface::size(surface.as_ref()), surface.scale());
+            let events = state.drag.take(position);
             let cx = WinitCx::new(&self.shared, event_loop);
             for event in events {
                 self.handler.surface_event(
@@ -285,7 +288,14 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
         let destroyed = matches!(event, winit::event::WindowEvent::Destroyed);
         let relayout = relays_out_title_bar(&event);
         let timestamp = self.shared.clock().timestamp();
-        let state = self.windows.entry(window_id).or_default();
+        let state = self.windows.entry(window_id).or_insert_with(|| {
+            // A window may get no resize before its first pointer motion.
+            let mut state = WindowState::default();
+            state
+                .drag
+                .resized(Surface::size(surface.as_ref()), surface.scale());
+            state
+        });
         let translated = events::translate(
             state,
             surface.scale(),

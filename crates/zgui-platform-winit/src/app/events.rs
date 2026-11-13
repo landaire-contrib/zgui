@@ -19,7 +19,8 @@ use crate::theme;
 /// This function needs no [`WinitSurface`](crate::surface::WinitSurface), so a program that owns
 /// its own winit loop can translate that loop's events with it. Dragged files are gathered in
 /// [`WindowState::drag`]; take them with [`Drag::take`](crate::app::drag::Drag::take) at the end of
-/// the loop's turn.
+/// the loop's turn, at [`Drag::position`](crate::app::drag::Drag::position). Do not use
+/// [`WindowState::pointer`] for a drag, because it can be outside the window.
 ///
 /// Most window events are one thing that happened and cross straight over. Four of them are not,
 /// and each is handled here rather than above:
@@ -27,7 +28,8 @@ use crate::theme;
 /// * a **held-modifier change** is a state the contract carries and the platform reports only when
 ///   it moves, so the new set is remembered as it passes;
 /// * a **pointer position** is remembered for the same reason, because a wheel turn and a file drop
-///   arrive without one and both have to be routed to whatever is under the pointer;
+///   arrive without one and both have to be routed to whatever is under the pointer. A file drop
+///   uses the last position inside the window (see [`Drag::position`](crate::app::drag::Drag::position));
 /// * a **dragged file** is one of a set the platform reports one at a time, so it is gathered
 ///   rather than announced (see [`Drag`](crate::app::drag::Drag));
 /// * a **synthetic key event** — the platform's way of reporting which keys were already held when
@@ -42,17 +44,17 @@ pub fn translate(
 ) -> Option<SurfaceEvent> {
     let scale = scale_factor;
     match event {
-        WindowEvent::Resized(size) => Some(SurfaceEvent::Resized(Size::new(
-            DevicePx(size.width as f32),
-            DevicePx(size.height as f32),
-        ))),
+        WindowEvent::Resized(size) => {
+            let size = Size::new(DevicePx(size.width as f32), DevicePx(size.height as f32));
+            state.drag.resized(size, scale);
+            Some(SurfaceEvent::Resized(size))
+        }
         WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
             // The size that comes with it is the window's own, read after the change: a scale
             // change and the resize it causes are one event to anything that has to redraw.
-            Some(SurfaceEvent::ScaleFactorChanged {
-                scale_factor,
-                size: size(),
-            })
+            let size = size();
+            state.drag.resized(size, scale_factor);
+            Some(SurfaceEvent::ScaleFactorChanged { scale_factor, size })
         }
         WindowEvent::CloseRequested => Some(SurfaceEvent::CloseRequested),
         WindowEvent::Destroyed => Some(SurfaceEvent::Destroyed),
@@ -83,6 +85,7 @@ pub fn translate(
         }
         WindowEvent::CursorMoved { position, .. } => {
             state.pointer = pointer::position(position, scale);
+            state.drag.pointer_moved(state.pointer);
             Some(SurfaceEvent::Pointer {
                 action: PointerAction::Moved,
                 event: pointer::mouse(state.pointer, None),
@@ -137,6 +140,7 @@ pub fn translate(
         WindowEvent::Touch(contact) => {
             let event = pointer::touch(&contact, scale);
             state.pointer = event.position;
+            state.drag.pointer_moved(state.pointer);
             Some(SurfaceEvent::Pointer {
                 action: pointer::action(contact.phase),
                 event,
@@ -191,7 +195,7 @@ mod tests {
     use winit::dpi::{PhysicalPosition, PhysicalSize};
     use winit::event::{DeviceId, MouseScrollDelta, TouchPhase, WindowEvent};
     use winit::keyboard::ModifiersState;
-    use zgui_geom::{CssPx, DevicePx, Point, Size};
+    use zgui_geom::{CssPx, Device, DevicePx, Point, Size};
     use zgui_platform::SurfaceEvent;
     use zgui_vocab::{Modifiers, PointerAction, ScrollDelta, Timestamp};
 
@@ -204,6 +208,48 @@ mod tests {
             Timestamp::ORIGIN,
             event,
         )
+    }
+
+    fn window_size() -> Size<DevicePx, Device> {
+        Size::new(DevicePx(800.0), DevicePx(600.0))
+    }
+
+    fn cursor_at(x: f64, y: f64) -> WindowEvent {
+        WindowEvent::CursorMoved {
+            device_id: DeviceId::dummy(),
+            position: PhysicalPosition::new(x, y),
+        }
+    }
+
+    #[test]
+    fn a_motion_outside_the_window_does_not_move_the_drop() {
+        let mut state = WindowState::default();
+        let _ = at_scale_two(
+            &mut state,
+            WindowEvent::Resized(PhysicalSize::new(800, 600)),
+        );
+        let _ = at_scale_two(&mut state, cursor_at(100.0, 60.0));
+        // X11 reports (-1, -1) as the pointer leaves for the drag source.
+        let _ = at_scale_two(&mut state, cursor_at(-1.0, -1.0));
+        let _ = at_scale_two(&mut state, cursor_at(900.0, 60.0));
+        let _ = at_scale_two(&mut state, WindowEvent::DroppedFile("/a.png".into()));
+        let events = state.drag.take(state.drag.position(window_size(), 2.0));
+        assert_eq!(
+            events[0].position(),
+            Some(Point::new(CssPx(50.0), CssPx(30.0)))
+        );
+    }
+
+    #[test]
+    fn a_drop_before_the_pointer_was_inside_goes_to_the_centre() {
+        let mut state = WindowState::default();
+        let _ = at_scale_two(&mut state, cursor_at(-1.0, -1.0));
+        let _ = at_scale_two(&mut state, WindowEvent::DroppedFile("/a.png".into()));
+        let events = state.drag.take(state.drag.position(window_size(), 2.0));
+        assert_eq!(
+            events[0].position(),
+            Some(Point::new(CssPx(200.0), CssPx(150.0)))
+        );
     }
 
     #[test]

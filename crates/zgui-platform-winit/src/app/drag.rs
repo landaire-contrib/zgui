@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use zgui_geom::{Css, CssPx, Point};
+use zgui_geom::{Css, CssPx, Device, DevicePx, Point, Size};
 use zgui_platform::DragEvent;
 
 /// A drag in flight over one window.
@@ -20,8 +20,9 @@ use zgui_platform::DragEvent;
 ///
 /// * [`DragEvent::Entered`] with every path, at the end of the turn that reported them.
 /// * No [`DragEvent::Moved`]. winit reports no pointer motion while an external drag is over the
-///   window, so `Entered` and `Dropped` have the last pointer position the window got before the
-///   drag.
+///   window, so `Entered` and `Dropped` have the last pointer position inside the window from
+///   before the drag, or the window's centre if the pointer was never inside (see
+///   [`Drag::position`]).
 /// * [`DragEvent::Left`] when the platform cancels the hover.
 /// * [`DragEvent::Dropped`] with every path.
 ///
@@ -34,6 +35,13 @@ pub struct Drag {
     dropped: Vec<PathBuf>,
     /// Whether the drag left without being dropped.
     left: bool,
+    /// The window's extent in CSS pixels, when known.
+    extent: Option<Size<CssPx, Css>>,
+    /// The last pointer position inside the window.
+    ///
+    /// A position outside is not kept. X11 reports one as the pointer leaves for the drag source,
+    /// and a drop routed to it reaches no element.
+    inside: Option<Point<CssPx, Css>>,
 }
 
 impl Drag {
@@ -55,6 +63,32 @@ impl Drag {
     /// Whether anything is waiting to be announced.
     pub const fn is_pending(&self) -> bool {
         self.left || !self.hovering.is_empty() || !self.dropped.is_empty()
+    }
+
+    /// Records the window's extent of `size` device pixels at `scale_factor`.
+    pub fn resized(&mut self, size: Size<DevicePx, Device>, scale_factor: f64) {
+        self.extent = Some(css_extent(size, scale_factor));
+    }
+
+    /// Records a pointer position, and keeps it for a drag if it is inside the window.
+    pub fn pointer_moved(&mut self, position: Point<CssPx, Css>) {
+        if contains(self.extent, position) {
+            self.inside = Some(position);
+        }
+    }
+
+    /// The position for a drag over a window of `size` device pixels at `scale_factor`.
+    ///
+    /// This is the last pointer position inside the window. If there is no such position, or the
+    /// window became smaller than it, this is the window's centre, so a target that covers the
+    /// whole window still gets the drop.
+    pub fn position(&self, size: Size<DevicePx, Device>, scale_factor: f64) -> Point<CssPx, Css> {
+        let extent = css_extent(size, scale_factor);
+        self.inside
+            .filter(|inside| contains(Some(extent), *inside))
+            .unwrap_or_else(|| {
+                Point::new(CssPx(extent.width.0 / 2.0), CssPx(extent.height.0 / 2.0))
+            })
     }
 
     /// Takes everything gathered, as the events a drop target is written against.
@@ -82,15 +116,64 @@ impl Drag {
     }
 }
 
+/// The extent of `size` device pixels in CSS pixels at `scale_factor`.
+fn css_extent(size: Size<DevicePx, Device>, scale_factor: f64) -> Size<CssPx, Css> {
+    let scale = if scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+    Size::new(
+        CssPx((f64::from(size.width.0) / scale) as f32),
+        CssPx((f64::from(size.height.0) / scale) as f32),
+    )
+}
+
+/// Whether `position` is inside `extent`. With no known extent, only the far edges are unchecked.
+fn contains(extent: Option<Size<CssPx, Css>>, position: Point<CssPx, Css>) -> bool {
+    position.x.0 >= 0.0
+        && position.y.0 >= 0.0
+        && extent
+            .is_none_or(|extent| position.x.0 < extent.width.0 && position.y.0 < extent.height.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::Drag;
     use std::path::PathBuf;
-    use zgui_geom::{Css, CssPx, Point};
+    use zgui_geom::{Css, CssPx, DevicePx, Point, Size};
     use zgui_platform::DragEvent;
 
     fn at(x: f32) -> Point<CssPx, Css> {
         Point::new(CssPx(x), CssPx(0.0))
+    }
+
+    fn point(x: f32, y: f32) -> Point<CssPx, Css> {
+        Point::new(CssPx(x), CssPx(y))
+    }
+
+    #[test]
+    fn a_drag_goes_to_the_last_position_inside_the_window() {
+        let size = Size::new(DevicePx(800.0), DevicePx(600.0));
+        let mut drag = Drag::default();
+        drag.resized(size, 2.0);
+        drag.pointer_moved(point(50.0, 30.0));
+        // X11 reports (-1, -1) as the pointer leaves for the drag source.
+        drag.pointer_moved(point(-1.0, -1.0));
+        drag.pointer_moved(point(450.0, 30.0));
+        assert_eq!(drag.position(size, 2.0), point(50.0, 30.0));
+    }
+
+    #[test]
+    fn a_drag_with_no_position_inside_the_window_goes_to_the_centre() {
+        let size = Size::new(DevicePx(800.0), DevicePx(600.0));
+        let mut drag = Drag::default();
+        drag.pointer_moved(point(-1.0, -1.0));
+        assert_eq!(drag.position(size, 2.0), point(200.0, 150.0));
+
+        // With no extent known, a position is kept until a drag finds it outside the window.
+        drag.pointer_moved(point(500.0, 200.0));
+        assert_eq!(drag.position(size, 2.0), point(200.0, 150.0));
     }
 
     #[test]
