@@ -10,6 +10,7 @@ use zgui_view::{
 use zgui_vocab::{EventKind, ListenerOptions, PropKey, PropValue, Semantics, UiState};
 
 use crate::dom::DocumentDom;
+use crate::observations::Removed;
 
 impl Dom for DocumentDom {
     fn create_element(&self, name: ElementName) -> NodeId {
@@ -180,7 +181,9 @@ impl Dom for DocumentDom {
         if let Some(index) = self.live_index_of(el) {
             self.edit_unless_poisoned(|edit| edit.remove_listener(index, id));
         }
-        self.handlers().borrow_mut().remove(id);
+        // Dropped after the table is released, as `Handlers::remove` requires.
+        let handler = self.handlers().borrow_mut().remove(id);
+        drop(handler);
     }
 
     fn overlay_root(&self, of: NodeId, layer: OverlayLayer) -> NodeId {
@@ -208,7 +211,11 @@ impl Dom for DocumentDom {
         let observations = self.observations_shared();
         let document = self.document_weak();
         ObservationHandle::new(move || {
-            let Some(mask) = observations.borrow_mut().remove(node, what, registration) else {
+            // The channel is bound so that it is dropped after the registry is released, as
+            // `Removed::sink` requires.
+            let Some(Removed { mask, sink: _sink }) =
+                observations.borrow_mut().remove(node, what, registration)
+            else {
                 return;
             };
             let Some(document) = document.upgrade() else {

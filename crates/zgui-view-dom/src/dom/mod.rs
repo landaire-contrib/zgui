@@ -354,10 +354,18 @@ impl DocumentDom {
     /// Panics if a view is mid-build or a listener is mid-dispatch, which is what taking the
     /// document exclusively while either is in flight would mean. Call it where the frame ends.
     pub fn end_frame(&self) {
-        let mut document = self.document.borrow_mut();
-        zgui_dom::arena::end_frame(&mut document);
-        self.handlers.borrow_mut().retain_live(&document);
-        self.observations.borrow_mut().retain_live(&document);
+        // Dropped after every borrow is released. A handler or a channel can own a view's scope,
+        // and the scope's cleanups call back into this backend.
+        let (handlers, sinks) = {
+            let mut document = self.document.borrow_mut();
+            zgui_dom::arena::end_frame(&mut document);
+            let handlers = self.handlers.borrow_mut().take_dead(&document);
+            let sinks = self.observations.borrow_mut().take_dead(&document);
+            (handlers, sinks)
+        };
+
+        drop(handlers);
+        drop(sinks);
     }
 
     /// The window's root and its overlay layers.

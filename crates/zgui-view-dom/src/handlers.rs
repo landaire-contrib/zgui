@@ -51,9 +51,12 @@ impl Handlers {
         self.entries.insert(id, (node, handler));
     }
 
-    /// Forgets whatever was recorded under `id`.
-    pub fn remove(&mut self, id: ListenerId) {
-        self.entries.remove(&id);
+    /// Removes the handler recorded under `id` and returns it.
+    ///
+    /// The caller drops it after it releases this table. A handler can own a view's scope, and
+    /// the scope's cleanups can call back into the backend that holds this table.
+    pub fn remove(&mut self, id: ListenerId) -> Option<Handler> {
+        self.entries.remove(&id).map(|(_, handler)| handler)
     }
 
     /// The handler `id` names, if it still names one.
@@ -65,14 +68,19 @@ impl Handlers {
         self.entries.get(&id).map(|(_, handler)| Rc::clone(handler))
     }
 
-    /// Forgets every handler whose node `document` no longer has.
+    /// Removes every handler whose node `document` no longer has, and returns them.
     ///
     /// A view takes its nodes out of the document and does not remove its listeners one by one —
     /// there is nothing left to remove them from. So the handlers outlive the nodes they were
     /// registered on by exactly as long as the removal is deferred, and this is what ends that.
     /// Without it every unmounted view leaves its captured state alive for the life of the window.
-    pub fn retain_live(&mut self, document: &Document) {
+    ///
+    /// The caller drops the handlers after it releases this table and the document, for the
+    /// reason given on [`Handlers::remove`].
+    pub fn take_dead(&mut self, document: &Document) -> Vec<Handler> {
         self.entries
-            .retain(|_, (node, _)| crate::id::is_live(document, *node));
+            .extract_if(|_, (node, _)| !crate::id::is_live(document, *node))
+            .map(|(_, (_, handler))| handler)
+            .collect()
     }
 }
