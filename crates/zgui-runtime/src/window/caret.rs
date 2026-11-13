@@ -28,6 +28,21 @@ fn caret_color(style: &zgui_css::ComputedStyle) -> zgui_color::Color {
     }
 }
 
+/// The band colour one element's `::selection` asks for, if it asks for a visible one.
+///
+/// A transparent `background-color` is the initial value, and is also what an unset
+/// `--zgui-selection` computes to, so it means the band is left to the text's colour.
+fn selection_band(
+    document: &zgui_dom::Document,
+    node: zgui_dom::NodeKey,
+) -> Option<zgui_color::Color> {
+    let index = document.store().index_of(node)?;
+    let style = document.node(index).selection_style()?;
+    let current = zgui_css::values::color::current(&style);
+    let band = zgui_css::values::color::resolve(&style.clone_background_color(), current);
+    (band.alpha() > 0.0).then_some(band)
+}
+
 impl Window {
     /// Computes this frame's caret and selection, and damages whatever that moved.
     pub(crate) fn plan_caret(&mut self, now: Instant) {
@@ -91,6 +106,7 @@ impl Window {
             &located,
             selection,
             color,
+            selection_band(&document, node),
             self.scale,
             editable && self.carets.blink().is_visible(now),
         );

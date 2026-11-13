@@ -72,6 +72,11 @@ impl Node<'_> {
         self.existing_pseudo_style(&PseudoElement::After)
     }
 
+    /// The style of this element's `::selection`, which paints no box of its own.
+    pub fn selection_style(self) -> Option<ServoArc<ComputedValues>> {
+        self.pseudo_style(&PseudoElement::Selection)
+    }
+
     /// The stored style of one pseudo-element, dropped unless the pseudo-element would exist.
     fn existing_pseudo_style(self, pseudo: &PseudoElement) -> Option<ServoArc<ComputedValues>> {
         let style = self.pseudo_style(pseudo)?;
