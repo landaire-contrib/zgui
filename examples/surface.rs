@@ -8,16 +8,21 @@
 //!   a texture on zgui's own graphics device;
 //! * the [`SurfaceRenderer`] form is for content zgui drives: it owns no texture and no cadence,
 //!   only the drawing, and asks for the next refresh with `request_animation_frame` — stop asking
-//!   and it stops being called;
+//!   and it stops being called, until a [`SurfaceInvalidator`] bound through
+//!   `renderer_with_invalidator` asks for one more render from any thread;
 //! * the [`SurfaceHandle`] form is for a producer with a cadence of its own — here a thread
 //!   playing "video" frames — which creates textures on the shared device, writes into them, and
 //!   `present`s: latest wins, and the wake reaches the frame loop by itself;
-//! * both scale, clip, sort and move exactly like any other box, because to the compositor they
-//!   are one more quad.
+//! * all three scale, clip, sort and move exactly like any other box, because to the compositor
+//!   they are one more quad.
 
 // Proving a wgpu handle `Send` walks a type chain deeper than the default limit of 128, which newer
 // compilers report as a future error.
 #![recursion_limit = "256"]
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 
 use zgui::prelude::*;
 use zgui::surface::{
@@ -31,30 +36,59 @@ impl SurfaceRenderer for Breathing {
     fn render(&mut self, cx: &mut SurfaceRenderCx<'_>) {
         let time = cx.timestamp.since_origin().as_secs_f64();
         let (r, g, b) = hue(time * 0.25);
-        let mut encoder = cx
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("breathing"),
-            });
-        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("breathing.clear"),
-            multiview_mask: None,
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: cx.view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        cx.queue.submit([encoder.finish()]);
+        clear(cx, wgpu::Color { r, g, b, a: 1.0 });
         cx.request_animation_frame();
     }
+}
+
+/// Content zgui draws only when asked: a pane that steps round the hue wheel once a second.
+struct OnDemand {
+    /// How many times the clock thread has asked for a render.
+    ticks: Arc<AtomicU32>,
+}
+
+impl SurfaceRenderer for OnDemand {
+    fn render(&mut self, cx: &mut SurfaceRenderCx<'_>) {
+        let (r, g, b) = hue(f64::from(self.ticks.load(Ordering::Relaxed)) / 6.0);
+        clear(cx, wgpu::Color { r, g, b, a: 1.0 });
+    }
+}
+
+/// Clears the texture a renderer was handed to `color`.
+fn clear(cx: &mut SurfaceRenderCx<'_>, color: wgpu::Color) {
+    let mut encoder = cx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("surface.clear"),
+        });
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("surface.clear"),
+        multiview_mask: None,
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: cx.view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(color),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+    });
+    cx.queue.submit([encoder.finish()]);
+}
+
+/// A thread that asks the on-demand pane for one render a second.
+fn tick(ticks: Arc<AtomicU32>, invalidator: SurfaceInvalidator) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            ticks.fetch_add(1, Ordering::Relaxed);
+            invalidator.invalidate();
+        }
+    });
 }
 
 /// A producer with its own cadence: a thread writing gradient "video" frames at thirty a second.
@@ -155,11 +189,18 @@ fn hue(turns: f64) -> (f64, f64, f64) {
     )
 }
 
-/// The two surfaces side by side.
+/// The three surfaces side by side.
 #[component]
 fn Panel() -> impl IntoView {
     let video = gpu::SurfaceHandle::new(SurfaceConfig::default());
     play_video(video.clone());
+    let ticks = Arc::new(AtomicU32::new(0));
+    let invalidator = SurfaceInvalidator::new();
+    tick(Arc::clone(&ticks), invalidator.clone());
+    let on_demand = zgui::elements::surface()
+        .class("pane")
+        .renderer_with_invalidator(OnDemand { ticks }, &invalidator)
+        .into_view();
 
     view! {
         column(class = "panel") {
@@ -172,6 +213,10 @@ fn Panel() -> impl IntoView {
                 column(class = "cell") {
                     {zgui::elements::surface().class("pane").source(&video).into_view()}
                     label(class = "caption") {"a producer thread"}
+                }
+                column(class = "cell") {
+                    {on_demand}
+                    label(class = "caption") {"redrawn when asked"}
                 }
             }
         }
@@ -217,7 +262,7 @@ fn main() -> Result<(), zgui::Error> {
     app()
         .with_application_id("dev.zgui.Surface")
         .with_title("Surfaces")
-        .with_size(640.0, 360.0)
+        .with_size(900.0, 360.0)
         .with_stylesheet(SHEET)
         .run(|| view! { Panel() })
 }
