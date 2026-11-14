@@ -4,7 +4,7 @@ use zgui::prelude::*;
 use zgui::reactive::RwSignal;
 use zgui::{component, view};
 use zgui_ui::prelude::*;
-use zgui_ui::toast::Toast;
+use zgui_ui::toast::{Toast, ToastAction};
 use zgui_ui_icons::prelude::*;
 use zgui_ui_icons::set::ui::ELLIPSIS;
 
@@ -90,6 +90,8 @@ pub(crate) fn Feedback() -> impl IntoView {
 #[component]
 fn Announce() -> impl IntoView {
     let toasts = use_toaster();
+    // The toast the "Fail" button put up last, which its retry replaces.
+    let failed = RwSignal::new_local(None);
     view! {
         row(class = "row__items") {
             Button(
@@ -108,11 +110,25 @@ fn Announce() -> impl IntoView {
                 variant = ButtonVariant::Destructive,
                 on:click = move |_| {
                     if let Some(toasts) = toasts {
-                        toasts.push(
-                            Toast::new("Could not save")
-                                .description("The server said no.")
-                                .kind(ToastKind::Error),
-                        );
+                        // Kept open, so the toast the retry puts in its place stays shown.
+                        let retry = ToastAction::new("Retry", move || {
+                            if let Some(id) = failed.get_untracked() {
+                                toasts.replace(
+                                    id,
+                                    Toast::new("Saved")
+                                        .description("Your changes are on the server."),
+                                );
+                            }
+                        })
+                        .keep_open();
+                        failed.set(Some(
+                            toasts.push(
+                                Toast::new("Could not save")
+                                    .description("The server said no.")
+                                    .kind(ToastKind::Error)
+                                    .action_with(retry),
+                            ),
+                        ));
                     }
                 }
             ) {
