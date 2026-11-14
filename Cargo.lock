@@ -6250,6 +6250,7 @@ dependencies = [
  "futures",
  "naga",
  "rustc-hash 2.1.3",
+ "thiserror 2.0.19",
  "tracing",
  "web-time",
  "wgpu",

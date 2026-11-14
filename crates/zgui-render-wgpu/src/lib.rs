@@ -52,6 +52,7 @@ pub mod atlas_backend;
 pub mod bind;
 pub mod buffer;
 pub mod effect;
+pub mod error;
 pub mod filter;
 pub mod frame;
 pub mod gpu;
@@ -67,6 +68,7 @@ pub use wgpu;
 pub use crate::effect::{
     EffectProgram, Effects, ParamsField, ParamsLayout, check_params as check_effect, declare,
 };
+pub use crate::error::{OpenError, PresentError, Rejection, RejectionReason};
 #[cfg(target_arch = "wasm32")]
 pub use crate::gpu::canvas::Canvas;
 pub use crate::gpu::device::Gpu;

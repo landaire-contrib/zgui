@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use zgui_render::RenderCapabilities;
 
+use crate::error::OpenError;
 use crate::gpu::adapter;
 use crate::gpu::extensions;
 use crate::gpu::loss::DeviceLoss;
@@ -135,7 +136,7 @@ impl Gpu {
     ///
     /// # Errors
     ///
-    /// Returns the message `request_device` refused with.
+    /// Returns [`OpenError::Refused`] where `request_device` refused.
     ///
     /// # Vulkan device extensions
     ///
@@ -168,7 +169,7 @@ impl Gpu {
         instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         extensions: &[&'static CStr],
-    ) -> Result<Self, String> {
+    ) -> Result<Self, OpenError> {
         let descriptor = descriptor(&adapter);
         let extensions = with_presenter(&adapter, extensions);
         let (device, queue, extensions) = match extensions::open(&adapter, &extensions, &descriptor)
@@ -176,8 +177,7 @@ impl Gpu {
             Some(opened) => opened,
             None => {
                 let (device, queue) =
-                    futures::executor::block_on(adapter.request_device(&descriptor))
-                        .map_err(|error| error.to_string())?;
+                    futures::executor::block_on(adapter.request_device(&descriptor))?;
                 (device, queue, Vec::new())
             }
         };
@@ -197,22 +197,19 @@ impl Gpu {
     ///
     /// # Errors
     ///
-    /// Returns the message `request_device` refused with.
+    /// Returns [`OpenError::Refused`] where `request_device` refused.
     pub async fn open_async(
         instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         subpixel_text: bool,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, OpenError> {
         let mut descriptor = descriptor(&adapter);
         if !subpixel_text {
             descriptor
                 .required_features
                 .remove(wgpu::Features::DUAL_SOURCE_BLENDING);
         }
-        let (device, queue) = adapter
-            .request_device(&descriptor)
-            .await
-            .map_err(|error| error.to_string())?;
+        let (device, queue) = adapter.request_device(&descriptor).await?;
         Ok(Self::opened(instance, adapter, device, queue, Vec::new()))
     }
 

@@ -1,5 +1,7 @@
 //! What a frame did, and the one failure that is not a frame at all.
 
+use std::sync::Arc;
+
 use crate::memory::MemoryReport;
 
 /// What one frame cost.
@@ -154,12 +156,14 @@ impl FrameOutcome {
 }
 
 /// One adapter that was considered and rejected, and why.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct RejectedAdapter {
     /// What the adapter called itself.
     pub name: String,
     /// Why it could not be used.
-    pub reason: String,
+    ///
+    /// A backend records its own error type here, and a caller reaches it with `downcast_ref`.
+    pub reason: Arc<dyn std::error::Error + Send + Sync>,
 }
 
 /// No usable graphics device could be found.
@@ -168,7 +172,7 @@ pub struct RejectedAdapter {
 /// device exists, and silently opening an offscreen surface for a window the user asked for is
 /// worse than failing — the window appears and never paints. Every adapter that was tried is listed,
 /// because "no device" with no explanation is unactionable.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 #[error("no usable graphics device: {} adapter(s) were tried and rejected", candidates.len())]
 pub struct GpuUnavailable {
     /// Every adapter that was considered, in the order it was considered.
@@ -184,10 +188,14 @@ impl GpuUnavailable {
     }
 
     /// Records one rejection.
-    pub fn rejected(mut self, name: impl Into<String>, reason: impl Into<String>) -> Self {
+    pub fn rejected(
+        mut self,
+        name: impl Into<String>,
+        reason: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> Self {
         self.candidates.push(RejectedAdapter {
             name: name.into(),
-            reason: reason.into(),
+            reason: Arc::from(reason.into()),
         });
         self
     }

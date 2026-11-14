@@ -5,6 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use zgui_render::GpuUnavailable;
 
+use crate::error::Rejection;
+
 /// The environment variable naming the PCI device id to prefer.
 ///
 /// A machine with two adapters renders on whichever one the sort below prefers, and on a hybrid
@@ -279,11 +281,11 @@ pub fn candidates(instance: &wgpu::Instance, backends: wgpu::Backends) -> Vec<wg
 /// It carries every adapter that was considered and why, because "no usable graphics device" with
 /// no list is a bug report nobody can act on — and because the alternative, quietly rendering
 /// offscreen, produces a window that appears and never paints.
-pub fn unavailable(rejections: Vec<(String, String)>) -> GpuUnavailable {
+pub fn unavailable(rejections: Vec<Rejection>) -> GpuUnavailable {
     rejections
         .into_iter()
-        .fold(GpuUnavailable::new(), |failure, (name, reason)| {
-            failure.rejected(name, reason)
+        .fold(GpuUnavailable::new(), |failure, rejection| {
+            failure.rejected(describe(&rejection.adapter), rejection)
         })
 }
 
@@ -292,6 +294,7 @@ mod tests {
     use super::{
         describe, instance_flags, is_software, parse_backends, sort_key, tiers, unavailable,
     };
+    use crate::error::{PresentError, Rejection, RejectionReason};
 
     #[test]
     fn only_debug_instances_validate_indirect_calls() {
@@ -410,13 +413,29 @@ mod tests {
 
     #[test]
     fn the_failure_lists_every_rejection_in_order() {
+        let first = info(1, wgpu::DeviceType::DiscreteGpu, wgpu::Backend::Vulkan);
+        let second = info(2, wgpu::DeviceType::IntegratedGpu, wgpu::Backend::Vulkan);
         let failure = unavailable(vec![
-            ("first".to_owned(), "no device".to_owned()),
-            ("second".to_owned(), "surface refused".to_owned()),
+            Rejection {
+                adapter: first.clone(),
+                reason: RejectionReason::ExtensionsRefused,
+            },
+            Rejection {
+                adapter: second,
+                reason: PresentError::Incompatible.into(),
+            },
         ]);
         assert_eq!(failure.candidates.len(), 2);
-        assert_eq!(failure.candidates[0].name, "first");
-        assert_eq!(failure.candidates[1].reason, "surface refused");
+        assert_eq!(failure.candidates[0].name, describe(&first));
+        let second = failure.candidates[1].reason.downcast_ref::<Rejection>();
+        assert!(
+            matches!(
+                second.map(|rejection| &rejection.reason),
+                Some(RejectionReason::Present(PresentError::Incompatible))
+            ),
+            "{:?}",
+            failure.candidates[1]
+        );
     }
 
     #[test]
