@@ -212,7 +212,10 @@ pub use crate::tooltip::{
     Tooltip, TooltipArrow, TooltipArrowProps, TooltipContent, TooltipContentProps, TooltipDelays,
     TooltipProps, TooltipProvider, TooltipProviderProps, TooltipTrigger, TooltipTriggerProps,
 };
-pub use crate::virtualize::{VirtualList, VirtualListProps, VirtualWindow, Virtualize};
+pub use crate::virtualize::{
+    MeasuredRows, MeasuredVirtualize, MeasuredWindow, VirtualList, VirtualListProps, VirtualWindow,
+    Virtualize,
+};
 
 pub use crate::aspect_ratio::{AspectRatio, AspectRatioProps};
 pub use crate::button_group::{
