@@ -9,6 +9,8 @@ use crate::error::OpenError;
 use crate::gpu::adapter;
 use crate::gpu::extensions;
 use crate::gpu::loss::DeviceLoss;
+use crate::gpu::request;
+use crate::gpu::request::DeviceRequest;
 
 /// The optional features asked for when they are offered, and done without when they are not.
 ///
@@ -80,9 +82,14 @@ impl Gpu {
     /// A GL adapter is asked for the downlevel limit set rather than its own, because its own is
     /// routinely more than a device created from it will grant.
     ///
+    /// `request` states the features and limits that the application asks for in addition to the
+    /// features of the renderer. See [`DeviceRequest`].
+    ///
     /// # Errors
     ///
-    /// Returns [`OpenError::Refused`] where `request_device` refused.
+    /// Returns [`OpenError::ExperimentalFeatures`] where `request` requires an experimental feature,
+    /// [`OpenError::MissingFeatures`] or [`OpenError::Limit`] where the adapter does not satisfy
+    /// `request`, and [`OpenError::Refused`] where `request_device` refused.
     ///
     /// # Vulkan device extensions
     ///
@@ -115,20 +122,31 @@ impl Gpu {
         instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         extensions: &[&'static CStr],
+        request: &DeviceRequest,
     ) -> Result<Self, OpenError> {
         let info = adapter.get_info();
-        let limits = if info.backend == wgpu::Backend::Gl {
-            wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
+        let adapter_limits = adapter.limits();
+        let renderer_limits = if info.backend == wgpu::Backend::Gl {
+            wgpu::Limits::downlevel_defaults().using_resolution(adapter_limits.clone())
         } else {
-            adapter.limits()
+            adapter_limits.clone()
         };
+        let resolved = request::resolve(
+            request,
+            &request::Offer {
+                features: adapter.features(),
+                limits: &adapter_limits,
+                renderer_features: optional_features(),
+                renderer_limits,
+            },
+        )?;
         // Derived once and read by both paths. The hal path creates the device itself, so a
         // feature set or a limit set of its own would give a device capabilities the ordinary path
         // never grants, with nothing anywhere to report the difference.
         let descriptor = wgpu::DeviceDescriptor {
             label: Some("zgui.device"),
-            required_features: optional_features() & adapter.features(),
-            required_limits: limits,
+            required_features: resolved.features,
+            required_limits: resolved.limits,
             memory_hints: memory_hints(),
             ..Default::default()
         };

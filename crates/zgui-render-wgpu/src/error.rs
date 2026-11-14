@@ -3,6 +3,31 @@
 /// Why [`Gpu::open`](crate::Gpu::open) could not open a device on an adapter.
 #[derive(Debug, thiserror::Error)]
 pub enum OpenError {
+    /// The [`DeviceRequest`](crate::DeviceRequest) requires experimental features, which the
+    /// request does not give.
+    #[error("the request requires the experimental features {features:?}")]
+    ExperimentalFeatures {
+        /// The experimental features that the request requires.
+        features: wgpu::Features,
+    },
+    /// The adapter does not have every feature that the
+    /// [`DeviceRequest`](crate::DeviceRequest) requires.
+    #[error("the adapter does not have the required features {missing:?}")]
+    MissingFeatures {
+        /// The required features that the adapter does not have.
+        missing: wgpu::Features,
+    },
+    /// The adapter does not reach a limit that the [`DeviceRequest`](crate::DeviceRequest)
+    /// requires.
+    #[error("the adapter limit {name} is {allowed}, and the request requires {required}")]
+    Limit {
+        /// The name of the limit, as the field of [`wgpu::Limits`] is named.
+        name: &'static str,
+        /// The value that the request requires.
+        required: u64,
+        /// The value that the adapter allows.
+        allowed: u64,
+    },
     /// The driver refused to create the device.
     #[error("the driver refused the device: {0}")]
     Refused(#[from] wgpu::RequestDeviceError),

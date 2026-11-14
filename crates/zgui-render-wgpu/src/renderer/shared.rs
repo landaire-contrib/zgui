@@ -36,6 +36,7 @@ use zgui_render::{GpuUnavailable, RenderTarget};
 use crate::gpu::adapter;
 use crate::gpu::device::Gpu;
 use crate::gpu::formats::Formats;
+use crate::gpu::request::DeviceRequest;
 use crate::gpu::surface::{ConfiguredSurface, PresentPacing, SurfaceSetup};
 use crate::pipeline::Pipelines;
 use crate::pipeline::kind::PipelineKind;
@@ -89,17 +90,36 @@ impl DeviceState {
 #[derive(Clone)]
 pub struct SharedGraphics(Rc<Shared>);
 
+/// What a [`SharedGraphics`] states for each device it opens.
+///
+/// The default states nothing: the backends that the environment allows, no Vulkan device
+/// extension and no request.
+#[derive(Clone, Debug, Default)]
+pub struct GraphicsOptions {
+    /// The backends to enumerate. `None` reads them from
+    /// [`BACKENDS_VARIABLE`](crate::gpu::adapter::BACKENDS_VARIABLE).
+    pub backends: Option<wgpu::Backends>,
+    /// The Vulkan device extensions to enable. See [`SharedGraphics::with_extensions`].
+    pub extensions: Vec<&'static CStr>,
+    /// The features and limits to ask each device for.
+    pub request: DeviceRequest,
+}
+
 /// What a [`SharedGraphics`] holds.
 struct Shared {
     /// One instance per backend tier, each created when the candidate loop reaches it.
     instances: adapter::Instances,
     /// Which backends may be enumerated.
     backends: wgpu::Backends,
+
     /// The Vulkan device extensions every device opened here asks for.
     ///
     /// Held on the graphics, because a device this opens after a loss has to enable what the dead
     /// one did. See [`SharedGraphics::with_extensions`].
     extensions: Vec<&'static CStr>,
+    /// The features and limits every device opened here asks for, for the same reason.
+    request: DeviceRequest,
+
     /// The device most windows draw on, opened by the first surface and replaced after a loss.
     primary: RefCell<Option<Rc<DeviceState>>>,
     /// Whether the primary device belongs to a host, which then is the only thing that opens one.
@@ -168,10 +188,38 @@ impl SharedGraphics {
         backends: wgpu::Backends,
         extensions: Vec<&'static CStr>,
     ) -> Self {
+        Self::with_options(GraphicsOptions {
+            backends: Some(backends),
+            extensions,
+            ..GraphicsOptions::default()
+        })
+    }
+
+    /// Graphics with each value that `options` states.
+    ///
+    /// Every device that these graphics open reads the same options: the first device, a device
+    /// for a surface that the primary adapter cannot present to, and the replacement after a
+    /// device loss. So a device that replaces a lost one has the features of the request.
+    ///
+    /// ```
+    /// use zgui_render_wgpu::wgpu;
+    /// use zgui_render_wgpu::{DeviceRequest, GraphicsOptions, SharedGraphics};
+    ///
+    /// let graphics = SharedGraphics::with_options(GraphicsOptions {
+    ///     request: DeviceRequest::new().with_optional_features(wgpu::Features::DEPTH_CLIP_CONTROL),
+    ///     ..GraphicsOptions::default()
+    /// });
+    ///
+    /// let asked = graphics.request().optional_features();
+    /// assert!(asked.contains(wgpu::Features::DEPTH_CLIP_CONTROL));
+    /// ```
+    pub fn with_options(options: GraphicsOptions) -> Self {
+        let backends = options.backends.unwrap_or_else(adapter::requested_backends);
         Self(Rc::new(Shared {
             instances: adapter::Instances::new(backends),
             backends,
-            extensions,
+            extensions: options.extensions,
+            request: options.request,
             adopted: false,
             primary: RefCell::new(None),
             fallbacks: RefCell::new(Vec::new()),
@@ -206,6 +254,7 @@ impl SharedGraphics {
             instances: adapter::Instances::existing(gpu.instance().clone(), backends),
             backends,
             extensions: gpu.vulkan_extensions().to_vec(),
+            request: DeviceRequest::new(),
             adopted: true,
             primary: RefCell::new(Some(DeviceState::new(gpu))),
             fallbacks: RefCell::new(Vec::new()),
@@ -259,6 +308,14 @@ impl SharedGraphics {
     /// What was *asked for*. What a device got is [`Gpu::vulkan_extensions`] on the device itself.
     pub fn extensions(&self) -> &[&'static CStr] {
         &self.0.extensions
+    }
+
+    /// Returns the features and limits every device opened here asks for.
+    ///
+    /// What was *asked for*. What a device got is `Gpu::device().features()` and
+    /// `Gpu::device().limits()` on the device itself.
+    pub fn request(&self) -> &DeviceRequest {
+        &self.0.request
     }
 
     /// The shared device, once a surface has chosen one.
@@ -504,7 +561,12 @@ impl SharedGraphics {
                  lost or cannot present here: the host gives a new one with SharedGraphics::adopt",
             ));
         }
-        open_device(&self.0.instances, &self.0.extensions, present)
+        open_device(
+            &self.0.instances,
+            &self.0.extensions,
+            &self.0.request,
+            present,
+        )
     }
 
     /// The primary device, if there is one and it is still alive.

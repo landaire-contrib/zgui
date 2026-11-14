@@ -11,6 +11,7 @@ use crate::error::{PresentError, Rejection, RejectionReason};
 use crate::gpu::adapter;
 use crate::gpu::device::Gpu;
 use crate::gpu::extensions;
+use crate::gpu::request::DeviceRequest;
 use crate::gpu::surface::{ConfiguredSurface, PresentPacing, SurfaceSetup};
 use crate::renderer::shared::DeviceState;
 use crate::renderer::{Origin, PrePresent, WgpuRenderer};
@@ -152,18 +153,19 @@ impl Builder {
     /// A tier is enumerated only when every tier before it has failed, so the backends kept as a
     /// fallback cost a machine that never needs them nothing at all.
     ///
-    /// No Vulkan device extension is asked for here. A builder opens one device for one target and
-    /// rebuilds through a builder after a loss, so a list stated on it would reach one caller
-    /// only. The list belongs to
-    /// [`SharedGraphics::with_extensions`](crate::SharedGraphics::with_extensions), where every
-    /// device-opening path reads it, so a replacement device carries it too.
+    /// No Vulkan device extension or device request is stated here. A builder opens one device for
+    /// one target and rebuilds through a builder after a loss, so a value stated on it would reach
+    /// one caller only. These values belong to
+    /// [`SharedGraphics::with_options`](crate::SharedGraphics::with_options), where every
+    /// device-opening path reads them, so a replacement device carries them too.
     fn open(
         self,
         target: RenderTarget,
         origin: Origin,
         present: impl Proof,
     ) -> Result<WgpuRenderer, GpuUnavailable> {
-        let (state, presentation) = open_device(&self.instances, &[], present)?;
+        let (state, presentation) =
+            open_device(&self.instances, &[], &DeviceRequest::new(), present)?;
         Ok(WgpuRenderer::assemble(
             state,
             None,
@@ -198,9 +200,13 @@ impl Builder {
 /// would then settle on whichever [`adapter::sort_key`] preferred. Where no adapter has them,
 /// every adapter is still tried and one of them opens. [`Gpu::open`] says what the list does to a
 /// device once an adapter is chosen.
+///
+/// Each device opened here gets `request`. An adapter that does not satisfy `request` is a
+/// rejection with the reason, and the next candidate is tried.
 pub(crate) fn open_device(
     instances: &adapter::Instances,
     extensions: &[&'static CStr],
+    request: &DeviceRequest,
     mut present: impl Proof,
 ) -> Result<(Rc<DeviceState>, Presentation), GpuUnavailable> {
     let mut rejections: Vec<Rejection> = Vec::new();
@@ -234,7 +240,7 @@ pub(crate) fn open_device(
             // Kept only where it is about to be judged on the list, so the ordinary path clones
             // nothing.
             let again = grants.then(|| (instance.clone(), candidate.clone()));
-            let gpu = match Gpu::open(instance.clone(), candidate, extensions) {
+            let gpu = match Gpu::open(instance.clone(), candidate, extensions, request) {
                 Ok(gpu) => Arc::new(gpu),
                 Err(error) => {
                     rejections.push(Rejection {
@@ -274,7 +280,7 @@ pub(crate) fn open_device(
     // adapter and a driver that refuses the list would otherwise have no device at all.
     for (instance, candidate) in deferred {
         let info = candidate.get_info();
-        let gpu = match Gpu::open(instance, candidate, &[]) {
+        let gpu = match Gpu::open(instance, candidate, &[], request) {
             Ok(gpu) => Arc::new(gpu),
             Err(error) => {
                 rejections.push(Rejection {
@@ -442,6 +448,7 @@ mod tests {
     use crate::error::PresentError;
     use crate::gpu::adapter;
     use crate::gpu::device::Gpu;
+    use crate::gpu::request::DeviceRequest;
     use crate::pipeline::kind::PipelineKind;
     use crate::target::swapchain::{Presentation, Supplied};
 
@@ -474,7 +481,8 @@ mod tests {
     #[test]
     fn a_device_opened_for_an_unconfigured_presentation_has_its_pipelines_built() {
         let instances = adapter::Instances::new(adapter::requested_backends());
-        let (state, presentation) = match open_device(&instances, &[], unconfigured) {
+        let opened = open_device(&instances, &[], &DeviceRequest::new(), unconfigured);
+        let (state, presentation) = match opened {
             Ok(opened) => opened,
             Err(failure) => {
                 eprintln!("skipped: no usable graphics device ({failure})");

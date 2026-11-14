@@ -420,7 +420,7 @@ fn an_adapter_that_grants_the_list_is_preferred_over_one_that_does_not() {
         let instance = wgpu::Instance::new(adapter::instance_descriptor(tier));
         for candidate in adapter::candidates(&instance, tier) {
             let name = adapter::describe(&candidate.get_info());
-            match Gpu::open(instance.clone(), candidate, &DMA_BUF) {
+            match Gpu::open(instance.clone(), candidate, &DMA_BUF, graphics.request()) {
                 Ok(other) => assert!(
                     other.vulkan_extensions().is_empty(),
                     "{name} grants the list and the candidate loop settled for a device without it"
