@@ -1,7 +1,8 @@
-//! Asking each device for the features and limits that an application draws with.
+//! Asking each device for the features and limits that an application draws with, and choosing the
+//! adapter that the application prefers.
 //!
-//! The resolution of a request is tested without a device in the crate. These tests assert that
-//! the values reach real devices, also the device that replaces a lost one.
+//! The sort and the resolution of a request are tested without a device in the crate. These tests
+//! assert that the values reach real devices, also the device that replaces a lost one.
 
 mod support;
 
@@ -11,7 +12,9 @@ use zgui_bits::DamageSet;
 use zgui_geom::{Scale, Size};
 use zgui_render::{FrameOutcome, RenderTarget, Renderer};
 use zgui_render_wgpu::gpu::adapter;
-use zgui_render_wgpu::{DeviceRequest, Gpu, GraphicsOptions, OpenError, SharedGraphics, wgpu};
+use zgui_render_wgpu::{
+    AdapterPreference, DeviceRequest, Gpu, GraphicsOptions, OpenError, SharedGraphics, wgpu,
+};
 use zgui_scene::Scene;
 
 use support::{SIDE, device_lock};
@@ -138,7 +141,10 @@ fn a_required_feature_the_adapter_lacks_is_named_in_the_error() {
         return;
     };
     let instance = wgpu::Instance::new(adapter::instance_descriptor(tier));
-    let Some(candidate) = adapter::candidates(&instance, tier).into_iter().next() else {
+    let Some(candidate) = adapter::candidates(&instance, tier, &AdapterPreference::Automatic)
+        .into_iter()
+        .next()
+    else {
         eprintln!("{test}: skipped, no adapter in {tier:?}");
         return;
     };
@@ -159,4 +165,33 @@ fn a_required_feature_the_adapter_lacks_is_named_in_the_error() {
         panic!("the wrong error: {text}");
     };
     assert_eq!(missing, lacking);
+}
+
+#[test]
+fn a_name_preference_lists_the_named_adapter_first() {
+    let test = "a_name_preference_lists_the_named_adapter_first";
+    let _device = device_lock();
+    // The native tier only, because the GL tier always follows it.
+    let backends = adapter::requested_backends() - wgpu::Backends::GL;
+    let automatic = adapter::enumerate(backends, &AdapterPreference::Automatic);
+    let Some(last) = automatic.last().filter(|_| automatic.len() > 1) else {
+        eprintln!("{test}: skipped, fewer than two native adapters");
+        return;
+    };
+
+    let named = adapter::enumerate(
+        backends,
+        &AdapterPreference::NameContains(last.name.clone()),
+    );
+
+    assert_eq!(named.len(), automatic.len());
+    assert!(
+        named[0]
+            .name
+            .to_lowercase()
+            .contains(&last.name.to_lowercase()),
+        "{} is first, and {} was named",
+        named[0].name,
+        last.name
+    );
 }

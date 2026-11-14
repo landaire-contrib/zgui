@@ -9,6 +9,7 @@ use zgui_render::{GpuUnavailable, RenderTarget};
 
 use crate::error::{PresentError, Rejection, RejectionReason};
 use crate::gpu::adapter;
+use crate::gpu::adapter::AdapterPreference;
 use crate::gpu::device::Gpu;
 use crate::gpu::extensions;
 use crate::gpu::request::DeviceRequest;
@@ -159,9 +160,9 @@ impl Builder {
     /// A tier is enumerated only when every tier before it has failed, so the backends kept as a
     /// fallback cost a machine that never needs them nothing at all.
     ///
-    /// No Vulkan device extension or device request is stated here. A builder opens one device for
-    /// one target and rebuilds through a builder after a loss, so a value stated on it would reach
-    /// one caller only. These values belong to
+    /// No Vulkan device extension, device request or adapter preference is stated here. A builder
+    /// opens one device for one target and rebuilds through a builder after a loss, so a value
+    /// stated on it would reach one caller only. These values belong to
     /// [`SharedGraphics::with_options`](crate::SharedGraphics::with_options), where every
     /// device-opening path reads them, so a replacement device carries them too.
     fn open(
@@ -170,8 +171,13 @@ impl Builder {
         origin: Origin,
         present: impl Proof,
     ) -> Result<WgpuRenderer, GpuUnavailable> {
-        let (state, presentation) =
-            open_device(&self.instances, &[], &DeviceRequest::new(), present)?;
+        let (state, presentation) = open_device(
+            &self.instances,
+            &[],
+            &DeviceRequest::new(),
+            &AdapterPreference::Automatic,
+            present,
+        )?;
         Ok(WgpuRenderer::assemble(
             state,
             None,
@@ -217,12 +223,14 @@ impl Builder {
 /// every adapter is still tried and one of them opens. [`Gpu::open`] says what the list does to a
 /// device once an adapter is chosen.
 ///
-/// Each device opened here gets `request`. An adapter that does not satisfy `request` is a
-/// rejection with the reason, and the next candidate is tried.
+/// `preference` sorts the candidates of each tier, and each device opened here gets `request`.
+/// An adapter that does not satisfy `request` is a rejection with the reason, and the next
+/// candidate is tried.
 pub(crate) fn open_device(
     instances: &adapter::Instances,
     extensions: &[&'static CStr],
     request: &DeviceRequest,
+    preference: &AdapterPreference,
     mut present: impl Proof,
 ) -> Result<(Rc<DeviceState>, Presentation), GpuUnavailable> {
     let mut rejections: Vec<Rejection> = Vec::new();
@@ -243,24 +251,25 @@ pub(crate) fn open_device(
         present.tier(instance, tier);
         // Paired with what each one can grant, asked before any device exists. The `&&`
         // short-circuits, so `granted_by` is never called where no list was asked for.
-        let mut candidates: Vec<(bool, wgpu::Adapter)> = adapter::candidates(instance, tier)
-            .into_iter()
-            .map(|candidate| {
-                (
-                    asked && extensions::granted_by(&candidate, extensions),
-                    candidate,
-                )
-            })
-            .collect();
+        let mut candidates: Vec<(bool, wgpu::Adapter)> =
+            adapter::candidates(instance, tier, preference)
+                .into_iter()
+                .map(|candidate| {
+                    (
+                        asked && extensions::granted_by(&candidate, extensions),
+                        candidate,
+                    )
+                })
+                .collect();
         enumerated += candidates.len();
         // Stable, so the existing preference survives inside each group.
         candidates.sort_by_key(|(grants, _)| !grants);
         for (grants, candidate) in candidates {
             let info = candidate.get_info();
-            // An adapter named by `ZGUI_DEVICE_ID` is tried in its tier. The name is how a
-            // software adapter is selected on a machine that also has a card.
+            // An adapter named by `ZGUI_DEVICE_ID` or by `preference` is tried in its tier. The
+            // name is how a software adapter is selected on a machine that also has a card.
             let named = adapter::preferred_device_id() == Some(info.device);
-            if adapter::is_software(&info) && !named {
+            if adapter::is_software(&info) && !named && !preference.selects(&info) {
                 // Held back rather than rejected: it is what a machine with no graphics driver at
                 // all runs on, and it opens once every tier has been walked.
                 software.push((instance.clone(), candidate));
@@ -513,6 +522,7 @@ mod tests {
     use super::open_device;
     use crate::error::PresentError;
     use crate::gpu::adapter;
+    use crate::gpu::adapter::AdapterPreference;
     use crate::gpu::device::Gpu;
     use crate::gpu::request::DeviceRequest;
     use crate::pipeline::kind::PipelineKind;
@@ -547,7 +557,13 @@ mod tests {
     #[test]
     fn a_device_opened_for_an_unconfigured_presentation_has_its_pipelines_built() {
         let instances = adapter::Instances::new(adapter::requested_backends());
-        let opened = open_device(&instances, &[], &DeviceRequest::new(), unconfigured);
+        let opened = open_device(
+            &instances,
+            &[],
+            &DeviceRequest::new(),
+            &AdapterPreference::Automatic,
+            unconfigured,
+        );
         let (state, presentation) = match opened {
             Ok(opened) => opened,
             Err(failure) => {

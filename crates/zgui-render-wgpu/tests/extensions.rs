@@ -418,7 +418,7 @@ fn an_adapter_that_grants_the_list_is_preferred_over_one_that_does_not() {
     // processor for the rest of the process, with one log line to say so.
     for tier in adapter::tiers(graphics.backends()) {
         let instance = wgpu::Instance::new(adapter::instance_descriptor(tier));
-        for candidate in adapter::candidates(&instance, tier) {
+        for candidate in adapter::candidates(&instance, tier, graphics.adapter_preference()) {
             let name = adapter::describe(&candidate.get_info());
             match Gpu::open(instance.clone(), candidate, &DMA_BUF, graphics.request()) {
                 Ok(other) => assert!(
