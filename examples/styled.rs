@@ -7,8 +7,12 @@
 //! and every one of those is an ordinary declaration in an ordinary style sheet. The one piece of
 //! state is which swatch was last clicked, so that the sheet has something to react to through
 //! `:hover` and a toggled class.
+//!
+//! The badge writes `[compact]` on the window root with `NodeRef::set_attribute`. No view builds
+//! the root, so this is how a rule anywhere in the sheet can select on a preference.
 
 use zgui::prelude::*;
+use zgui::view::AttrName;
 
 /// A mark drawn with the colour of whatever it is put inside.
 ///
@@ -58,9 +62,11 @@ fn Panel(
 #[component]
 fn Gallery() -> impl IntoView {
     let picked = RwSignal::new(2_usize);
+    let page = NodeRef::new();
+    let compact = RwSignal::new(false);
 
     view! {
-        column(class = "page") {
+        column(class = "page", node_ref = page) {
             row(class = "masthead") {
                 column(class = "masthead__text") {
                     label(class = "masthead__title") {"zgui"}
@@ -69,7 +75,15 @@ fn Gallery() -> impl IntoView {
                     }
                 }
                 spacer()
-                box(class = "badge") {"gallery"}
+                control(
+                    class = "badge",
+                    tabindex = Focus::Sequential,
+                    on:click = move |_| {
+                        let on = !compact.get_untracked();
+                        compact.set(on);
+                        set_compact(page, on);
+                    }
+                ) {{move || if compact.get() { "roomy" } else { "compact" }}}
             }
 
             box(class = "grid") {
@@ -175,6 +189,20 @@ fn Gallery() -> impl IntoView {
     }
 }
 
+/// Writes `[compact]` on the window root of `page`, or removes it.
+fn set_compact(page: NodeRef, compact: bool) {
+    let Some(root) = page.window_root() else {
+        return;
+    };
+
+    let name = AttrName::new("compact");
+    if compact {
+        root.set_attribute(name, "");
+    } else {
+        root.remove_attribute(name);
+    }
+}
+
 /// How it looks. This is the example.
 const SHEET: &str = css!(
     ":root {
@@ -209,6 +237,9 @@ const SHEET: &str = css!(
         grid-template-columns: repeat(4, 1fr);
         gap: 16px;
     }
+
+    [compact] .grid { gap: 6px; }
+    [compact] .panel { padding: 8px; }
 
     .panel {
         gap: 2px;
