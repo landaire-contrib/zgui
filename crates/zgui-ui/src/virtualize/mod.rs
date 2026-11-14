@@ -104,12 +104,7 @@ impl Virtualize {
                 // The observation answers in device pixels and the row height was declared in CSS
                 // pixels. Dividing here rather than multiplying the row height keeps the whole of
                 // the rest of this module in one space.
-                let scale = viewport.scale();
-                let scale = if scale.is_finite() && scale > 0.0 {
-                    scale
-                } else {
-                    1.0
-                };
+                let scale = css_scale(viewport);
                 window(
                     count,
                     size,
@@ -137,6 +132,18 @@ impl Virtualize {
     #[must_use]
     pub fn indices(&self) -> Vec<usize> {
         self.window().indices()
+    }
+}
+
+/// How many device pixels one CSS pixel is on the surface `viewport` is drawn on.
+///
+/// One for a surface that does not say, so that a length is never divided by nothing.
+pub(crate) fn css_scale(viewport: NodeRef) -> f32 {
+    let scale = viewport.scale();
+    if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
     }
 }
 
