@@ -14,6 +14,8 @@
 //!   asks;
 //! * `set_zoom` scales the content of one window, as a browser's zoom control does: the CSS size
 //!   the window reports gets smaller as the zoom gets larger;
+//! * `color_scheme` is the light or dark scheme the window's document is styled in, which is what
+//!   `prefers-color-scheme` matches;
 //! * every window operation is a plain call with no platform branch around it: what this desktop
 //!   cannot do, it quietly does not do.
 
@@ -46,6 +48,10 @@ fn Main() -> impl IntoView {
                 this.zoom().get().get() * 100.0
             )
         }
+    };
+    let scheme = {
+        let this = this.clone();
+        move || format!("{:?} colour scheme", this.color_scheme().get())
     };
     let count_of_windows = {
         let windows = windows.clone();
@@ -110,6 +116,7 @@ fn Main() -> impl IntoView {
 
             // What this window is, read reactively off its own handle.
             label(class = "readout") {{geometry}}
+            label(class = "readout") {{scheme}}
             label(class = "readout") {{count_of_windows}}
 
             row(class = "buttons") {
