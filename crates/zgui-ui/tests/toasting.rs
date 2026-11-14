@@ -131,6 +131,49 @@ fn Steps() -> impl IntoView {
     }
 }
 
+/// A page whose toast carries an action, and whose second button puts another toast in its place.
+#[component]
+fn Retrying() -> impl IntoView {
+    view! {
+        ThemeProvider {
+            Toaster {
+                Attempts()
+            }
+        }
+    }
+}
+
+/// The buttons of [`Retrying`], inside its toaster, and how often each toast action ran.
+#[component]
+fn Attempts() -> impl IntoView {
+    let toasts = use_toaster();
+    let held = RwSignal::new_local(None);
+    let retried = RwSignal::new_local(0_u32);
+    let reported = RwSignal::new_local(0_u32);
+    view! {
+        column(class = "page") {
+            Button(on:click = move |_| {
+                if let Some(toasts) = toasts {
+                    let toast = Toast::new("Upload failed")
+                        .persistent()
+                        .action("Retry", move || retried.update(|count| *count += 1));
+                    held.set(Some(toasts.push(toast)));
+                }
+            }) {"start"}
+            Button(on:click = move |_| {
+                if let (Some(toasts), Some(id)) = (toasts, held.get_untracked()) {
+                    let toast = Toast::new("Upload failed again")
+                        .persistent()
+                        .action("Report", move || reported.update(|count| *count += 1));
+                    toasts.replace(id, toast);
+                }
+            }) {"fail again"}
+            text {{move || format!("retried {}", retried.get())}}
+            text {{move || format!("reported {}", reported.get())}}
+        }
+    }
+}
+
 /// The toast whose title is `title`: the node it is, and where it is.
 ///
 /// A toast says its title and nothing else — its close button is a drawing, and a drawing
@@ -481,5 +524,53 @@ fn a_replaced_toast_says_the_new_message_in_the_same_place() {
     assert!(
         (bottom(after) - bottom(before)).abs() < 1.0,
         "and the toast stands where it stood: {before:?} then {after:?}"
+    );
+}
+
+/// Whether a toast called `title` is announced.
+///
+/// Read from the accessibility tree because a toast with an action says more than its title, which
+/// [`toast_node`] does not find.
+fn alerts(stage: &Stage, title: &str) -> bool {
+    stage
+        .announced()
+        .iter()
+        .any(|node| node.role == "Alert" && node.name == title)
+}
+
+#[test]
+fn a_replaced_toast_carries_the_new_action_and_the_new_name() {
+    let mut stage = Stage::open(SHEET, || view! { Retrying() });
+    stage.click_saying("start");
+    stage.hold(ARRIVED);
+    stage.click_saying("fail again");
+    stage.hold(ARRIVED);
+    assert!(!stage.shows("Retry"), "the first action is gone");
+    let announced = stage.announced();
+    let said = |role: &str, name: &str| {
+        announced
+            .iter()
+            .any(|node| node.role == role && node.name == name)
+    };
+    assert!(
+        said("Alert", "Upload failed again"),
+        "a reader hears the new message: {announced:?}"
+    );
+    assert!(
+        !said("Alert", "Upload failed"),
+        "and not the old one: {announced:?}"
+    );
+    assert!(
+        said("Button", "Report"),
+        "the new action has its own name: {announced:?}"
+    );
+
+    stage.click_saying("Report");
+    stage.hold(ARRIVED);
+    assert!(stage.shows("reported 1"), "the new action ran");
+    assert!(stage.shows("retried 0"), "and the old one did not");
+    assert!(
+        !alerts(&stage, "Upload failed again") && !stage.shows("Report"),
+        "an action that is not kept open dismisses the toast"
     );
 }
