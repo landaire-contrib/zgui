@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use zgui_render::RenderCapabilities;
 
+use crate::error::OpenError;
 use crate::gpu::adapter;
 use crate::gpu::extensions;
 use crate::gpu::loss::DeviceLoss;
@@ -81,7 +82,7 @@ impl Gpu {
     ///
     /// # Errors
     ///
-    /// Returns the message `request_device` refused with.
+    /// Returns [`OpenError::Refused`] where `request_device` refused.
     ///
     /// # Vulkan device extensions
     ///
@@ -114,7 +115,7 @@ impl Gpu {
         instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         extensions: &[&'static CStr],
-    ) -> Result<Self, String> {
+    ) -> Result<Self, OpenError> {
         let info = adapter.get_info();
         let limits = if info.backend == wgpu::Backend::Gl {
             wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits())
@@ -136,8 +137,7 @@ impl Gpu {
             Some(opened) => opened,
             None => {
                 let (device, queue) =
-                    futures::executor::block_on(adapter.request_device(&descriptor))
-                        .map_err(|error| error.to_string())?;
+                    futures::executor::block_on(adapter.request_device(&descriptor))?;
                 (device, queue, Vec::new())
             }
         };

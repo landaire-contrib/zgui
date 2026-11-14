@@ -7,6 +7,7 @@ use std::sync::Arc;
 use zgui_geom::{Device, Size};
 use zgui_render::{GpuUnavailable, RenderTarget};
 
+use crate::error::{PresentError, Rejection, RejectionReason};
 use crate::gpu::adapter;
 use crate::gpu::device::Gpu;
 use crate::gpu::extensions;
@@ -202,7 +203,7 @@ pub(crate) fn open_device(
     extensions: &[&'static CStr],
     mut present: impl Proof,
 ) -> Result<(Rc<DeviceState>, Presentation), GpuUnavailable> {
-    let mut rejections: Vec<(String, String)> = Vec::new();
+    let mut rejections: Vec<Rejection> = Vec::new();
     let mut enumerated = 0usize;
     // Adapters passed over for having the names and then being refused a device carrying them.
     // Offered again at the end, where nothing else opened at all.
@@ -229,14 +230,17 @@ pub(crate) fn open_device(
         // Stable, so the existing preference survives inside each group.
         candidates.sort_by_key(|(grants, _)| !grants);
         for (grants, candidate) in candidates {
-            let name = adapter::describe(&candidate.get_info());
+            let info = candidate.get_info();
             // Kept only where it is about to be judged on the list, so the ordinary path clones
             // nothing.
             let again = grants.then(|| (instance.clone(), candidate.clone()));
             let gpu = match Gpu::open(instance.clone(), candidate, extensions) {
                 Ok(gpu) => Arc::new(gpu),
-                Err(reason) => {
-                    rejections.push((name, reason));
+                Err(error) => {
+                    rejections.push(Rejection {
+                        adapter: info,
+                        reason: error.into(),
+                    });
                     continue;
                 }
             };
@@ -244,12 +248,10 @@ pub(crate) fn open_device(
                 // Its physical device had every name and the driver refused a device carrying
                 // them. Passed over before `present` runs, so no surface is consumed and the next
                 // candidate can still be offered the one this candidate never saw.
-                rejections.push((
-                    name,
-                    "the adapter has the Vulkan device extensions asked for and the driver \
-                     refused a device carrying them"
-                        .to_owned(),
-                ));
+                rejections.push(Rejection {
+                    adapter: info,
+                    reason: RejectionReason::ExtensionsRefused,
+                });
                 deferred.extend(again);
                 continue;
             }
@@ -258,7 +260,10 @@ pub(crate) fn open_device(
                     tracing::info!(adapter = %gpu.describe(), "graphics device opened");
                     return Ok(opened);
                 }
-                Err(reason) => rejections.push((name, reason)),
+                Err(error) => rejections.push(Rejection {
+                    adapter: info,
+                    reason: error.into(),
+                }),
             }
         }
     }
@@ -268,11 +273,14 @@ pub(crate) fn open_device(
     // device that copies each frame through the processor still draws, and a machine with one
     // adapter and a driver that refuses the list would otherwise have no device at all.
     for (instance, candidate) in deferred {
-        let name = adapter::describe(&candidate.get_info());
+        let info = candidate.get_info();
         let gpu = match Gpu::open(instance, candidate, &[]) {
             Ok(gpu) => Arc::new(gpu),
-            Err(reason) => {
-                rejections.push((name, reason));
+            Err(error) => {
+                rejections.push(Rejection {
+                    adapter: info,
+                    reason: error.into(),
+                });
                 continue;
             }
         };
@@ -285,7 +293,10 @@ pub(crate) fn open_device(
                 );
                 return Ok(opened);
             }
-            Err(reason) => rejections.push((name, reason)),
+            Err(error) => rejections.push(Rejection {
+                adapter: info,
+                reason: error.into(),
+            }),
         }
     }
 
@@ -303,11 +314,11 @@ pub(crate) trait Proof {
     }
 
     /// Produces something for `gpu` to present to, or the reason it cannot.
-    fn present(&mut self, gpu: &Arc<Gpu>) -> Result<Presentation, String>;
+    fn present(&mut self, gpu: &Arc<Gpu>) -> Result<Presentation, PresentError>;
 }
 
-impl<F: FnMut(&Arc<Gpu>) -> Result<Presentation, String>> Proof for F {
-    fn present(&mut self, gpu: &Arc<Gpu>) -> Result<Presentation, String> {
+impl<F: FnMut(&Arc<Gpu>) -> Result<Presentation, PresentError>> Proof for F {
+    fn present(&mut self, gpu: &Arc<Gpu>) -> Result<Presentation, PresentError> {
         self(gpu)
     }
 }
@@ -346,17 +357,14 @@ impl<W: Into<wgpu::SurfaceTarget<'static>> + Clone> Proof for WindowSurface<W> {
             .map(|surface| (tier, surface));
     }
 
-    fn present(&mut self, gpu: &Arc<Gpu>) -> Result<Presentation, String> {
+    fn present(&mut self, gpu: &Arc<Gpu>) -> Result<Presentation, PresentError> {
         let backend = wgpu::Backends::from(gpu.adapter().get_info().backend);
         let surface = match self.made.take() {
             Some((tier, surface)) if tier.contains(backend) => surface,
-            _ => gpu
-                .instance()
-                .create_surface(self.window.clone())
-                .map_err(|error| error.to_string())?,
+            _ => gpu.instance().create_surface(self.window.clone())?,
         };
         if surface.get_capabilities(gpu.adapter()).formats.is_empty() {
-            return Err("the surface is not compatible with this adapter".to_owned());
+            return Err(PresentError::Incompatible);
         }
         Ok(Presentation::Surface(Box::new(
             ConfiguredSurface::unconfigured(gpu, surface, self.setup),
@@ -381,14 +389,14 @@ impl<W: Into<wgpu::SurfaceTarget<'static>> + Clone> Proof for WindowSurface<W> {
 fn offer(
     gpu: &Arc<Gpu>,
     present: &mut impl Proof,
-) -> Result<(Rc<DeviceState>, Presentation), String> {
+) -> Result<(Rc<DeviceState>, Presentation), PresentError> {
     let scope = gpu.device().push_error_scope(wgpu::ErrorFilter::Validation);
     let presentation = present.present(gpu);
     let validation = futures::executor::block_on(scope.pop());
     let mut presentation = match (presentation, validation) {
         (Ok(presentation), None) => presentation,
-        (Ok(_), Some(error)) => return Err(error.to_string()),
-        (Err(reason), _) => return Err(reason),
+        (Ok(_), Some(error)) => return Err(PresentError::Validation(error)),
+        (Err(error), _) => return Err(error),
     };
     let state = DeviceState::new(Arc::clone(gpu));
     if presentation.is_configured() {
@@ -415,7 +423,7 @@ fn offer(
     };
     match validation {
         None => Ok((state, presentation)),
-        Some(error) => Err(error.to_string()),
+        Some(error) => Err(PresentError::Validation(error)),
     }
 }
 
@@ -431,6 +439,7 @@ mod tests {
     use zgui_geom::Size;
 
     use super::open_device;
+    use crate::error::PresentError;
     use crate::gpu::adapter;
     use crate::gpu::device::Gpu;
     use crate::pipeline::kind::PipelineKind;
@@ -440,7 +449,7 @@ mod tests {
     ///
     /// Its `apply_pending` does nothing, so the open takes the path of a new surface without a
     /// window.
-    fn unconfigured(gpu: &Arc<Gpu>) -> Result<Presentation, String> {
+    fn unconfigured(gpu: &Arc<Gpu>) -> Result<Presentation, PresentError> {
         let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
             label: Some("zgui.test.unconfigured"),
             size: wgpu::Extent3d {
@@ -455,7 +464,8 @@ mod tests {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        let supplied = Supplied::new(vec![texture]).ok_or("the texture was refused")?;
+        let supplied =
+            Supplied::new(vec![texture]).expect("one 8 by 8 render attachment is a usable set");
         let mut presentation = Presentation::Supplied(supplied);
         presentation.resize(gpu, Size::new(16, 16));
         Ok(presentation)

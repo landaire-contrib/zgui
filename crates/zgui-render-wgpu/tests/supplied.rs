@@ -333,10 +333,12 @@ fn a_target_and_a_texture_set_that_state_different_extents_are_refused() {
         )
         .expect_err("a target and a texture set of different extents are not one screen");
     assert!(
-        failure
-            .candidates
-            .iter()
-            .any(|candidate| candidate.reason.contains("one screen has one extent")),
+        failure.candidates.iter().any(|candidate| {
+            candidate
+                .reason
+                .to_string()
+                .contains("one screen has one extent")
+        }),
         "the refusal does not name the disagreement: {:?}",
         failure.candidates
     );
@@ -362,7 +364,7 @@ fn textures_made_on_a_device_another_graphics_never_opened_are_refused() {
         failure
             .candidates
             .iter()
-            .any(|candidate| candidate.reason.contains("open_gpu")),
+            .any(|candidate| candidate.reason.to_string().contains("open_gpu")),
         "the refusal does not say how to get a device first: {:?}",
         failure.candidates
     );
@@ -486,7 +488,7 @@ fn a_supplied_renderer_cannot_rebuild_itself_after_a_loss() {
         failure
             .candidates
             .iter()
-            .any(|candidate| candidate.reason.contains("supplied them")),
+            .any(|candidate| candidate.reason.to_string().contains("supplied them")),
         "the refusal does not say whose job the new textures are: {:?}",
         failure.candidates
     );
