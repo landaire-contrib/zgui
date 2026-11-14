@@ -423,7 +423,8 @@ pub use crate::tooltip::{
     TooltipTriggerProps,
 };
 pub use crate::virtualize::{
-    VirtualList, VirtualListProps, VirtualListStyle, VirtualWindow, Virtualize,
+    MeasuredRows, MeasuredVirtualize, MeasuredWindow, VirtualList, VirtualListProps,
+    VirtualListStyle, VirtualWindow, Virtualize,
 };
 
 pub use crate::aspect_ratio::{AspectRatio, AspectRatioProps, AspectRatioStyle};

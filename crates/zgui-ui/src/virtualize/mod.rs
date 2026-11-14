@@ -8,12 +8,24 @@
 //! [`Virtualize`] is the mechanism and takes no view of its own; [`VirtualList`] is the ordinary
 //! list built on it, and [`DataTable`](crate::data_table::DataTable) uses the same mechanism for
 //! its body.
+//!
+//! [`Virtualize`] declares one row height. [`MeasuredVirtualize`] is the same mechanism for rows
+//! that differ in height, which are measured as they are built.
 
+mod heights;
 mod list;
+mod measure;
+mod measured;
+mod measured_virtualize;
+mod measured_window;
 mod style;
+mod sums;
 mod window;
 
 pub use crate::virtualize::list::{VirtualList, VirtualListProps};
+pub use crate::virtualize::measure::MeasuredRows;
+pub use crate::virtualize::measured_virtualize::MeasuredVirtualize;
+pub use crate::virtualize::measured_window::MeasuredWindow;
 pub use crate::virtualize::style::VirtualListStyle;
 pub use crate::virtualize::window::{MAX_EXTENT, VirtualWindow, window};
 
@@ -60,9 +72,9 @@ use zgui::reactive::LocalStorage;
 ///
 /// A window is decided *before* the rows in it are built, so it cannot be decided from their
 /// heights: measuring row 4 200 means building row 4 200, which is the cost virtualisation exists
-/// to avoid. Every virtualised list in this library is therefore a fixed-height list, the height is
-/// declared, and a style sheet that disagrees with the declaration produces a scrollbar of the
-/// wrong length rather than a wrong set of rows.
+/// to avoid. The height is therefore declared, and a style sheet that disagrees with the
+/// declaration produces a scrollbar of the wrong length rather than a wrong set of rows. Rows
+/// that differ in height are [`MeasuredVirtualize`]'s, which estimates the rows it has not built.
 ///
 /// The declaration is a signal, so an application that lets a person choose the row height moves
 /// the list that is open rather than the next one it builds. A plain number is a declaration that
