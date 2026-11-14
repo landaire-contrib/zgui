@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use zgui_platform::{PlatformError, Surface};
 use zgui_render::{RenderTarget, Renderer};
-use zgui_render_wgpu::{GroupPrecision, PresentPacing, SharedGraphics, renderer::PrePresent};
+use zgui_render_wgpu::{
+    GraphicsOptions, GroupPrecision, PresentPacing, SharedGraphics, renderer::PrePresent,
+};
 use zgui_runtime::{AppError, RendererFactory};
 
 /// The compositor notification belonging to `surface`, kept alive with it.
@@ -64,7 +66,8 @@ fn pre_present_callback(notify: impl Fn(RenderTarget) + Send + Sync + 'static) -
 /// because which adapter is usable is only known against something to present to.
 ///
 /// Each renderer gets the group precision the application set in `precision`.
-/// [`GroupPrecision::VARIABLE`] overrides it.
+/// [`GroupPrecision::VARIABLE`] overrides it. Each device gets the request that `options` states,
+/// also a device that replaces a lost one.
 ///
 /// # Errors
 ///
@@ -72,8 +75,11 @@ fn pre_present_callback(notify: impl Fn(RenderTarget) + Send + Sync + 'static) -
 /// to the window, naming every one that was tried, and [`AppError::Platform`] when the window
 /// offers no handles a graphics API can draw into at all. Neither is answered with a renderer that
 /// draws nowhere: a window that opens and never paints looks like a program that has hung.
-pub(crate) fn factory(precision: Option<GroupPrecision>) -> RendererFactory {
-    let graphics = SharedGraphics::new();
+pub(crate) fn factory(
+    precision: Option<GroupPrecision>,
+    options: GraphicsOptions,
+) -> RendererFactory {
+    let graphics = SharedGraphics::with_options(options);
     let precision = GroupPrecision::from_environment()
         .or(precision)
         .unwrap_or_default();
@@ -151,6 +157,6 @@ mod tests {
         // Making the factory must not enumerate adapters: it is built while the application is
         // still being described, on a thread that may have no display connection yet, and the
         // device is opened by the first window instead.
-        let _factory = factory(None);
+        let _factory = factory(None, GraphicsOptions::default());
     }
 }

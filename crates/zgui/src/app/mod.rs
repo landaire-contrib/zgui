@@ -164,6 +164,8 @@ pub struct App {
     renderer: Option<zgui_runtime::RendererFactory>,
     /// How precisely the default renderer holds a plain group, when the application set it.
     group_precision: Option<crate::GroupPrecision>,
+    /// What the default renderer asks each device for.
+    graphics: zgui_render_wgpu::GraphicsOptions,
     /// The application's own context setup, held until the faces are known.
     ///
     /// Held here rather than passed straight down because the faces are provided in the same scope
@@ -193,6 +195,7 @@ impl App {
             fonts: std::cell::OnceCell::new(),
             renderer: None,
             group_precision: None,
+            graphics: zgui_render_wgpu::GraphicsOptions::default(),
             context: None,
         }
     }
@@ -585,6 +588,33 @@ impl App {
         self
     }
 
+    /// Asks each device of the default renderer for the features and limits of `request`.
+    ///
+    /// Use it where the application draws with wgpu itself on the device of the interface, for
+    /// example a 3D view in a `surface` element. Each device that the default renderer opens gets
+    /// the request, also the device that replaces a lost one. An adapter that does not have a
+    /// required feature or limit is passed over, and the next adapter is tried. A renderer set with
+    /// [`App::with_renderer`] ignores it.
+    ///
+    /// ```no_run
+    /// use zgui::prelude::*;
+    /// use zgui::surface::wgpu;
+    ///
+    /// # fn main() -> Result<(), zgui::Error> {
+    /// app()
+    ///     .with_device_request(
+    ///         zgui::DeviceRequest::new()
+    ///             .with_required_features(wgpu::Features::DEPTH_CLIP_CONTROL)
+    ///             .with_optional_features(wgpu::Features::TEXTURE_COMPRESSION_BC),
+    ///     )
+    ///     .run(|| view! { column() })
+    /// # }
+    /// ```
+    pub fn with_device_request(mut self, request: crate::DeviceRequest) -> Self {
+        self.graphics.request = request;
+        self
+    }
+
     /// The faces this application draws with, for registering one of its own.
     ///
     /// Asking settles the question [`App::with_fonts`] would otherwise answer: an application that
@@ -681,9 +711,10 @@ impl App {
         let fonts = self.fonts.into_inner().unwrap_or_else(Fonts::system);
         let shaping = fonts.clone();
         let group_precision = self.group_precision;
+        let options = self.graphics;
         let renderer = self
             .renderer
-            .unwrap_or_else(|| graphics::factory(group_precision));
+            .unwrap_or_else(|| graphics::factory(group_precision, options));
         // The faces are provided above every window, so a component that shapes its own text
         // reaches the same collection the frame does. The application's own setup runs after, and
         // therefore resolves them like any other context.

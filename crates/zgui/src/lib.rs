@@ -136,6 +136,9 @@ pub mod prelude;
 
 pub use crate::app::{App, app};
 pub use crate::error::Error;
+/// The features and limits each device of the default renderer gets, see
+/// [`App::with_device_request`].
+pub use zgui_render_wgpu::DeviceRequest;
 /// How precisely the default renderer holds a plain group, see [`App::with_group_precision`].
 pub use zgui_render_wgpu::GroupPrecision;
 /// How a window antialiases its text, see [`App::with_text_antialiasing`].
