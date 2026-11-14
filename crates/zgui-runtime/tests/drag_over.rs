@@ -15,6 +15,7 @@ use zgui_geom::{Css, CssPx, Point};
 use zgui_platform::{DragEvent, SurfaceEvent};
 use zgui_view::event::events;
 use zgui_view::{BuildCx, IntoView, View};
+use zgui_vocab::DragData;
 
 const CSS: &str = "root { display: block; width: 400px; height: 300px }
                    .zone { display: block; height: 40px }
@@ -43,7 +44,9 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
                     zgui_elements::r#box()
                         .class("zone")
                         .on(events::DRAG_ENTER, move |cx| {
-                            enter.borrow_mut().push(format!("enter {}", cx.paths.len()));
+                            enter
+                                .borrow_mut()
+                                .push(format!("enter {}", cx.data.paths.len()));
                         })
                         .on(events::DRAG_OVER, move |_| {
                             over.borrow_mut().push("over".into())
@@ -54,7 +57,7 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
                         .on(events::DROP, move |cx| {
                             dropped
                                 .borrow_mut()
-                                .push(format!("drop {}", cx.paths.len()));
+                                .push(format!("drop {}", cx.data.paths.len()));
                         })
                         .child(zgui_elements::r#box().class("inner")),
                 )
@@ -73,9 +76,12 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
     };
     assert_eq!(height(&app), 40.0);
 
-    let paths = vec![PathBuf::from("/tmp/a.wav"), PathBuf::from("/tmp/b.wav")];
+    let data = DragData::from_paths(vec![
+        PathBuf::from("/tmp/a.wav"),
+        PathBuf::from("/tmp/b.wav"),
+    ]);
     app.deliver_to_first(SurfaceEvent::Drag(DragEvent::Entered {
-        paths: paths.clone(),
+        data: data.clone(),
         position: at(10.0, 10.0),
     }));
     app.settle(8);
@@ -99,7 +105,7 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
     app.settle(8);
     log.borrow_mut().clear();
     app.deliver_to_first(SurfaceEvent::Drag(DragEvent::Dropped {
-        paths,
+        data,
         position: at(10.0, 10.0),
     }));
     app.settle(8);
@@ -121,13 +127,13 @@ fn target(
     zgui_elements::r#box()
         .class("target")
         .on(events::DRAG_ENTER, move |cx| {
-            let (paths, at) = (&cx.paths, cx.position);
+            let (paths, at) = (&cx.data.paths, cx.position);
             enter
                 .borrow_mut()
                 .push(format!("{name} enter {paths:?} {},{}", at.x.0, at.y.0));
         })
         .on(events::DRAG_OVER, move |cx| {
-            let (paths, at) = (&cx.paths, cx.position);
+            let (paths, at) = (&cx.data.paths, cx.position);
             over.borrow_mut()
                 .push(format!("{name} over {paths:?} {},{}", at.x.0, at.y.0));
         })
@@ -136,7 +142,7 @@ fn target(
             leave.borrow_mut().push(format!("{name} leave {at:?}"));
         })
         .on(events::DROP, move |cx| {
-            let (paths, at) = (&cx.paths, cx.position);
+            let (paths, at) = (&cx.data.paths, cx.position);
             dropped
                 .borrow_mut()
                 .push(format!("{name} drop {paths:?} {},{}", at.x.0, at.y.0));
@@ -158,9 +164,9 @@ fn each_element_under_the_drag_gets_the_paths_and_a_leave_gets_only_the_position
     });
     app.settle(8);
     let take = || core::mem::take(&mut *log.borrow_mut());
-    let paths = vec![PathBuf::from("/tmp/a.wav")];
+    let data = DragData::from_paths(vec![PathBuf::from("/tmp/a.wav")]);
 
-    app.drag_enter(paths.clone(), at(10.0, 10.0));
+    app.drag_enter(data.clone(), at(10.0, 10.0));
     app.settle(8);
     assert_eq!(
         take(),
@@ -190,8 +196,8 @@ fn each_element_under_the_drag_gets_the_paths_and_a_leave_gets_only_the_position
         "a drag off the window has no position"
     );
 
-    app.drag_enter(paths.clone(), at(10.0, 60.0));
-    app.drag_drop(paths, at(10.0, 60.0));
+    app.drag_enter(data.clone(), at(10.0, 60.0));
+    app.drag_drop(data, at(10.0, 60.0));
     app.settle(8);
     assert_eq!(
         take(),

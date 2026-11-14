@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use zgui_geom::{Css, CssPx, Device, DevicePx, Point, Size};
 use zgui_platform::DragEvent;
+use zgui_vocab::DragData;
 
 /// A drag in flight over one window.
 ///
@@ -26,7 +27,9 @@ use zgui_platform::DragEvent;
 /// * [`DragEvent::Left`] when the platform cancels the hover.
 /// * [`DragEvent::Dropped`] with every path.
 ///
-/// winit reports no external drags on Wayland. `zgui-platform-wayland` reports them.
+/// Only files arrive: winit reports no other form of dragged content, so [`DragData::paths`] is
+/// the only field it fills. winit reports no external drags on Wayland. `zgui-platform-wayland`
+/// reports them, in every form it reads.
 #[derive(Debug, Default)]
 pub struct Drag {
     /// Paths reported as hovering and not yet announced.
@@ -99,13 +102,13 @@ impl Drag {
         let mut events = Vec::new();
         if !self.hovering.is_empty() {
             events.push(DragEvent::Entered {
-                paths: core::mem::take(&mut self.hovering),
+                data: DragData::from_paths(core::mem::take(&mut self.hovering)),
                 position,
             });
         }
         if !self.dropped.is_empty() {
             events.push(DragEvent::Dropped {
-                paths: core::mem::take(&mut self.dropped),
+                data: DragData::from_paths(core::mem::take(&mut self.dropped)),
                 position,
             });
         }
@@ -186,7 +189,7 @@ mod tests {
         }
         let events = drag.take(at(4.0));
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].paths().len(), 3);
+        assert_eq!(events[0].data().map(|data| data.paths.len()), Some(3));
         assert!(events[0].is_drop());
     }
 

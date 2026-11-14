@@ -13,11 +13,14 @@ pub fn of(offered: Offered) -> PlatformCapabilities {
     let mut capabilities = PlatformCapabilities::none();
     capabilities.native_popup_surfaces = true;
     capabilities.layer_surfaces = offered.layer_shell;
-    // Receiving a drop is the data device's, so it arrives with the clipboard. What arrives is
-    // always paths: a drag of anything else carries something no file system can open, and this
-    // backend drops it rather than turning it into a name nothing can read.
+    // Receiving a drop is the data device's, so it arrives with the clipboard. The forms the drag
+    // reader takes: the address list, plain text under each of its names, and markup.
     capabilities.drop_mime_types = if offered.clipboard {
-        vec!["text/uri-list".to_owned()]
+        core::iter::once(crate::clipboard::mime::URI_LIST)
+            .chain(crate::clipboard::mime::OFFERED)
+            .chain(core::iter::once(crate::clipboard::mime::HTML))
+            .map(str::to_owned)
+            .collect()
     } else {
         Vec::new()
     };

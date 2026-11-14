@@ -1,24 +1,23 @@
 //! Scripted drags from outside the application.
 //!
 //! Each method delivers one [`DragEvent`] stage to the first surface, as a backend does when the
-//! user drags files over a window. A drag starts with [`Harness::drag_enter`], which carries the
-//! paths, and ends with [`Harness::drag_leave`] or [`Harness::drag_drop`].
-
-use std::path::PathBuf;
+//! user drags content over a window. A drag starts with [`Harness::drag_enter`], which carries
+//! what is dragged, and ends with [`Harness::drag_leave`] or [`Harness::drag_drop`].
 
 use zgui_geom::{Css, CssPx, Point};
 use zgui_platform::{AppHandler, DragEvent, SurfaceEvent};
+use zgui_vocab::DragData;
 
 use crate::harness::Harness;
 
 impl<A: AppHandler> Harness<A> {
-    /// Moves a drag of `paths` onto the first surface at `position`.
+    /// Moves a drag of `data` onto the first surface at `position`.
     ///
     /// # Panics
     ///
     /// Panics when no surface exists, as [`Harness::deliver_to_first`] does.
-    pub fn drag_enter(&mut self, paths: Vec<PathBuf>, position: Point<CssPx, Css>) {
-        self.deliver_to_first(SurfaceEvent::Drag(DragEvent::Entered { paths, position }));
+    pub fn drag_enter(&mut self, data: DragData, position: Point<CssPx, Css>) {
+        self.deliver_to_first(SurfaceEvent::Drag(DragEvent::Entered { data, position }));
     }
 
     /// Moves the drag over the first surface to `position`.
@@ -39,13 +38,13 @@ impl<A: AppHandler> Harness<A> {
         self.deliver_to_first(SurfaceEvent::Drag(DragEvent::Left));
     }
 
-    /// Drops `paths` on the first surface at `position`.
+    /// Drops `data` on the first surface at `position`.
     ///
     /// # Panics
     ///
     /// Panics when no surface exists, as [`Harness::deliver_to_first`] does.
-    pub fn drag_drop(&mut self, paths: Vec<PathBuf>, position: Point<CssPx, Css>) {
-        self.deliver_to_first(SurfaceEvent::Drag(DragEvent::Dropped { paths, position }));
+    pub fn drag_drop(&mut self, data: DragData, position: Point<CssPx, Css>) {
+        self.deliver_to_first(SurfaceEvent::Drag(DragEvent::Dropped { data, position }));
     }
 }
 
@@ -57,6 +56,7 @@ mod tests {
     use zgui_platform::{
         AppHandler, DragEvent, PlatformCx, SurfaceAttributes, SurfaceEvent, SurfaceId, WakeReason,
     };
+    use zgui_vocab::DragData;
 
     use crate::harness::Harness;
 
@@ -89,30 +89,27 @@ mod tests {
     #[test]
     fn each_stage_reaches_the_first_surface_in_order() {
         let mut harness = Harness::new(Recorder::default());
-        let paths = vec![PathBuf::from("/tmp/a.wav")];
+        let data = DragData::from_paths(vec![PathBuf::from("/tmp/a.wav")]);
         let at = Point::new(CssPx(5.0), CssPx(6.0));
-        harness.drag_enter(paths.clone(), at);
+        harness.drag_enter(data.clone(), at);
         harness.drag_move(at);
         harness.drag_leave();
-        harness.drag_enter(paths.clone(), at);
-        harness.drag_drop(paths.clone(), at);
+        harness.drag_enter(data.clone(), at);
+        harness.drag_drop(data.clone(), at);
 
         let surface = harness.app().surface.expect("a surface was created");
         let expected = [
             DragEvent::Entered {
-                paths: paths.clone(),
+                data: data.clone(),
                 position: at,
             },
             DragEvent::Moved { position: at },
             DragEvent::Left,
             DragEvent::Entered {
-                paths: paths.clone(),
+                data: data.clone(),
                 position: at,
             },
-            DragEvent::Dropped {
-                paths,
-                position: at,
-            },
+            DragEvent::Dropped { data, position: at },
         ]
         .map(|drag| (surface, drag));
         assert_eq!(harness.app().drags, expected);

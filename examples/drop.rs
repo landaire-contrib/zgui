@@ -1,7 +1,7 @@
-//! Files dragged onto the window from outside it.
+//! Content dragged onto the window from outside it.
 //!
-//! Run it with `cargo run -p zgui-examples --example drop`, then drag files from a file manager
-//! onto the zone.
+//! Run it with `cargo run -p zgui-examples --example drop`, then drag files from a file manager,
+//! a link from a browser or a selection of text onto the zone.
 //!
 //! What it is worth reading for:
 //!
@@ -9,14 +9,36 @@
 //!   what it would take;
 //! * the zone matches `:state(drag-over)` while a drag is over it, so the highlight is one rule in
 //!   the sheet;
-//! * `drop` goes to the element under the pointer, with every path at once.
+//! * `drop` goes to the element under the pointer, with everything dragged at once, in each form
+//!   the platform could read.
 
 use zgui::prelude::*;
+use zgui::vocab::DragData;
 
 /// What the zone says when no drag is over it.
-const WAITING: &str = "Drop files here";
+const WAITING: &str = "Drop files, links or text here";
 
-/// A zone that lists the files dropped on it.
+/// What a drag carries, in the first form the zone takes.
+fn described(data: &DragData) -> String {
+    if !data.paths.is_empty() {
+        let names: Vec<String> = data
+            .paths
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect();
+        return format!("files: {}", names.join(", "));
+    }
+    if !data.uris.is_empty() {
+        let links: Vec<&str> = data.uris.iter().map(|uri| uri.as_str()).collect();
+        return format!("links: {}", links.join(", "));
+    }
+    match &data.text {
+        Some(text) => format!("text: {text}"),
+        None => "nothing the zone can take".to_owned(),
+    }
+}
+
+/// A zone that says what was dropped on it.
 #[component]
 fn Zone() -> impl IntoView {
     let status = RwSignal::new(WAITING.to_owned());
@@ -24,15 +46,9 @@ fn Zone() -> impl IntoView {
     view! {
         column(
             class = "zone",
-            on:drag_enter = move |cx| {
-                status.set(format!("{} file(s) over the zone", cx.paths.len()));
-            },
+            on:drag_enter = move |cx| status.set(format!("Over the zone: {}", described(&cx.data))),
             on:drag_leave = move |_| status.set(WAITING.to_owned()),
-            on:drop = move |cx| {
-                let names: Vec<String> =
-                    cx.paths.iter().map(|path| path.display().to_string()).collect();
-                status.set(format!("Dropped {}", names.join(", ")));
-            }
+            on:drop = move |cx| status.set(format!("Dropped {}", described(&cx.data)))
         ) {
             label(class = "zone__status") {{move || status.get()}}
         }
