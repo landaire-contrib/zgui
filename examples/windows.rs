@@ -12,6 +12,8 @@
 //!   its own size and renames its own title wherever it is mounted;
 //! * `on_close_request` refuses a close, which is what a document with unsaved work does while it
 //!   asks;
+//! * `set_zoom` scales the content of one window, as a browser's zoom control does: the CSS size
+//!   the window reports gets smaller as the zoom gets larger;
 //! * every window operation is a plain call with no platform branch around it: what this desktop
 //!   cannot do, it quietly does not do.
 
@@ -37,10 +39,11 @@ fn Main() -> impl IntoView {
         move || {
             let size = this.size().get();
             format!(
-                "{:.0} x {:.0} at {:.1}x",
+                "{:.0} x {:.0} at {:.1}x, zoom {:.0}%",
                 size.width.0,
                 size.height.0,
-                this.scale().get()
+                this.scale().get(),
+                this.zoom().get().get() * 100.0
             )
         }
     };
@@ -127,7 +130,34 @@ fn Main() -> impl IntoView {
                     }
                 ) {"Maximise"}
             }
+
+            row(class = "buttons") {
+                control(
+                    class = "button",
+                    tabindex = Focus::Sequential,
+                    on:click = {
+                        let this = this.clone();
+                        move |_| step_zoom(&this, -0.25)
+                    }
+                ) {"Zoom out"}
+                control(
+                    class = "button",
+                    tabindex = Focus::Sequential,
+                    on:click = {
+                        let this = this.clone();
+                        move |_| step_zoom(&this, 0.25)
+                    }
+                ) {"Zoom in"}
+            }
         }
+    }
+}
+
+/// Changes the zoom of `window` by `step`.
+fn step_zoom(window: &WindowHandle, step: f32) {
+    // A step past either end of the range leaves the zoom where it is.
+    if let Ok(zoom) = Zoom::new(window.zoom().get_untracked().get() + step) {
+        window.set_zoom(zoom);
     }
 }
 
