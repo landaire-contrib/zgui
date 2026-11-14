@@ -67,6 +67,7 @@ impl Mark {
         ] {
             value.to_bits().hash(hasher);
         }
+        self.color.space().hash(hasher);
         self.color.alpha().to_bits().hash(hasher);
         for channel in self.color.components() {
             channel.to_bits().hash(hasher);
