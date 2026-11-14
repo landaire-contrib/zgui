@@ -45,10 +45,20 @@ impl SurfaceRenderer for Breathing {
 struct OnDemand {
     /// How many times the clock thread has asked for a render.
     ticks: Arc<AtomicU32>,
+    /// The device generation of the last render, so a new device is reported once.
+    generation: Option<u64>,
 }
 
 impl SurfaceRenderer for OnDemand {
     fn render(&mut self, cx: &mut SurfaceRenderCx<'_>) {
+        // A renderer that keeps GPU resources makes them again on a new device.
+        if self.generation != Some(cx.generation) {
+            self.generation = Some(cx.generation);
+            println!(
+                "on-demand pane renders on {} (device generation {})",
+                cx.adapter_info.name, cx.generation
+            );
+        }
         let (r, g, b) = hue(f64::from(self.ticks.load(Ordering::Relaxed)) / 6.0);
         clear(cx, wgpu::Color { r, g, b, a: 1.0 });
     }
@@ -197,9 +207,13 @@ fn Panel() -> impl IntoView {
     let ticks = Arc::new(AtomicU32::new(0));
     let invalidator = SurfaceInvalidator::new();
     tick(Arc::clone(&ticks), invalidator.clone());
+    let renderer = OnDemand {
+        ticks,
+        generation: None,
+    };
     let on_demand = zgui::elements::surface()
         .class("pane")
-        .renderer_with_invalidator(OnDemand { ticks }, &invalidator)
+        .renderer_with_invalidator(renderer, &invalidator)
         .into_view();
 
     view! {
