@@ -14,6 +14,7 @@ use crate::toast::SHEET;
 use crate::toast::item::exit::Departure;
 use crate::toast::item::expiry::Expiry;
 use crate::toast::item::swipe::{LetGo, Swipe};
+use crate::toast::message::ToastAction;
 use crate::toast::queue::{Queued, ToastQueue};
 use crate::toast::style::ToastStyle;
 
@@ -94,7 +95,6 @@ pub fn ToastItem(
         })
     };
     let toast = first;
-    let kind = toast.what();
 
     let dismiss = move || {
         if let Some(queue) = queue {
@@ -210,8 +210,10 @@ pub fn ToastItem(
         })
         .a11y_from(
             A11yBinding::new(Role::Alert)
-                .live(kind.live())
-                .label(toast.title().to_owned()),
+                .live(move || current.with(|toast| toast.what().live()))
+                .label(move || {
+                    zgui::vocab::SharedString::from(current.with(|toast| toast.title().to_owned()))
+                }),
         );
 
     let body = move || {
@@ -229,13 +231,31 @@ pub fn ToastItem(
 
     // The two buttons a message can carry. Built from what the message holds rather than from props,
     // because the message is written where something happened and read where the stack is drawn.
-    let action = toast.action_button().cloned().map(|button| {
+    // Each button is mirrored into a signal that changes only when the button does, so a replace
+    // that keeps the same button does not rebuild it and take the focus from it.
+    let action = RwSignal::new_local(toast.action_button().cloned());
+    let cancel = RwSignal::new_local(toast.cancel_button().cloned());
+    let mirroring = RenderEffect::new(move |_| {
+        current.with(|toast| {
+            let now = toast.action_button();
+            if action.with_untracked(|shown| shown.as_ref() != now) {
+                action.set(now.cloned());
+            }
+            let now = toast.cancel_button();
+            if cancel.with_untracked(|shown| shown.as_ref() != now) {
+                cancel.set(now.cloned());
+            }
+        });
+    });
+    on_cleanup_local(move || drop(mirroring));
+    // Only the action has a tone; the sheet selects on it there alone.
+    let button = move |class: &'static str, toned: bool, button: ToastAction| {
         let label = button.label().to_owned();
         let tone = button.tone().name();
         AnyView::new(view! {
             control(
-                class = "zui-toast__action",
-                attr:data-tone = Some(tone.to_owned()),
+                class = class,
+                attr:data-tone = toned.then(|| tone.to_owned()),
                 tabindex = {Focus::Sequential},
                 on:click = move |_| {
                     button.run();
@@ -246,23 +266,17 @@ pub fn ToastItem(
                 {label}
             }
         })
-    });
-    let cancel = toast.cancel_button().cloned().map(|button| {
-        let label = button.label().to_owned();
-        AnyView::new(view! {
-            control(
-                class = "zui-toast__cancel",
-                tabindex = {Focus::Sequential},
-                on:click = move |_| {
-                    button.run();
-                    dismiss();
-                },
-                {..Attrs::new().a11y_from(A11yBinding::new(Role::Button).label(label.clone()))}
-            ) {
-                {label}
-            }
-        })
-    });
+    };
+    let action = move || {
+        action
+            .get()
+            .map(|shown| button("zui-toast__action", true, shown))
+    };
+    let cancel = move || {
+        cancel
+            .get()
+            .map(|shown| button("zui-toast__cancel", false, shown))
+    };
 
     view! {
         // No pointer handlers here: the hold belongs to the region, which is the one element
