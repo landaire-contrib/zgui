@@ -103,12 +103,7 @@ impl VirtualWindow {
         if !self.is_compressed() {
             return index as f32 * self.row_size;
         }
-        let last = self.rows.saturating_sub(1);
-        if last == 0 {
-            return 0.0;
-        }
-        let fraction = (index.min(last) as f64) / last as f64;
-        (fraction * f64::from(MAX_EXTENT)) as f32
+        compressed_offset(self.rows, index)
     }
 }
 
@@ -174,16 +169,8 @@ pub fn window(
         };
     }
 
-    let offset = if offset.is_finite() {
-        offset.max(0.0)
-    } else {
-        0.0
-    };
-    let viewport = if viewport.is_finite() {
-        viewport.max(0.0)
-    } else {
-        0.0
-    };
+    let offset = length(offset);
+    let viewport = length(viewport);
 
     // Rounded up, plus one: a port 400px tall showing 20px rows meets twenty-one rows whenever it
     // is scrolled to anything but an exact multiple of the row height.
@@ -241,6 +228,26 @@ pub fn window(
         trail: (rows - end) as f32 * row_size,
         row_size,
     }
+}
+
+/// A length in CSS pixels as a window reads it: never negative, and zero when it is not a number.
+pub(crate) fn length(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+/// Where row `index` of `rows` falls in a compressed extent, in CSS pixels.
+pub(crate) fn compressed_offset(rows: usize, index: usize) -> f32 {
+    let last = rows.saturating_sub(1);
+    if last == 0 {
+        return 0.0;
+    }
+
+    let fraction = (index.min(last) as f64) / last as f64;
+    (fraction * f64::from(MAX_EXTENT)) as f32
 }
 
 #[cfg(test)]
