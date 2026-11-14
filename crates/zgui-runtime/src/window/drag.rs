@@ -11,18 +11,16 @@
 //!   the custom state `drag-over` for style sheets, matched by `:state(drag-over)`. Servo's
 //!   selector parser has no pseudo-class for the bit, so the state is the selector's way in.
 //!
-//! `drag_enter` and `drag_over` carry the dragged paths, which the platform gives only on entry,
+//! `drag_enter` and `drag_over` carry what is dragged, which the platform gives only on entry,
 //! and where the drag is. `drag_leave` carries only where the drag is, and no position when the
 //! drag left the window. A drop clears the state without a `drag_leave`: the drop is the drag's
 //! end.
-
-use std::path::PathBuf;
 
 use zgui_dom::NodeKey;
 use zgui_geom::{Css, CssPx, Point};
 use zgui_interned::Ident;
 use zgui_platform::DragEvent;
-use zgui_vocab::{DragLeaveEvent, DropEvent, EventKind, Payload, Timestamp, UiState};
+use zgui_vocab::{DragData, DragLeaveEvent, DropEvent, EventKind, Payload, Timestamp, UiState};
 
 use crate::window::Window;
 
@@ -33,25 +31,25 @@ pub(crate) const DRAG_OVER_STATE: &str = "drag-over";
 #[derive(Debug, Default)]
 pub(crate) struct DragOver {
     path: Vec<NodeKey>,
-    paths: Vec<PathBuf>,
+    data: DragData,
 }
 
 impl Window {
     /// Follows one drag event from the platform.
     pub(crate) fn drag_moved(&mut self, event: &DragEvent, timestamp: Timestamp) {
         match event {
-            DragEvent::Entered { paths, position } => {
-                self.drag.paths.clone_from(paths);
+            DragEvent::Entered { data, position } => {
+                self.drag.data.clone_from(data);
                 self.drag_to(Some(*position), true, timestamp);
             }
             DragEvent::Moved { position } => self.drag_to(Some(*position), true, timestamp),
             DragEvent::Left => {
                 self.drag_to(None, true, timestamp);
-                self.drag.paths.clear();
+                self.drag.data = DragData::default();
             }
             DragEvent::Dropped { .. } => {
                 self.drag_to(None, false, timestamp);
-                self.drag.paths.clear();
+                self.drag.data = DragData::default();
             }
             // A kind of drag this window does not know yet changes nothing it shows.
             _ => {}
@@ -120,7 +118,7 @@ impl Window {
             return;
         };
         let over = Payload::Drop(DropEvent {
-            paths: self.drag.paths.clone(),
+            data: self.drag.data.clone(),
             position,
         });
         for node in &moved.entered {

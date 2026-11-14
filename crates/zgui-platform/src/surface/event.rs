@@ -20,7 +20,7 @@ use crate::theme::ColorScheme;
 /// framework cannot grow a mouse-only path by accident because there is no mouse-only event to
 /// grow it on.
 ///
-/// # Why a drag is one event with a set of paths
+/// # Why a drag is one event carrying everything dragged
 ///
 /// The same reason, one layer up: a drop target told about files one at a time cannot know when
 /// the set is complete.
@@ -233,10 +233,10 @@ impl SurfaceEvent {
                 Some((state.event_kind(), Payload::Key(event.clone())))
             }
             Self::Ime(event) => Some((event.event_kind(), Payload::Ime(event.clone()))),
-            Self::Drag(DragEvent::Dropped { paths, position }) => Some((
+            Self::Drag(DragEvent::Dropped { data, position }) => Some((
                 EventKind::Drop,
                 Payload::Drop(DropEvent {
-                    paths: paths.clone(),
+                    data: data.clone(),
                     position: *position,
                 }),
             )),
@@ -353,7 +353,7 @@ mod tests {
             },
             SurfaceEvent::Ime(ImeEvent::Commit("x".into())),
             SurfaceEvent::Drag(DragEvent::Dropped {
-                paths: vec![std::path::PathBuf::from("/a")],
+                data: zgui_vocab::DragData::from_paths(vec![std::path::PathBuf::from("/a")]),
                 position: Point::new(CssPx(1.0), CssPx(1.0)),
             }),
         ];

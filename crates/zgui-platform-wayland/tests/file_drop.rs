@@ -6,9 +6,8 @@
 //! of its own, and the assertions are made on both ends: the application saw the paths dropped,
 //! and the source was told the drop finished with a copy.
 //!
-//! A drag of text goes first. The window takes only files, so it must not choose an action for
-//! that drag: a chosen action makes the source show a copy cursor over a window that then cancels
-//! the drop.
+//! A drag of text goes first. The window takes text as well as files, so it chooses the copy action
+//! for that drag too.
 
 #[cfg(any(
     target_os = "linux",
@@ -97,9 +96,9 @@ mod supported {
                 SurfaceEvent::Drag(DragEvent::Entered { .. }) => {
                     ENTERED.store(true, Ordering::Relaxed);
                 }
-                SurfaceEvent::Drag(DragEvent::Dropped { paths, .. }) => {
+                SurfaceEvent::Drag(DragEvent::Dropped { data, .. }) => {
                     *DROPPED_PATHS.lock().expect("the record is not poisoned") =
-                        Some(paths.clone());
+                        Some(data.paths.clone());
                 }
                 _ => {}
             }
@@ -189,8 +188,8 @@ mod supported {
         };
 
         assert!(
-            !text.claimed && text.cancelled,
-            "the window chose an action for a drag with no files on it: {text:?}"
+            text.claimed && !text.cancelled,
+            "the window did not take a drag of text: {text:?}"
         );
         assert!(
             ENTERED.load(Ordering::Relaxed),
@@ -220,7 +219,7 @@ mod supported {
         );
         support::passed(
             PROPERTY,
-            "text left unclaimed; files entered, dropped, finished as a copy",
+            "text taken; files entered, dropped, finished as a copy",
         );
     }
 }

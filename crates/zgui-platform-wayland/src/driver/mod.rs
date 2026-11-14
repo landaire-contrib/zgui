@@ -234,59 +234,82 @@ impl WaylandState {
         Ok(state)
     }
 
-    /// Starts reading the paths of a drag that has just arrived.
+    /// Starts reading the content of a drag that has just arrived, in each form it has that this
+    /// backend reads.
     ///
     /// On a thread, for the reason every transfer here is: the other end is another process.
     pub(crate) fn start_drag_read(&mut self) {
         let Some(offer) = self.drag.to_read() else {
             return;
         };
-        let has_files = offer.with_mime_types(crate::clipboard::mime::has_files);
-        if !has_files {
+        let wanted = offer.with_mime_types(crate::input::dnd::wanted);
+        let Some((_, accepted)) = wanted.first() else {
             return;
-        }
+        };
         // Accepted before it is asked for, which the protocol requires and which is also what
         // tells the source this window is a target at all.
-        offer.accept_mime_type(
-            offer.serial,
-            Some(crate::clipboard::mime::URI_LIST.to_owned()),
-        );
+        offer.accept_mime_type(offer.serial, Some(accepted.clone()));
         // The source actions arrive before the offer becomes a drag offer, so the toolkit never
         // passes them to `source_actions`. Without an action set here, the compositor cancels the
         // drop.
         let taken = crate::driver::data::copy_only(offer.source_actions);
         offer.set_actions(taken, taken);
-        let Ok(reader) = offer.receive(crate::clipboard::mime::URI_LIST.to_owned()) else {
+        let readers: Vec<_> = wanted
+            .into_iter()
+            .filter_map(|(form, mime)| offer.receive(mime).ok().map(|reader| (form, reader)))
+            .collect();
+        if readers.is_empty() {
             return;
-        };
+        }
         let _ = self.conn.flush();
         let answers = self.drag.answers();
         let waker = Arc::clone(&self.live.waker);
         let _ = std::thread::Builder::new()
             .name("zgui-drop".to_owned())
             .spawn(move || {
-                let paths = crate::clipboard::pipe::read(reader, crate::clipboard::pipe::PATIENCE)
-                    .map(|bytes| crate::input::dnd::paths(&bytes))
-                    .unwrap_or_default();
-                *answers.lock().unwrap_or_else(|held| held.into_inner()) = Some(paths);
+                // All at once: a source may write the forms in any order, and one blocked on a
+                // full pipe nobody is reading would hold back the rest. A form that cannot be read
+                // is left empty rather than holding back the forms that can.
+                let read: Vec<_> = std::thread::scope(|scope| {
+                    let reading: Vec<_> = readers
+                        .into_iter()
+                        .map(|(form, reader)| {
+                            scope.spawn(move || {
+                                let patience = crate::clipboard::pipe::PATIENCE;
+                                (form, crate::clipboard::pipe::read(reader, patience))
+                            })
+                        })
+                        .collect();
+                    reading
+                        .into_iter()
+                        .filter_map(|thread| thread.join().ok())
+                        .collect()
+                });
+                let mut data = zgui_vocab::DragData::default();
+                for (form, bytes) in read {
+                    if let Ok(bytes) = bytes {
+                        crate::input::dnd::fill(&mut data, form, &bytes);
+                    }
+                }
+                *answers.lock().unwrap_or_else(|held| held.into_inner()) = Some(data);
                 // The loop is parked on the socket and the answer arrived on a pipe, so it has to
                 // be told. What it does with the wake is drain the answer and report the drag.
                 zgui_platform::Waker::wake(waker.as_ref(), zgui_platform::WakeReason::AppWork);
             });
     }
 
-    /// Reports a drag whose paths have just arrived, if one was waiting for them.
+    /// Reports a drag whose content has just arrived, if one was waiting for it.
     pub(crate) fn drag_read_finished(&mut self) {
-        let paths = self
+        let data = self
             .drag
             .answers()
             .lock()
             .unwrap_or_else(|held| held.into_inner())
             .clone();
-        let Some(paths) = paths else {
+        let Some(data) = data else {
             return;
         };
-        if let Some((id, event)) = self.drag.read_finished(paths) {
+        if let Some((id, event)) = self.drag.read_finished(data) {
             self.report(id, zgui_platform::SurfaceEvent::Drag(event));
         }
     }

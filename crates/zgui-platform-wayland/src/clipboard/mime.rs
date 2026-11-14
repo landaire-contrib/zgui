@@ -16,8 +16,11 @@ pub const OFFERED: [&str; 5] = [
     "TEXT",
 ];
 
-/// The media type for a list of files being dragged.
+/// The media type for a list of addresses being dragged, files among them.
 pub const URI_LIST: &str = "text/uri-list";
+
+/// The media type for markup being dragged.
+pub const HTML: &str = "text/html";
 
 /// The media type to ask an offer for, given what it says it has.
 ///
@@ -26,14 +29,7 @@ pub const URI_LIST: &str = "text/uri-list";
 /// `text/plain` is unspecified, so asking for either when a declared UTF-8 name is on the list
 /// turns every accented character into a question mark.
 pub fn best_text(offered: &[String]) -> Option<String> {
-    const PREFERRED: [&str; 5] = [
-        "text/plain;charset=utf-8",
-        "UTF8_STRING",
-        "text/plain",
-        "STRING",
-        "TEXT",
-    ];
-    PREFERRED
+    PREFERRED_TEXT
         .iter()
         .find(|wanted| offered.iter().any(|has| has.eq_ignore_ascii_case(wanted)))
         .map(|found| (*found).to_owned())
@@ -48,24 +44,58 @@ pub fn best_text(offered: &[String]) -> Option<String> {
         })
 }
 
-/// Whether an offer carries a list of files.
-pub fn has_files(offered: &[String]) -> bool {
+/// The names of plain text, best first. See [`best_text`] for why the order is what it is.
+const PREFERRED_TEXT: [&str; 5] = [
+    "text/plain;charset=utf-8",
+    "UTF8_STRING",
+    "text/plain",
+    "STRING",
+    "TEXT",
+];
+
+/// The best of the media types an offer has that name plain text, spelled as the offer spells it.
+///
+/// The names only, without [`best_text`]'s fallback to anything under `text/`: a drag offers its
+/// address list and its markup under that tree too, and both are read as forms of their own.
+pub fn named_text(offered: &[String]) -> Option<String> {
+    PREFERRED_TEXT
+        .iter()
+        .find_map(|wanted| spelled(offered, wanted))
+}
+
+/// The entry of `offered` that is `name` in any case.
+///
+/// A source answers a request for the name it advertised, so a request is made in its spelling.
+pub fn spelled(offered: &[String], name: &str) -> Option<String> {
+    offered
+        .iter()
+        .find(|has| has.eq_ignore_ascii_case(name))
+        .cloned()
+}
+
+/// Whether an offer carries a list of addresses.
+pub fn has_uri_list(offered: &[String]) -> bool {
     offered.iter().any(|has| has.eq_ignore_ascii_case(URI_LIST))
+}
+
+/// Whether an offer carries markup.
+pub fn has_html(offered: &[String]) -> bool {
+    offered.iter().any(|has| has.eq_ignore_ascii_case(HTML))
 }
 
 /// Whether this backend can answer a request for `format` at all.
 ///
 /// Only plain text crosses this boundary, which is what the contract promises and no more. Markup,
 /// images and file lists on the *clipboard* are refused with a reason a caller can fall back from,
-/// rather than answered with an empty value it cannot tell from an empty clipboard. Files being
-/// dragged are a different path and do arrive.
+/// rather than answered with an empty value it cannot tell from an empty clipboard. Content being
+/// dragged is a different path and arrives in each form the drag reader takes.
 pub const fn is_supported(format: ClipboardFormat) -> bool {
     matches!(format, ClipboardFormat::Text)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{best_text, has_files, is_supported};
+    use super::{HTML, best_text, has_html, has_uri_list, is_supported, named_text, spelled};
     use zgui_platform::ClipboardFormat;
 
     fn offered(types: &[&str]) -> Vec<String> {
@@ -107,10 +137,30 @@ mod tests {
     }
 
     #[test]
-    fn a_list_of_files_is_recognised_whatever_its_case() {
-        assert!(has_files(&offered(&["text/uri-list"])));
-        assert!(has_files(&offered(&["TEXT/URI-LIST"])));
-        assert!(!has_files(&offered(&["text/plain"])));
+    fn a_list_of_addresses_and_markup_are_recognised_whatever_their_case() {
+        assert!(has_uri_list(&offered(&["text/uri-list"])));
+        assert!(has_uri_list(&offered(&["TEXT/URI-LIST"])));
+        assert!(!has_uri_list(&offered(&["text/plain"])));
+        assert!(has_html(&offered(&["TEXT/HTML"])));
+        assert!(!has_html(&offered(&["text/plain"])));
+    }
+
+    #[test]
+    fn a_name_is_asked_for_as_the_offer_spells_it() {
+        let shouted = offered(&["TEXT/PLAIN;CHARSET=UTF-8", "TEXT/HTML"]);
+        assert_eq!(
+            named_text(&shouted).as_deref(),
+            Some("TEXT/PLAIN;CHARSET=UTF-8")
+        );
+        assert_eq!(spelled(&shouted, HTML).as_deref(), Some("TEXT/HTML"));
+    }
+
+    #[test]
+    fn a_drag_s_address_list_and_markup_are_not_taken_for_its_text() {
+        // Both live under `text/`, which the clipboard's fallback would take as plain text.
+        let link = offered(&["text/uri-list", "text/html"]);
+        assert_eq!(named_text(&link), None);
+        assert_eq!(best_text(&link).as_deref(), Some("text/uri-list"));
     }
 
     #[test]
