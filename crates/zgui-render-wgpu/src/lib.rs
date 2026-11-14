@@ -70,6 +70,7 @@ pub use crate::effect::{
     EffectProgram, Effects, ParamsField, ParamsLayout, check_params as check_effect, declare,
 };
 pub use crate::error::{OpenError, PresentError, Rejection, RejectionReason};
+pub use crate::gpu::adapter::AdapterPreference;
 pub use crate::gpu::device::Gpu;
 pub use crate::gpu::formats::{Formats, SrgbTier};
 pub use crate::gpu::request::DeviceRequest;

@@ -34,6 +34,7 @@ use zgui_geom::{Device, Size};
 use zgui_render::{GpuUnavailable, RenderTarget};
 
 use crate::gpu::adapter;
+use crate::gpu::adapter::AdapterPreference;
 use crate::gpu::device::Gpu;
 use crate::gpu::formats::Formats;
 use crate::gpu::request::DeviceRequest;
@@ -93,7 +94,7 @@ pub struct SharedGraphics(Rc<Shared>);
 /// What a [`SharedGraphics`] states for each device it opens.
 ///
 /// The default states nothing: the backends that the environment allows, no Vulkan device
-/// extension and no request.
+/// extension, no request and the automatic adapter order.
 #[derive(Clone, Debug, Default)]
 pub struct GraphicsOptions {
     /// The backends to enumerate. `None` reads them from
@@ -103,6 +104,8 @@ pub struct GraphicsOptions {
     pub extensions: Vec<&'static CStr>,
     /// The features and limits to ask each device for.
     pub request: DeviceRequest,
+    /// The order in which to try the adapters of a backend tier.
+    pub preference: AdapterPreference,
 }
 
 /// What a [`SharedGraphics`] holds.
@@ -119,6 +122,8 @@ struct Shared {
     extensions: Vec<&'static CStr>,
     /// The features and limits every device opened here asks for, for the same reason.
     request: DeviceRequest,
+    /// The order in which the candidate loop tries the adapters of a tier.
+    preference: AdapterPreference,
 
     /// The device most windows draw on, opened by the first surface and replaced after a loss.
     primary: RefCell<Option<Rc<DeviceState>>>,
@@ -199,19 +204,20 @@ impl SharedGraphics {
     ///
     /// Every device that these graphics open reads the same options: the first device, a device
     /// for a surface that the primary adapter cannot present to, and the replacement after a
-    /// device loss. So a device that replaces a lost one has the features of the request.
+    /// device loss. So a device that replaces a lost one has the features of the request, and it
+    /// comes from the adapter that the preference sorts first where that adapter still works.
     ///
     /// ```
     /// use zgui_render_wgpu::wgpu;
-    /// use zgui_render_wgpu::{DeviceRequest, GraphicsOptions, SharedGraphics};
+    /// use zgui_render_wgpu::{AdapterPreference, DeviceRequest, GraphicsOptions, SharedGraphics};
     ///
     /// let graphics = SharedGraphics::with_options(GraphicsOptions {
     ///     request: DeviceRequest::new().with_optional_features(wgpu::Features::DEPTH_CLIP_CONTROL),
+    ///     preference: AdapterPreference::LowPower,
     ///     ..GraphicsOptions::default()
     /// });
     ///
-    /// let asked = graphics.request().optional_features();
-    /// assert!(asked.contains(wgpu::Features::DEPTH_CLIP_CONTROL));
+    /// assert_eq!(graphics.adapter_preference(), &AdapterPreference::LowPower);
     /// ```
     pub fn with_options(options: GraphicsOptions) -> Self {
         let backends = options.backends.unwrap_or_else(adapter::requested_backends);
@@ -220,6 +226,7 @@ impl SharedGraphics {
             backends,
             extensions: options.extensions,
             request: options.request,
+            preference: options.preference,
             adopted: false,
             primary: RefCell::new(None),
             fallbacks: RefCell::new(Vec::new()),
@@ -255,6 +262,7 @@ impl SharedGraphics {
             backends,
             extensions: gpu.vulkan_extensions().to_vec(),
             request: DeviceRequest::new(),
+            preference: AdapterPreference::Automatic,
             adopted: true,
             primary: RefCell::new(Some(DeviceState::new(gpu))),
             fallbacks: RefCell::new(Vec::new()),
@@ -316,6 +324,11 @@ impl SharedGraphics {
     /// `Gpu::device().limits()` on the device itself.
     pub fn request(&self) -> &DeviceRequest {
         &self.0.request
+    }
+
+    /// Returns the order in which the candidate loop tries the adapters of a tier.
+    pub fn adapter_preference(&self) -> &AdapterPreference {
+        &self.0.preference
     }
 
     /// The shared device, once a surface has chosen one.
@@ -565,6 +578,7 @@ impl SharedGraphics {
             &self.0.instances,
             &self.0.extensions,
             &self.0.request,
+            &self.0.preference,
             present,
         )
     }
