@@ -10,6 +10,9 @@
 //!
 //! The badge writes `[compact]` on the window root with `NodeRef::set_attribute`. No view builds
 //! the root, so this is how a rule anywhere in the sheet can select on a preference.
+//!
+//! The page scrolls under a thin bar: `--zgui-scrollbar-width` takes the keywords of
+//! `scrollbar-width`, which this build's style engine does not parse.
 
 use zgui::prelude::*;
 use zgui::view::AttrName;
@@ -210,6 +213,7 @@ const SHEET: &str = css!(
         color: #e9edf6;
         font-family: sans-serif;
         overflow: auto;
+        --zgui-scrollbar-width: thin;
     }
 
     .page { gap: 20px; padding: 28px 32px; }
