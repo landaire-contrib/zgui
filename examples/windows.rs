@@ -16,6 +16,8 @@
 //!   the window reports gets smaller as the zoom gets larger;
 //! * `color_scheme` is the light or dark scheme the window's document is styled in, which is what
 //!   `prefers-color-scheme` matches;
+//! * `decoration_source` says who draws the frame. A window that asks for the desktop's frame and
+//!   hears that the application draws it has to draw its own title bar, as `csd` does;
 //! * every window operation is a plain call with no platform branch around it: what this desktop
 //!   cannot do, it quietly does not do.
 
@@ -52,6 +54,16 @@ fn Main() -> impl IntoView {
     let scheme = {
         let this = this.clone();
         move || format!("{:?} colour scheme", this.color_scheme().get())
+    };
+    let frame = {
+        let this = this.clone();
+        move || {
+            if this.decoration_source().get().is_application() {
+                "the application draws the frame"
+            } else {
+                "the desktop draws the frame"
+            }
+        }
     };
     let count_of_windows = {
         let windows = windows.clone();
@@ -117,6 +129,7 @@ fn Main() -> impl IntoView {
             // What this window is, read reactively off its own handle.
             label(class = "readout") {{geometry}}
             label(class = "readout") {{scheme}}
+            label(class = "readout") {{frame}}
             label(class = "readout") {{count_of_windows}}
 
             row(class = "buttons") {
