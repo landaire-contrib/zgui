@@ -9,5 +9,6 @@ pub mod formats;
 pub mod loader;
 pub mod loss;
 pub mod pipeline_cache;
+pub mod request;
 pub mod surface;
 pub mod timing;

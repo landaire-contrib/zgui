@@ -9,6 +9,8 @@ use crate::error::OpenError;
 use crate::gpu::adapter;
 use crate::gpu::extensions;
 use crate::gpu::loss::DeviceLoss;
+use crate::gpu::request;
+use crate::gpu::request::DeviceRequest;
 
 /// The optional features asked for when they are offered, and done without when they are not.
 ///
@@ -74,30 +76,47 @@ fn with_presenter(adapter: &wgpu::Adapter, extensions: &[&'static CStr]) -> Vec<
     }
 }
 
-/// What a device on `adapter` is asked for.
+/// What a device on `adapter` is asked for, with `request` applied.
 ///
 /// Derived once and read by every path that opens a device. The hal path creates the device
 /// itself, so a feature set or a limit set of its own would give a device capabilities the
 /// ordinary path never grants, with nothing anywhere to report the difference.
-fn descriptor(adapter: &wgpu::Adapter) -> wgpu::DeviceDescriptor<'static> {
-    let limits = if adapter.get_info().backend == wgpu::Backend::Gl {
+///
+/// # Errors
+///
+/// Returns the [`OpenError`] of [`request::resolve`] where the adapter does not satisfy `request`.
+fn descriptor(
+    adapter: &wgpu::Adapter,
+    request: &DeviceRequest,
+) -> Result<wgpu::DeviceDescriptor<'static>, OpenError> {
+    let adapter_limits = adapter.limits();
+    let renderer_limits = if adapter.get_info().backend == wgpu::Backend::Gl {
         // Clamped to the adapter's own values, because the downlevel set asks for compute
         // limits a GL 3.3 context reports zero for. `request_device` refuses a limit set as a
         // whole, so asking for one number the adapter cannot meet costs the device — and with
         // it the coverage rasteriser, which is the very thing such a context is for.
         wgpu::Limits::downlevel_defaults()
-            .using_resolution(adapter.limits())
-            .or_worse_values_from(&adapter.limits())
+            .using_resolution(adapter_limits.clone())
+            .or_worse_values_from(&adapter_limits)
     } else {
-        adapter.limits()
+        adapter_limits.clone()
     };
-    wgpu::DeviceDescriptor {
+    let resolved = request::resolve(
+        request,
+        &request::Offer {
+            features: adapter.features(),
+            limits: &adapter_limits,
+            renderer_features: optional_features(),
+            renderer_limits,
+        },
+    )?;
+    Ok(wgpu::DeviceDescriptor {
         label: Some("zgui.device"),
-        required_features: optional_features() & adapter.features(),
-        required_limits: limits,
+        required_features: resolved.features,
+        required_limits: resolved.limits,
         memory_hints: memory_hints(),
         ..Default::default()
-    }
+    })
 }
 
 /// A device, its queue, the adapter they came from and the instance behind all three.
@@ -134,9 +153,14 @@ impl Gpu {
     /// the adapter reports, because the downlevel set names compute limits and a GL 3.3 context
     /// has no compute to name them for.
     ///
+    /// `request` states the features and limits that the application asks for in addition to the
+    /// features of the renderer. See [`DeviceRequest`].
+    ///
     /// # Errors
     ///
-    /// Returns [`OpenError::Refused`] where `request_device` refused.
+    /// Returns [`OpenError::ExperimentalFeatures`] where `request` requires an experimental feature,
+    /// [`OpenError::MissingFeatures`] or [`OpenError::Limit`] where the adapter does not satisfy
+    /// `request`, and [`OpenError::Refused`] where `request_device` refused.
     ///
     /// # Vulkan device extensions
     ///
@@ -169,8 +193,9 @@ impl Gpu {
         instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         extensions: &[&'static CStr],
+        request: &DeviceRequest,
     ) -> Result<Self, OpenError> {
-        let descriptor = descriptor(&adapter);
+        let descriptor = descriptor(&adapter, request)?;
         let extensions = with_presenter(&adapter, extensions);
         let (device, queue, extensions) = match extensions::open(&adapter, &extensions, &descriptor)
         {
@@ -188,7 +213,8 @@ impl Gpu {
     ///
     /// A browser resolves a device request only after the caller returns to its event loop, so a
     /// browser build awaits this function where a native build calls [`Gpu::open`]. The device
-    /// has the features and limits [`Gpu::open`] asks for. No Vulkan device extension is enabled.
+    /// has the features and limits [`Gpu::open`] asks for without a [`DeviceRequest`]. No Vulkan
+    /// device extension is enabled.
     ///
     /// `subpixel_text` says whether text may be drawn with per-channel coverage, which needs to
     /// know that the display has three stripes for each pixel and which way they run. A page
@@ -203,7 +229,7 @@ impl Gpu {
         adapter: wgpu::Adapter,
         subpixel_text: bool,
     ) -> Result<Self, OpenError> {
-        let mut descriptor = descriptor(&adapter);
+        let mut descriptor = descriptor(&adapter, &DeviceRequest::new())?;
         if !subpixel_text {
             descriptor
                 .required_features
