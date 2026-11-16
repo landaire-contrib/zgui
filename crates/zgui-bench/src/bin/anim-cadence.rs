@@ -235,7 +235,7 @@ fn open_device(
     if notify {
         let presented = Arc::clone(surface);
         builder = builder.with_pre_present(Box::new(move |target| {
-            presented.pre_present_frame(target.size, f64::from(target.scale.get()));
+            presented.pre_present_frame(target.size, f64::from(target.surface_scale.get()));
         }));
     }
     let mut renderer = builder.for_surface(target, handles)?;

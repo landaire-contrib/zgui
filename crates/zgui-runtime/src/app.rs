@@ -783,7 +783,8 @@ impl Runtime {
         let size = first_extent(surface.size(), self.live[index].spec.attributes.size, scale);
         let translucent = self.live[index].spec.attributes.transparent;
         let zoom = self.live[index].handle.requested_zoom();
-        let target = RenderTarget::new(size, zgui_geom::Scale::new(scale as f32 * zoom.get()));
+        let target = RenderTarget::new(size, zgui_geom::Scale::new(scale as f32 * zoom.get()))
+            .on_surface_at(zgui_geom::Scale::new(scale as f32));
         // A window asked to be transparent is composed translucent from its first frame: the
         // renderer picks a premultiplied presentation for it, and the paint gives its text ordinary
         // coverage.

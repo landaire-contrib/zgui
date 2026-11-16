@@ -127,8 +127,8 @@ pub trait Surface: Send + Sync + 'static {
     ///
     /// The same moment as [`Surface::pre_present_notify`], with the extent the buffer was drawn
     /// at. A platform that declares buffer metadata with each commit reads it from here, because
-    /// the surface can already be at a newer extent than the frame. The default ignores the
-    /// extent.
+    /// the surface can already be at a newer extent than the frame. `scale` is the surface's own
+    /// scale factor, which a window's zoom is not part of. The default ignores the extent.
     fn pre_present_frame(&self, size: Size<i32, Device>, scale: f64) {
         let _ = (size, scale);
         self.pre_present_notify();

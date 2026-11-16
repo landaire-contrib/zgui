@@ -232,6 +232,43 @@ fn a_zoom_change_lays_the_document_out_again() {
     harness.shut_down();
 }
 
+/// Asserts the scales the renderer of the first window is configured for.
+fn assert_target_scales(harness: &Harness<Runtime>, render: f32, surface: f32, when: &str) {
+    let target = harness.app().windows()[0]
+        .renderer()
+        .target()
+        .expect("the renderer is configured");
+    assert_eq!(target.scale.get(), render, "the render scale {when}");
+    assert_eq!(
+        target.surface_scale.get(),
+        surface,
+        "the surface scale {when}"
+    );
+}
+
+/// The platform declares a frame at the surface's scale, so a zoom in it would shrink the window.
+#[test]
+fn the_renderer_is_told_the_surface_scale_apart_from_the_zoom() {
+    let mut harness = app(CSS, zoom(1.5), boxes);
+    harness.settle(16);
+    assert_target_scales(&harness, 1.5, 1.0, "as the window opens");
+
+    harness.advance(Duration::from_millis(25));
+    harness.deliver_to_first(SurfaceEvent::ScaleFactorChanged {
+        scale_factor: 2.0,
+        size: Size::new(DevicePx(800.0), DevicePx(600.0)),
+    });
+    harness.settle(16);
+    assert_target_scales(&harness, 3.0, 2.0, "on another output");
+
+    harness.advance(Duration::from_millis(25));
+    harness.app().windows()[0].handle().set_zoom(zoom(0.5));
+    harness.settle(16);
+    assert_target_scales(&harness, 1.0, 2.0, "at another zoom");
+
+    harness.shut_down();
+}
+
 /// The text element's border box on a surface of 400 by 300 device pixels at `scale` and `zoom`.
 fn measured_at(scale: f64, zoom: Zoom) -> Rect<DevicePx, Device> {
     let mut harness = support::app_with_text(

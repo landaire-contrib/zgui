@@ -262,7 +262,7 @@ pub(crate) fn renderer(
     let builder = Builder::new()
         .with_present_pacing(pacing)
         .with_pre_present(Box::new(move |target| {
-            notified.pre_present_frame(target.size, f64::from(target.scale.get()));
+            notified.pre_present_frame(target.size, f64::from(target.surface_scale.get()));
         }));
     builder.for_surface(target, handles).map_or_else(
         |unavailable| {

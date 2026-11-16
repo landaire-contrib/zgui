@@ -106,6 +106,11 @@ pub struct OffscreenSurface {
     /// cannot read what was said cannot tell a window that honours `cursor` from one that ignores
     /// it.
     cursor_log: Mutex<Vec<CursorStyle>>,
+    /// The extent and scale the last frame about to be presented was declared at.
+    ///
+    /// A platform declares a buffer's scale and logical extent to the compositor from these, so a
+    /// scale that is wrong here shrinks or grows the window on the desktop.
+    last_presented: Mutex<Option<(Size<i32, Device>, f64)>>,
     /// Whether the surface has been shown.
     visible: AtomicBool,
     /// The last title it was given.
@@ -135,6 +140,7 @@ impl OffscreenSurface {
             a11y_listener: AtomicBool::new(true),
             text_input_log: Mutex::new(Vec::new()),
             cursor_log: Mutex::new(Vec::new()),
+            last_presented: Mutex::new(None),
             visible: AtomicBool::new(false),
             title: Mutex::new(String::new()),
             requested_attributes: Mutex::new(SurfaceAttributes::default()),
@@ -262,6 +268,14 @@ impl OffscreenSurface {
             .copied()
     }
 
+    /// The extent and scale the last frame about to be presented was declared at, if any was.
+    pub fn last_presented_frame(&self) -> Option<(Size<i32, Device>, f64)> {
+        *self
+            .last_presented
+            .lock()
+            .expect("the frame is not poisoned")
+    }
+
     /// Whether the surface has been shown.
     pub fn is_visible(&self) -> bool {
         self.visible.load(Ordering::Relaxed)
@@ -348,6 +362,13 @@ impl Surface for OffscreenSurface {
     }
 
     fn pre_present_notify(&self) {}
+
+    fn pre_present_frame(&self, size: Size<i32, Device>, scale: f64) {
+        *self
+            .last_presented
+            .lock()
+            .expect("the frame is not poisoned") = Some((size, scale));
+    }
 
     fn set_title(&self, title: &str) {
         *self.title.lock().expect("the title is not poisoned") = title.to_owned();
