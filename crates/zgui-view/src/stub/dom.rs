@@ -392,6 +392,16 @@ impl Dom for StubDom {
         }
     }
 
+    fn attribute_is(&self, el: NodeId, name: AttrName, value: &str) -> bool {
+        self.check(el);
+        self.tree
+            .borrow()
+            .nodes
+            .get(&el)
+            .and_then(|record| record.attributes.get(&name))
+            .is_some_and(|held| held == value)
+    }
+
     fn set_classes(&self, el: NodeId, classes: &[ClassName]) {
         self.check(el);
         if let Some(record) = self.tree.borrow_mut().nodes.get_mut(&el) {

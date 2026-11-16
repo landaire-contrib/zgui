@@ -70,6 +70,16 @@ impl Dom for DocumentDom {
         self.note_attribute(el, name, value);
     }
 
+    fn attribute_is(&self, el: NodeId, name: AttrName, value: &str) -> bool {
+        let Some(el) = self.live_index_of(el) else {
+            return false;
+        };
+        self.document()
+            .node(el)
+            .attrs()
+            .any(|attr| attr.name == name && attr.value.as_str() == value)
+    }
+
     fn set_classes(&self, el: NodeId, classes: &[ClassName]) {
         let Some(el) = self.live_index_of(el) else {
             return;

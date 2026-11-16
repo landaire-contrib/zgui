@@ -100,6 +100,12 @@ pub trait Dom {
     /// Sets or removes one attribute, which is visible to selector matching.
     fn set_attribute(&self, el: NodeId, name: AttrName, value: Option<&str>);
 
+    /// Whether the element `el` carries the attribute `name` with exactly `value`.
+    ///
+    /// A view asks this before it removes an attribute it no longer describes, so that a value
+    /// another writer put there since is left alone.
+    fn attribute_is(&self, el: NodeId, name: AttrName, value: &str) -> bool;
+
     /// Replaces the whole class list.
     fn set_classes(&self, el: NodeId, classes: &[ClassName]);
 

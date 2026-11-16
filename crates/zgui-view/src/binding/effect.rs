@@ -1,5 +1,8 @@
 //! One reactive binding from a computed value to one property of one element.
 
+use core::cell::RefCell;
+use std::rc::Rc;
+
 use zgui_reactive::Sink;
 
 use crate::cx::BuildCx;
@@ -52,6 +55,34 @@ impl Binding {
                 Self(Some(sink))
             }
         }
+    }
+
+    /// Writes what `compute` returns through `write`, and keeps writing it whenever it changes,
+    /// keeping the value last written in `last`.
+    ///
+    /// For a caller that has to know what the binding wrote after the binding is gone. An element
+    /// that stops describing an attribute removes it only while the node still holds the value its
+    /// binding wrote, so that a value another writer put there since is left alone.
+    pub fn recorded<T>(
+        cx: &BuildCx<'_>,
+        compute: impl Fn() -> T + 'static,
+        last: Rc<RefCell<Option<T>>>,
+        mut write: impl FnMut(&T) + 'static,
+    ) -> Self
+    where
+        T: PartialEq + 'static,
+    {
+        let sink = cx.with_owner(|| {
+            Sink::new(move || {
+                let next = compute();
+                let mut last = last.borrow_mut();
+                if last.as_ref() != Some(&next) {
+                    write(&next);
+                }
+                *last = Some(next);
+            })
+        });
+        Self(Some(sink))
     }
 
     /// Whether this binding has a reactive node behind it.
