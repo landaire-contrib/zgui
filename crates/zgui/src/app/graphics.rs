@@ -14,8 +14,9 @@ use zgui_runtime::{AppError, RendererFactory};
 /// The compositor notification belonging to `surface`, kept alive with it.
 fn pre_present(surface: &Arc<dyn Surface>) -> PrePresent {
     let surface = Arc::clone(surface);
+    // The surface's own scale. The zoomed one would shrink the window's geometry by the zoom.
     pre_present_callback(move |target| {
-        surface.pre_present_frame(target.size, f64::from(target.scale.get()));
+        surface.pre_present_frame(target.size, f64::from(target.surface_scale.get()));
     })
 }
 
@@ -172,6 +173,28 @@ mod tests {
             notifications.load(Ordering::Relaxed),
             1,
             "the renderer callback did not run its platform notification"
+        );
+    }
+
+    #[test]
+    fn a_zoomed_frame_is_declared_at_the_surfaces_own_scale() {
+        let offscreen = Arc::new(zgui_platform_headless::OffscreenSurface::new(
+            zgui_platform::SurfaceId::new(1),
+            zgui_geom::Size::new(zgui_geom::DevicePx(800.0), zgui_geom::DevicePx(600.0)),
+        ));
+        offscreen.set_scale_factor(1.25);
+        let surface: Arc<dyn Surface> = offscreen.clone();
+        let notify = pre_present(&surface);
+
+        notify(
+            RenderTarget::new(zgui_geom::Size::new(800, 600), zgui_geom::Scale::new(2.5))
+                .on_surface_at(zgui_geom::Scale::new(1.25)),
+        );
+
+        // Declared at the zoomed scale, the compositor would show the window at half its size.
+        assert_eq!(
+            offscreen.last_presented_frame(),
+            Some((zgui_geom::Size::new(800, 600), 1.25))
         );
     }
 

@@ -325,7 +325,7 @@ fn renderer(
     let notified = Arc::clone(surface);
     let pre_present: PrePresent = Box::new(move |target| {
         PRESENTS.fetch_add(1, Ordering::Relaxed);
-        notified.pre_present_frame(target.size, f64::from(target.scale.get()));
+        notified.pre_present_frame(target.size, f64::from(target.surface_scale.get()));
     });
     graphics
         .renderer_for_surface(target, handles, pacing, Some(pre_present))

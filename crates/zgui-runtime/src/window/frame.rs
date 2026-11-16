@@ -1041,7 +1041,8 @@ impl Window {
         let target = RenderTarget::new(
             Size::new(size.width.0 as i32, size.height.0 as i32),
             zgui_geom::Scale::new(self.scale),
-        );
+        )
+        .on_surface_at(zgui_geom::Scale::new(self.platform_scale));
         let target = if self.translucent {
             target.translucent()
         } else {

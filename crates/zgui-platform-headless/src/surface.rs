@@ -116,6 +116,11 @@ pub struct OffscreenSurface {
     input_region_log: Mutex<Vec<Region>>,
     /// Every opaque region the surface was given, in order.
     opaque_region_log: Mutex<Vec<Region>>,
+    /// The extent and scale the last frame about to be presented was declared at.
+    ///
+    /// A platform declares a buffer's scale and logical extent to the compositor from these, so a
+    /// scale that is wrong here shrinks or grows the window on the desktop.
+    last_presented: Mutex<Option<(Size<i32, Device>, f64)>>,
     /// Whether the surface has been shown.
     visible: AtomicBool,
     /// Whether the surface was last asked to be maximised.
@@ -156,6 +161,7 @@ impl OffscreenSurface {
             layer_log: Mutex::new(Vec::new()),
             input_region_log: Mutex::new(Vec::new()),
             opaque_region_log: Mutex::new(Vec::new()),
+            last_presented: Mutex::new(None),
             visible: AtomicBool::new(false),
             maximized: AtomicBool::new(false),
             fullscreen: Mutex::new(None),
@@ -349,6 +355,14 @@ impl OffscreenSurface {
             .clone()
     }
 
+    /// The extent and scale the last frame about to be presented was declared at, if any was.
+    pub fn last_presented_frame(&self) -> Option<(Size<i32, Device>, f64)> {
+        *self
+            .last_presented
+            .lock()
+            .expect("the frame is not poisoned")
+    }
+
     /// Whether the surface has been shown.
     pub fn is_visible(&self) -> bool {
         self.visible.load(Ordering::Relaxed)
@@ -435,6 +449,13 @@ impl Surface for OffscreenSurface {
     }
 
     fn pre_present_notify(&self) {}
+
+    fn pre_present_frame(&self, size: Size<i32, Device>, scale: f64) {
+        *self
+            .last_presented
+            .lock()
+            .expect("the frame is not poisoned") = Some((size, scale));
+    }
 
     fn set_title(&self, title: &str) {
         *self.title.lock().expect("the title is not poisoned") = title.to_owned();
