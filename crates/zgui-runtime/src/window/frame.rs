@@ -72,6 +72,16 @@ pub struct FrameReport {
     pub animated: usize,
 }
 
+/// What the paint step of one frame did.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Painted {
+    /// What the renderer made of the frame, or [`SkipReason::Occluded`] for a withheld frame.
+    outcome: FrameOutcome,
+    /// Whether the frame reached the renderer. A withheld frame keeps its damage for the next
+    /// frame that is drawn.
+    submitted: bool,
+}
+
 /// What a parked window deadline services.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DeadlineKind {
@@ -546,7 +556,8 @@ impl Window {
         self.binding.before_paint(timestamp);
         mark("f.paint");
         let paint_start = Instant::now();
-        let outcome = self.paint_and_draw();
+        let Painted { outcome, submitted } = self.paint_and_draw();
+        let retires_damage = submitted && outcome.retires_damage();
         let paint_elapsed = paint_start.elapsed();
         mark("f.painted");
         // Immediately after the frame that produced them, and against the output this window is
@@ -564,19 +575,23 @@ impl Window {
         // Named for what it counts. A window with nothing moving in it is supposed to leave this
         // alone, so the assertion written against it — that a still document draws nothing over
         // three hundred refreshes — reads as zero when it holds rather than as three hundred.
-        if outcome.retires_damage() {
+        if retires_damage {
             counter::bump(Counter::FramesDrawn);
         }
 
         // A frame that never reached the renderer keeps its damage; every other outcome retires it,
         // because what retires damage is the work having been submitted rather than a frame having
-        // been presented.
-        if outcome.retires_damage() {
+        // been presented. A frame withheld behind an occluded or starved surface reached no
+        // renderer, and the frame that ends the hold has to draw what changed during it.
+        if retires_damage {
             self.damage = DamageSet::new();
             self.damage_extent = self.renderer.target().map(|target| target.size);
-            // The chunk notes were consumed by the same submission. A skipped frame keeps them
-            // for the next drawn one, and anything noted after this point — a budget eviction —
-            // stands until then.
+        }
+        // The chunk notes were consumed by the same submission. A skipped frame keeps them for the
+        // next drawn one, and anything noted after this point — a budget eviction — stands until
+        // then. A withheld frame drops them as well, so a long hold does not grow them: a chunk the
+        // renderer never saw is drawn from the frame's own arrays.
+        if outcome.retires_damage() {
             self.scene.clear_chunk_notes();
         }
         // A drawing drawn from a stretched layer, or deferred by the layer budget, is encoded
@@ -1603,7 +1618,7 @@ impl Window {
     /// what puts the texels on the device, because tiles are allocated as the walk reaches them
     /// and uploaded in one batch. Drawing before the flush samples texels that were never written,
     /// which is not a blank glyph but whichever glyph occupied the rectangle before.
-    fn paint_and_draw(&mut self) -> FrameOutcome {
+    fn paint_and_draw(&mut self) -> Painted {
         use zgui_profile::latency::mark;
         let vector_before = self.renderer.vector_status();
         let size = self.surface.size();
@@ -1930,7 +1945,16 @@ impl Window {
             // fired and a sleeping task resumed behind a minimised window. A starved surface takes
             // the same door for the same reason — its acquisition would block the loop for up to a
             // second, and the probe is the one frame allowed to pay that.
-            return FrameOutcome::Skipped(SkipReason::Occluded);
+            //
+            // The frame keeps its damage for the next drawn one. A scroll copy is not made either,
+            // so a frame that would have moved pixels owes all of them.
+            if shift.is_some() {
+                self.damage = DamageSet::full();
+            }
+            return Painted {
+                outcome: FrameOutcome::Skipped(SkipReason::Occluded),
+                submitted: false,
+            };
         }
         zgui_profile::latency::note_with("p.draw", || {
             format!("{}x{}", viewport.width, viewport.height)
@@ -1957,7 +1981,10 @@ impl Window {
                 self.vello_initializers = complex_this_frame;
             }
         }
-        outcome
+        Painted {
+            outcome,
+            submitted: true,
+        }
     }
 }
 
