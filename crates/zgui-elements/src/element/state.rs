@@ -6,7 +6,7 @@ use zgui_view::{
     NodeId, NodeRef, View,
 };
 
-use crate::element::attribute::Attribute;
+use crate::element::attribute::{Attribute, Written};
 
 /// A built element: its node, whatever keeps its attributes up to date, and its children.
 ///
@@ -24,6 +24,9 @@ pub struct ElementState {
     listeners: Vec<ListenerRegistration>,
     /// The handles the description bound to the element.
     handles: Vec<NodeRef>,
+    /// What the current description wrote, so that the next one can remove what it does not write
+    /// again.
+    written: Vec<Written>,
     /// The children, in order.
     children: Vec<AnyViewState>,
 }
@@ -36,6 +39,7 @@ impl ElementState {
             bindings: Vec::new(),
             listeners: Vec::new(),
             handles: Vec::new(),
+            written: Vec::new(),
             children: Vec::new(),
         }
     }
@@ -50,6 +54,9 @@ impl ElementState {
 
     /// Writes a whole description onto the element, replacing whatever was keeping the previous
     /// one up to date.
+    ///
+    /// What the previous description wrote and this one does not is removed first, so the element
+    /// carries only what this description says.
     ///
     /// The class list goes on first and the accessibility description last, because everything in
     /// between may add to either: a class toggle has to land on top of the merged list, and an
@@ -71,14 +78,20 @@ impl ElementState {
         for listener in self.listeners.drain(..) {
             listener.remove(&**cx.dom());
         }
+        self.remove_unwritten(&attributes, &classes, a11y.is_some(), cx.dom());
         if !classes.is_empty() {
             cx.dom().set_classes(self.node, classes.names());
+            self.written.push(Written::Classes);
         }
         let previous = core::mem::take(&mut self.handles);
         for attribute in attributes {
-            if let Some(binding) =
-                attribute.apply(cx, self.node, &mut self.listeners, &mut self.handles)
-            {
+            if let Some(binding) = attribute.apply(
+                cx,
+                self.node,
+                &mut self.listeners,
+                &mut self.handles,
+                &mut self.written,
+            ) {
                 self.bindings.push(binding);
             }
         }
@@ -90,6 +103,35 @@ impl ElementState {
         if let Some(a11y) = a11y {
             self.bindings
                 .push(zgui_view::binding::bind_semantics(cx, self.node, a11y));
+            self.written.push(Written::Semantics);
+        }
+    }
+
+    /// Removes what the previous description wrote and the next one does not, leaving the record
+    /// empty for the next one to fill.
+    ///
+    /// Removal comes before any of the next description is written: a toggle of a class the new
+    /// class list contains, or a style text the new declarations sit in, would otherwise take away
+    /// what the new description just wrote.
+    fn remove_unwritten(
+        &mut self,
+        attributes: &[Attribute],
+        classes: &Classes,
+        semantics: bool,
+        dom: &DomHandle,
+    ) {
+        // A description holds a handful of entries, where a linear scan costs less than an index.
+        for written in self.written.drain(..) {
+            let rewritten = match written {
+                Written::Classes => !classes.is_empty(),
+                Written::Semantics => semantics,
+                _ => attributes
+                    .iter()
+                    .any(|attribute| attribute.rewrites(&written)),
+            };
+            if !rewritten {
+                written.remove(dom, self.node);
+            }
         }
     }
 

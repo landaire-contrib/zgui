@@ -115,13 +115,14 @@ impl<T: Tag> View for Element<T> {
     ///
     /// The node is never re-created — it is the same element, described again — so a rebuild
     /// replaces the bindings and rebuilds each child in place. What an earlier description wrote
-    /// and this one does not mention stays written, exactly as it would if the two descriptions
-    /// were two separate statements about the same element.
+    /// and this one does not mention is removed, so the element carries this description and
+    /// nothing from an earlier one. Every element of one name is the same view type, so two
+    /// different descriptions behind one closure or [`AnyView`] arrive here rather than replacing
+    /// the node.
     ///
-    /// Listeners are the exception, and they have to be: they are replaced rather than added to.
-    /// An element written inside a closure is described again on every change the closure reads,
-    /// and a listener kept from each of those descriptions would mean one extra call of the
-    /// handler per change.
+    /// Listeners are replaced in the same way rather than added to. An element written inside a
+    /// closure is described again on every change the closure reads, and a listener kept from each
+    /// of those descriptions would mean one extra call of the handler per change.
     fn rebuild(self, state: &mut Self::State, cx: &mut BuildCx<'_>) {
         state.apply(self.attributes, self.classes, self.a11y, cx);
         state.rebuild_children(self.children, cx);

@@ -212,6 +212,10 @@ impl Dom for RecordingDom {
         }
     }
 
+    fn attribute_is(&self, el: NodeId, name: AttrName, value: &str) -> bool {
+        self.tree.attribute_is(el, name, value)
+    }
+
     fn set_classes(&self, el: NodeId, classes: &[ClassName]) {
         self.tree.set_classes(el, classes);
         self.transcript.push(Op::SetClasses {
