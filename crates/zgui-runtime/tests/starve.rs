@@ -17,7 +17,10 @@ use std::time::Duration;
 
 use zgui_atlas::TextureSink;
 use zgui_bits::DamageSet;
+use zgui_geom::{Device, Point, Rect, Size};
 use zgui_platform::{Surface, SurfaceEvent};
+use zgui_reactive::RwSignal;
+use zgui_reactive::prelude::{Get, Set};
 use zgui_render::{
     ExternalTexture, FrameOutcome, MemoryReport, RenderCapabilities, RenderTarget, Renderer,
     SkipReason, TextureHandle,
@@ -29,10 +32,14 @@ use zgui_view::{BuildCx, IntoView, View, ViewHost};
 /// What the next acquisitions are scripted to do; empty means the capture default, which presents.
 type Script = Rc<RefCell<VecDeque<FrameOutcome>>>;
 
+/// The damage of every frame that reached the renderer, in order.
+type Drawn = Rc<RefCell<Vec<DamageSet>>>;
+
 /// A capture renderer whose draw outcomes a test scripts.
 struct Scripted {
     inner: zgui_testkit_scene::CaptureRenderer,
     script: Script,
+    drawn: Drawn,
 }
 
 impl Renderer for Scripted {
@@ -49,6 +56,7 @@ impl Renderer for Scripted {
     }
 
     fn draw(&mut self, scene: &Scene, damage: &DamageSet) -> FrameOutcome {
+        self.drawn.borrow_mut().push(damage.clone());
         let drawn = self.inner.draw(scene, damage);
         self.script.borrow_mut().pop_front().unwrap_or(drawn)
     }
@@ -72,21 +80,31 @@ impl Renderer for Scripted {
 
 /// A still document over a scripted renderer, with a heartbeat driving continuous frames.
 fn window_with_script() -> (zgui_platform_headless::Harness<Runtime>, Script) {
+    let (harness, script, _) = window_lit_by(RwSignal::new(false));
+    (harness, script)
+}
+
+/// The same document, its block recoloured while `lit` holds, and the damage of every drawn frame.
+fn window_lit_by(lit: RwSignal<bool>) -> (zgui_platform_headless::Harness<Runtime>, Script, Drawn) {
     let script: Script = Rc::default();
+    let drawn: Drawn = Rc::default();
     let handed = Rc::clone(&script);
+    let recorded = Rc::clone(&drawn);
     let handler = App::new()
         .with_title("starve")
         .with_size(400.0, 300.0)
         .with_stylesheet(
             "root { display: block; width: 400px; height: 300px }
              .block { display: block; width: 100px; height: 100px;
-                      background-color: rgb(200, 200, 200) }",
+                      background-color: rgb(200, 200, 200) }
+             .block.lit { background-color: rgb(20, 20, 20) }",
         )
         .with_renderer(Box::new(
             move |_surface: &Arc<dyn Surface>, target: RenderTarget| {
                 let mut renderer = Scripted {
                     inner: zgui_testkit_scene::CaptureRenderer::new(),
                     script: Rc::clone(&handed),
+                    drawn: Rc::clone(&recorded),
                 };
                 Renderer::configure(&mut renderer, target);
                 Ok::<_, AppError>(Box::new(renderer) as Box<dyn Renderer>)
@@ -95,7 +113,11 @@ fn window_with_script() -> (zgui_platform_headless::Harness<Runtime>, Script) {
         .into_handler(move |cx: &mut BuildCx<'_>| {
             let view = zgui_elements::column()
                 .class("root")
-                .child(zgui_elements::r#box().class("block"))
+                .child(
+                    zgui_elements::r#box()
+                        .class("block")
+                        .class_toggle(zgui_view::ClassName::new("lit"), move || lit.get()),
+                )
                 .into_view();
             Box::new(view.build(cx)) as Box<dyn zgui_view::Anchor>
         })
@@ -103,7 +125,7 @@ fn window_with_script() -> (zgui_platform_headless::Harness<Runtime>, Script) {
     let mut harness = zgui_platform_headless::Harness::new(handler);
     harness.platform().offscreens()[0].set_refresh_rate_millihertz(Some(60_000));
     harness.settle(8);
-    (harness, script)
+    (harness, script, drawn)
 }
 
 /// A frame callback that always registers its successor, and how many times it ran.
@@ -312,4 +334,51 @@ fn a_timer_under_the_latch_runs_without_presenting_and_keeps_the_probe() {
         "a timer's frame must keep the latch: its present would block the loop"
     );
     harness.assert_park_invariant();
+}
+
+#[test]
+fn what_changed_under_the_latch_is_drawn_once_the_latch_ends() {
+    // A battle's results arriving while the window sits on a workspace nobody is looking at: the
+    // document changes under the latch, and the frame after it must still owe that change.
+    let lit = RwSignal::new(false);
+    let (mut harness, script, drawn) = window_lit_by(lit);
+    harness.settle(4);
+
+    script
+        .borrow_mut()
+        .push_back(FrameOutcome::Skipped(SkipReason::Timeout));
+    let host = Rc::clone(harness.app().windows()[0].host());
+    host.schedule(Duration::ZERO, zgui_view::Repeat::Once, Rc::new(|| {}));
+    harness.settle(4);
+    assert!(harness.app().windows()[0].is_starved());
+
+    drawn.borrow_mut().clear();
+    lit.set(true);
+    harness.settle(4);
+    assert!(
+        drawn.borrow().is_empty(),
+        "a starved window drew: the change below would be answered by that frame"
+    );
+    assert!(harness.app().windows()[0].is_starved());
+
+    // Away from the block, so the pointer itself damages nothing there.
+    harness.deliver_to_first(SurfaceEvent::Pointer {
+        event: zgui_vocab::PointerEvent::mouse(zgui_geom::Point::new(
+            zgui_geom::CssPx(300.0),
+            zgui_geom::CssPx(250.0),
+        )),
+        action: zgui_vocab::PointerAction::Moved,
+        modifiers: zgui_vocab::Modifiers::NONE,
+        timestamp: zgui_vocab::Timestamp::ORIGIN,
+    });
+    harness.settle(4);
+    assert!(!harness.app().windows()[0].is_starved());
+
+    let block: Rect<i32, Device> = Rect::new(Point::new(0, 0), Size::new(100, 100));
+    let frames = drawn.borrow();
+    assert!(
+        frames.iter().any(|damage| damage.contains(block)),
+        "the block recoloured under the latch was never redrawn after it: {:?}",
+        frames.iter().map(DamageSet::rects).collect::<Vec<_>>()
+    );
 }
