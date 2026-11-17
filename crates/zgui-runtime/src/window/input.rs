@@ -260,9 +260,15 @@ impl Window {
             return;
         }
 
+        // The line a wheel's scroll container would move by, so a handler can scale a line delta
+        // the same way.
+        let line_height = match (event, target) {
+            (SurfaceEvent::Wheel { .. }, Some(node)) => Some(self.scroll_units(node).line),
+            _ => None,
+        };
         let dispatched = {
             let host = std::rc::Rc::clone(&self.host);
-            let mut sink = HostSink::new(&host);
+            let mut sink = HostSink::new(&host, self.click_settings).with_line_height(line_height);
             dispatch::run(
                 self, &steps, kind, target, &payload, samples, modifiers, timestamp, &mut sink,
             )
@@ -667,7 +673,9 @@ impl Window {
                         event: pointer,
                         timestamp: sent,
                         ..
-                    } => self.clicks.note(node, *sent, pointer.position),
+                    } => self
+                        .clicks
+                        .note(self.click_settings, node, *sent, pointer.position),
                     _ => {
                         self.clicks.forget();
                         false

@@ -66,7 +66,10 @@ impl Window {
     /// over a list of 14-pixel rows and a notch over a heading must not move the same distance, and
     /// a constant here is a wheel that feels wrong on every document and is never obviously broken
     /// on any of them.
-    pub(super) fn scroll_units(&mut self, container: zgui_dom::NodeKey) -> zgui_input::ScrollUnits {
+    pub(in crate::window) fn scroll_units(
+        &mut self,
+        container: zgui_dom::NodeKey,
+    ) -> zgui_input::ScrollUnits {
         let style = self
             .layout
             .borrow()

@@ -177,7 +177,7 @@ impl Window {
             return;
         }
         let host = std::rc::Rc::clone(&self.host);
-        let mut sink = HostSink::new(&host);
+        let mut sink = HostSink::new(&host, self.click_settings);
         dispatch::run(
             self,
             &steps,

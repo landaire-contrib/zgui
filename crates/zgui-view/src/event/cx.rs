@@ -4,9 +4,10 @@ use core::cell::Cell;
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use zgui_geom::{Device, DevicePx, Rect};
+use zgui_geom::{CssPx, Device, DevicePx, Rect};
 use zgui_vocab::{
-    DefaultAction, EventKind, Modifiers, Payload, Phase, PointerSample, Propagation, Timestamp,
+    ClickSettings, DefaultAction, EventKind, Modifiers, Payload, Phase, PointerSample, Propagation,
+    Timestamp,
 };
 
 use crate::event::sink::EventSink;
@@ -171,6 +172,18 @@ impl<'a, E: EventView> EventCx<'a, E> {
     /// there when the frame it is responding to was painted.
     pub fn bounds(&self) -> Option<Rect<DevicePx, Device>> {
         self.bounds
+    }
+
+    /// The desktop's double-click time and distance, for a handler that counts presses itself.
+    pub fn click_settings(&self) -> ClickSettings {
+        self.sink.click_settings()
+    }
+
+    /// The line height of the element a wheel event was aimed at, which its scroll container
+    /// moves by per line. A handler turns a line delta into pixels with it:
+    /// `ev.delta.to_pixels(line)`. `None` for other events.
+    pub fn line_height(&self) -> Option<CssPx> {
+        self.sink.line_height()
     }
 
     /// Asks that the event travel no further, after this element's other listeners have run.

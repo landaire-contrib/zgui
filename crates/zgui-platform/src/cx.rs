@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use zgui_vocab::ClickSettings;
+
 use crate::capabilities::PlatformCapabilities;
 use crate::clipboard::Clipboard;
 use crate::clock::Clock;
@@ -79,6 +81,13 @@ pub trait PlatformCx {
     /// is expressed in.
     fn scroll_settings(&self) -> ScrollSettings {
         ScrollSettings::default()
+    }
+
+    /// How soon and how near a second press must follow the first to make a double click.
+    ///
+    /// The default is [`ClickSettings::desktop`], for a backend that cannot read a desktop setting.
+    fn click_settings(&self) -> ClickSettings {
+        ClickSettings::default()
     }
 
     /// Where the time comes from.

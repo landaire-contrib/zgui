@@ -74,8 +74,8 @@ pub use crate::event::payload::{
     UnknownNamedKey, ValueChange, ValueEvent, WheelEvent,
 };
 pub use crate::event::{
-    DefaultAction, EventKind, ListenerOptions, Listeners, Path, Payload, PayloadKind, Phase,
-    Propagation, RouteStep, UnknownEventKind, route,
+    ClickSettings, DefaultAction, EventKind, ListenerOptions, Listeners, Path, Payload,
+    PayloadKind, Phase, Propagation, RouteStep, UnknownEventKind, route,
 };
 pub use crate::modifiers::Modifiers;
 pub use crate::prop::{PropKey, PropValue};

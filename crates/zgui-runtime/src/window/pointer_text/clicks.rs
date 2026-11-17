@@ -6,7 +6,7 @@
 
 use zgui_dom::NodeKey;
 use zgui_geom::{Css, CssPx, Point};
-use zgui_vocab::Timestamp;
+use zgui_vocab::{ClickSettings, Timestamp};
 
 use crate::window::clicks::follows;
 
@@ -18,16 +18,20 @@ pub(in crate::window) struct TextClicks {
 }
 
 impl TextClicks {
-    /// Notes a press into `node` at `at` and `when`, and answers its count: 1, 2 or 3.
+    /// Notes a press into `node` at `at` and `when`, and answers its count under `settings`: 1, 2
+    /// or 3.
     pub(in crate::window) fn note(
         &mut self,
+        settings: ClickSettings,
         node: NodeKey,
         when: Timestamp,
         at: Point<CssPx, Css>,
     ) -> u8 {
         let count = self
             .last
-            .filter(|&(held, then, there, _)| follows((held, then, there), (node, when, at)))
+            .filter(|&(held, then, there, _)| {
+                follows(settings, (held, then, there), (node, when, at))
+            })
             .map_or(1, |(.., count)| if count == 3 { 1 } else { count + 1 });
         self.last = Some((node, when, at, count));
         count

@@ -102,6 +102,14 @@ impl PlatformCx for WaylandCx<'_> {
         crate::input::desktop_scroll_settings()
     }
 
+    /// Wayland has no double-click setting a client can read, so this is the 400 ms and 5 pixels
+    /// that GPUI uses on Linux.
+    fn click_settings(&self) -> zgui_platform::ClickSettings {
+        zgui_platform::ClickSettings::desktop()
+            .with_interval(std::time::Duration::from_millis(400))
+            .with_slop(zgui_geom::CssPx(5.0))
+    }
+
     fn request_exit(&self) {
         self.state.live.exiting.set(true);
         // The loop is parked on the socket until something happens, and nothing further will.

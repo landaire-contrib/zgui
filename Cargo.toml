@@ -140,6 +140,8 @@ objc2 = "0.6.4"
 block2 = "0.6.2"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSUserDefaults", "NSGeometry", "NSObject", "NSNotification", "NSOperation", "block2"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSResponder", "NSButton", "NSControl", "NSGraphics", "NSRunningApplication", "NSEvent", "block2"] }
+# The desktop's double-click time and distance, which winit does not expose on Windows.
+windows-sys = { version = "0.61.2", features = ["Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 zbus = "5.18"
 # The native handles a surface hands a graphics API, named by the platform contract and by both
 # backends that implement it.

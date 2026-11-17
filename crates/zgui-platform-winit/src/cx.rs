@@ -307,6 +307,10 @@ impl PlatformCx for WinitCx<'_> {
         crate::input::scrolling::desktop_scroll_settings()
     }
 
+    fn click_settings(&self) -> zgui_platform::ClickSettings {
+        crate::input::clicks::desktop_click_settings()
+    }
+
     fn clock(&self) -> Arc<dyn Clock> {
         self.shared.clock()
     }
