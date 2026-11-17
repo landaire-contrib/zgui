@@ -41,6 +41,9 @@ root { display: block; width: 400px; height: 300px; background-color: #ffffff }
 .row { display: block; width: 400px; height: 20px; background-color: #202020 }
 .over { display: block; width: 400px; height: 40px; background-color: #900000;
         position: absolute; top: 10px; left: 0 }
+.frame { display: block; width: 398px; height: 150px; overflow: hidden;
+         border: 1px solid #808080 }
+.rounded { border-radius: 24px }
 ";
 
 /// How tall one row is in device pixels, which is what the sheet says.
@@ -72,13 +75,15 @@ fn plain(_surface: &Arc<dyn Surface>, target: RenderTarget) -> Result<Box<dyn Re
 use std::sync::Arc;
 
 /// A window holding one scroll container, with `port_class` on it, `overlay` drawn over it, and
-/// `backing_class` on the box the port is composited over.
+/// `backing_class` on the box the port is composited over. With `frame`, the container stands in
+/// a box with that class.
 fn listing(
     rows: usize,
     port_class: &'static str,
     overlay: bool,
     shifts: bool,
     backing_class: &'static str,
+    frame: Option<&'static str>,
 ) -> Harness<Runtime> {
     let renderer: Factory = if shifts {
         Box::new(shifting)
@@ -102,10 +107,16 @@ fn listing(
             for _ in 0..rows {
                 port = port.child(zgui_elements::column().class("row"));
             }
-            let mut root = zgui_elements::column()
-                .class("root")
-                .class(backing_class)
-                .child(port);
+            let root = zgui_elements::column().class("root").class(backing_class);
+            let mut root = match frame {
+                Some(frame_class) => root.child(
+                    zgui_elements::column()
+                        .class("frame")
+                        .class(frame_class)
+                        .child(port),
+                ),
+                None => root.child(port),
+            };
             if overlay {
                 root = root.child(zgui_elements::column().class("over"));
             }
@@ -148,7 +159,7 @@ fn backed(
     shifts: bool,
     backing_class: &'static str,
 ) -> (u64, f32) {
-    let mut harness = listing(rows, port_class, overlay, shifts, backing_class);
+    let mut harness = listing(rows, port_class, overlay, shifts, backing_class, None);
     harness.settle(16);
     let before = topmost_row(&harness);
     let mark = zgui_profile::counter::snapshot();
@@ -284,17 +295,11 @@ fn something_drawn_over_the_port_refuses_the_shift() {
 fn the_port_moved_is_where_the_list_stands() {
     let _recording = Recording::begin();
 
-    let mut harness = listing(200, "away", false, true, "");
+    let mut harness = listing(200, "away", false, true, "", None);
     harness.settle(16);
     wheel(&mut harness, 3.0);
 
-    let window = harness.app().windows().first().expect("a window");
-    let shift = window
-        .renderer()
-        .as_any()
-        .and_then(|any| any.downcast_ref::<zgui_testkit_scene::CaptureRenderer>())
-        .expect("the window draws through the capture renderer")
-        .last_shift()
+    let shift = last_shift(&harness)
         .expect("an opaque list over a plain page scrolls by moving its pixels");
     assert_eq!(
         (shift.port.origin.x, shift.port.origin.y),
@@ -304,5 +309,58 @@ fn the_port_moved_is_where_the_list_stands() {
     assert!(
         shift.port.size.height <= 200 && shift.port.size.width <= 300,
         "the port cannot reach past the list: {shift:?}",
+    );
+}
+
+/// The last shift the window handed its renderer.
+fn last_shift(harness: &Harness<Runtime>) -> Option<zgui_render::ScrollShift> {
+    harness
+        .app()
+        .windows()
+        .first()
+        .expect("a window")
+        .renderer()
+        .as_any()
+        .and_then(|any| any.downcast_ref::<zgui_testkit_scene::CaptureRenderer>())
+        .expect("the window draws through the capture renderer")
+        .last_shift()
+}
+
+/// A port taller than the box that clips it moves only what that box shows.
+///
+/// Past the frame's padding edge are its border and the page, which do not scroll. A port moved
+/// whole drags the border's bottom line up into the content one frame at a time, and the band
+/// the move uncovers draws it back each frame, so the content is left striped with it.
+#[test]
+fn the_port_moved_is_what_its_ancestors_show() {
+    let _recording = Recording::begin();
+
+    let mut harness = listing(200, "", false, true, "", Some(""));
+    harness.settle(16);
+    wheel(&mut harness, 3.0);
+
+    let shift = last_shift(&harness).expect("an opaque list in a plain frame scrolls by moving");
+    let bottom = shift.port.origin.y + shift.port.size.height;
+    // The frame's 150 pixels include its 1 pixel border, so its padding edges are at 1 and 149.
+    assert_eq!(
+        (shift.port.origin.y, bottom),
+        (1, 149),
+        "the port has to stop at the frame's padding edge, short of its border: {shift:?}",
+    );
+}
+
+/// A rounded corner across the port is not a rectangle a copy can keep to, so the shift is refused.
+#[test]
+fn a_rounded_frame_across_the_port_refuses_the_shift() {
+    let _recording = Recording::begin();
+
+    let mut harness = listing(200, "", false, true, "", Some("rounded"));
+    harness.settle(16);
+    wheel(&mut harness, 3.0);
+
+    assert_eq!(
+        last_shift(&harness),
+        None,
+        "the corners show the page behind the frame, which does not scroll",
     );
 }

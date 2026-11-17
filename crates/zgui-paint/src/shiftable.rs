@@ -2,15 +2,17 @@
 //!
 //! A renderer that keeps its composed frame can answer a scroll by translating the part of the port
 //! that is still valid. What it cannot do is decide whether that is the same picture, because the
-//! two things that would make it a different picture are properties of the document:
+//! things that would make it a different picture are properties of the document:
 //!
 //! * **something else draws in the port.** A tooltip over a list, a dialog, a sibling that overlaps
 //!   it — the composed pixels are the composite, so moving them moves whatever was composited in.
 //! * **the port is not opaque.** The composite includes whatever showed through the content, and
 //!   what showed through does not scroll. Moving it smears it.
+//! * **an ancestor clips the port.** What lies past the ancestor's edge is not the content's, so
+//!   only the part the clips show is moved. A rounded corner or a mask across it is a refusal.
 //!
-//! Both are refusals rather than corrections. The fallback is the frame the window would have drawn
-//! anyway, so a refusal costs the optimisation and never the picture.
+//! The first two are refusals rather than corrections. The fallback is the frame the window would
+//! have drawn anyway, so a refusal costs the optimisation and never the picture.
 //!
 //! # What is not tested here, because it cannot happen
 //!
@@ -24,10 +26,11 @@ use zgui_css::ComputedStyle;
 use zgui_css::values::image::ImageValue;
 use zgui_dom::NodeKey;
 use zgui_dom::side::BoxKey;
-use zgui_geom::{Device, DevicePx, Rect, Size};
+use zgui_geom::{Device, DevicePx, Point, Rect, Size};
 use zgui_layout::FragmentKind;
 use zgui_layout::LayoutStore;
 use zgui_layout::scroll_region;
+use zgui_scene::{ClipId, ClipTable};
 
 use crate::walk::stacking::children_in_paint_order;
 
@@ -44,17 +47,24 @@ pub enum Refusal {
     NotOpaque,
     /// Something outside the container draws inside the port.
     Overdrawn,
+    /// The clips it is drawn under leave none of the port on the device.
+    ClippedAway,
+    /// A rounded corner or a mask it is drawn under cuts into the port, which a rectangular copy
+    /// cannot follow.
+    ShapedClip,
 }
 
-/// Whether `container`'s scrollport may have its pixels moved, and the port if it may.
+/// Whether `container`'s scrollport may have its pixels moved, and the part of the port that may.
 ///
 /// The port is in device pixels, in the same space the damage set is measured in: `placements`
 /// puts it there. The tests below compare it against other fragments on the device too, because
-/// fragments outside the container can measure their rectangles in other anchors.
+/// fragments outside the container can measure their rectangles in other anchors. `clips` holds the
+/// chain the container is drawn under, which cuts the port to what is shown of it.
 pub fn port_may_be_shifted(
     store: &LayoutStore,
     container: NodeKey,
     placements: &zgui_scene::Placements,
+    clips: &ClipTable,
 ) -> Result<Rect<DevicePx, Device>, Refusal> {
     let Some(&box_key) = store.boxes_of(container).first() else {
         return Err(Refusal::NotAScroller);
@@ -74,6 +84,7 @@ pub fn port_may_be_shifted(
     // every border box the tests below read.
     let port =
         zgui_layout::fragment::transform::placed::onto_device(port, piece.transform, placements);
+    let port = shown_of(clips, piece.clip, placements, port)?;
     let device = OnDevice { store, placements };
     // Two independent conditions, and neither implies the other. A port with an opaque background
     // of its own still cannot be moved if a dialog is drawn over it, and a port with nothing over
@@ -111,6 +122,40 @@ fn scrollport_of(store: &LayoutStore, box_key: BoxKey) -> Option<Rect<DevicePx, 
         padding.origin,
         Size::new(DevicePx(width), DevicePx(height)),
     ))
+}
+
+/// The part of `port` the clip chain `chain` leaves on the device.
+///
+/// A port can reach past an ancestor that clips it. The pixels beyond that ancestor's edge are not
+/// the content's: they hold the ancestor's border or whatever is behind it, and moving them drags
+/// that into the content, one line per frame of the scroll.
+fn shown_of(
+    clips: &ClipTable,
+    chain: ClipId,
+    placements: &zgui_scene::Placements,
+    port: Pixels,
+) -> Result<Pixels, Refusal> {
+    let resolved = clips.resolve_placed(chain, &|space| placements.get(space).copied());
+    let [x, y, width, height] = resolved.aabb;
+    let admitted = Rect::new(
+        Point::new(DevicePx(x), DevicePx(y)),
+        Size::new(DevicePx(width), DevicePx(height)),
+    );
+    let shown = port.intersection(admitted).ok_or(Refusal::ClippedAway)?;
+    let shown_aabb = [
+        shown.origin.x.0,
+        shown.origin.y.0,
+        shown.size.width.0,
+        shown.size.height.0,
+    ];
+    let tests = &resolved.rounded[..resolved.rounded_count as usize];
+    if resolved.mask.is_some()
+        || resolved.dropped > 0
+        || tests.iter().any(|test| !test.is_inert(shown_aabb))
+    {
+        return Err(Refusal::ShapedClip);
+    }
+    Ok(shown)
 }
 
 /// Whether nothing painted *after* `box_key` puts ink inside `port`.
