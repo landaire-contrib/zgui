@@ -3,10 +3,12 @@
 pub mod payload;
 pub mod route;
 
+mod click;
 mod control;
 mod kind;
 mod listener;
 
+pub use crate::event::click::ClickSettings;
 pub use crate::event::control::{DefaultAction, Propagation};
 pub use crate::event::kind::{EventKind, UnknownEventKind};
 pub use crate::event::listener::{ListenerOptions, Phase};

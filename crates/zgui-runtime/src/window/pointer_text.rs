@@ -121,7 +121,9 @@ impl Window {
         let Some((offset, affinity)) = self.offset_at(node, self.device_point(pointer)) else {
             return false;
         };
-        let count = self.text_clicks.note(node, timestamp, pointer.position);
+        let count = self
+            .text_clicks
+            .note(self.click_settings, node, timestamp, pointer.position);
         let unit = match count {
             2 => Unit::Word,
             3 => Unit::Paragraph,

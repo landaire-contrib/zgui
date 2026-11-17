@@ -962,6 +962,7 @@ impl Runtime {
         // one travels and which way it points are both properties of the desktop, and a constant
         // above this line is a wheel that is wrong on every machine but the one it was written on.
         window.set_scroll_settings(cx.scroll_settings());
+        window.set_click_settings(cx.click_settings());
         window.set_translucent(translucent);
         window.set_text_antialiasing(self.text_antialiasing);
         window.assume_surface_focus(starts_focused);

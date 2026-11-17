@@ -160,6 +160,9 @@ pub struct Window {
     rehit_seen: u64,
     /// The last pointer activation, which a second one near it turns into a double click.
     clicks: crate::window::clicks::ClickCount,
+    /// The desktop's double-click time and distance, as the backend answered when the window
+    /// opened.
+    click_settings: zgui_platform::ClickSettings,
     /// The reusable buffers the fragment walk works in, warm across frames.
     diff_scratch: zgui_layout::fragment::diff::DiffScratch,
     /// The boxes that imposed a clip and left the tree, whose chains are still in the table.
@@ -801,6 +804,7 @@ impl Window {
             drag: crate::window::drag::DragOver::default(),
             gestures: zgui_input::Gestures::new(),
             scroll_settings: zgui_platform::ScrollSettings::default(),
+            click_settings: zgui_platform::ClickSettings::default(),
             scroll_frozen: false,
             panning: Vec::new(),
             panning_pointer: None,

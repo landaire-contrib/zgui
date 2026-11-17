@@ -46,6 +46,7 @@
 //! | [`Waker`] | how another thread asks the loop to wake up |
 //! | [`Clipboard`] | the desktop's clipboards |
 //! | [`ScrollSettings`] | what a wheel detent means on this desktop |
+//! | [`ClickSettings`] | how soon and how near a double click must be on this desktop |
 //!
 //! and one plain value, [`PlatformCapabilities`], which is how a component asks whether something
 //! is possible without ever asking which desktop it is on.
@@ -105,3 +106,4 @@ pub use crate::surface::{
 };
 pub use crate::theme::ColorScheme;
 pub use crate::waker::Waker;
+pub use zgui_vocab::ClickSettings;

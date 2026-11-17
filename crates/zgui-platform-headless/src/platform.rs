@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use zgui_geom::{DevicePx, Size};
 use zgui_platform::{
-    Clipboard, Clock, ColorScheme, FocusGrabId, MonitorInfo, PlatformCapabilities, PlatformCx,
-    PlatformError, ScrollSettings, Surface, SurfaceAttributes, SurfaceId, VirtualClock, WakeReason,
-    Waker,
+    ClickSettings, Clipboard, Clock, ColorScheme, FocusGrabId, MonitorInfo, PlatformCapabilities,
+    PlatformCx, PlatformError, ScrollSettings, Surface, SurfaceAttributes, SurfaceId, VirtualClock,
+    WakeReason, Waker,
 };
 
 use crate::clipboard::MemoryClipboard;
@@ -51,6 +51,8 @@ pub struct Headless {
     color_scheme: Mutex<Option<ColorScheme>>,
     /// What this platform says a scroll from its devices means.
     scroll: Mutex<ScrollSettings>,
+    /// What this platform says the desktop's double-click time and distance are.
+    click: Mutex<ClickSettings>,
     /// Whether the loop has been asked to finish.
     exiting: AtomicBool,
     /// Every focus grab that exists, with the surfaces it limits focus to.
@@ -102,6 +104,7 @@ impl Headless {
             monitors: Mutex::new(Vec::new()),
             color_scheme: Mutex::new(None),
             scroll: Mutex::new(ScrollSettings::desktop()),
+            click: Mutex::new(ClickSettings::desktop()),
             exiting: AtomicBool::new(false),
             grabs: Mutex::new(Vec::new()),
             next_grab: AtomicU64::new(1),
@@ -147,6 +150,12 @@ impl Headless {
     /// Declares what a scroll from this platform's devices means, after it has been built.
     pub fn set_scroll_settings(&self, settings: ScrollSettings) {
         *self.scroll.lock().expect("the settings are not poisoned") = settings;
+    }
+
+    /// The same platform declaring the desktop's double-click time and distance.
+    pub fn with_click_settings(self, settings: ClickSettings) -> Self {
+        *self.click.lock().expect("the settings are not poisoned") = settings;
+        self
     }
 
     /// Declares the desktop's light or dark preference.
@@ -392,6 +401,10 @@ impl PlatformCx for Headless {
 
     fn scroll_settings(&self) -> ScrollSettings {
         *self.scroll.lock().expect("the settings are not poisoned")
+    }
+
+    fn click_settings(&self) -> ClickSettings {
+        *self.click.lock().expect("the settings are not poisoned")
     }
 
     fn clock(&self) -> Arc<dyn Clock> {

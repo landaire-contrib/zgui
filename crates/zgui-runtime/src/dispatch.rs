@@ -13,8 +13,9 @@
 //! the walk would re-enter the document mid-dispatch, which is exactly what the mutation protocol
 //! exists to prevent.
 
+use zgui_geom::CssPx;
 use zgui_view::{DiscardCommands, EventControl, EventCx, EventSink, NodeId};
-use zgui_vocab::{DefaultAction, EventKind, Modifiers, Payload, Timestamp};
+use zgui_vocab::{ClickSettings, DefaultAction, EventKind, Modifiers, Payload, Timestamp};
 
 use crate::host::{Command, RuntimeHost};
 
@@ -38,25 +39,38 @@ pub struct HostSink<'a> {
     host: &'a RuntimeHost,
     /// The pointer of the event being dispatched, which a capture and a release apply to.
     pointer: Option<zgui_vocab::PointerId>,
+    /// The desktop's double-click time and distance.
+    click_settings: ClickSettings,
+    /// The line height of the element a wheel event was aimed at.
+    line_height: Option<CssPx>,
 }
 
 impl<'a> HostSink<'a> {
-    /// A sink that appends to `host`'s command queue, for an event that no pointer sent.
+    /// A sink that appends to `host`'s command queue and answers `click_settings`, for an event
+    /// that no pointer sent.
     ///
     /// A capture applies to the mouse, and a release to every pointer the node holds.
-    pub fn new(host: &'a RuntimeHost) -> Self {
+    pub fn new(host: &'a RuntimeHost, click_settings: ClickSettings) -> Self {
         Self {
             host,
             pointer: None,
+            click_settings,
+            line_height: None,
         }
     }
 
-    /// A sink for an event from `pointer`, which a capture and a release apply to.
-    pub fn for_pointer(host: &'a RuntimeHost, pointer: zgui_vocab::PointerId) -> Self {
-        Self {
-            host,
-            pointer: Some(pointer),
-        }
+    /// The same sink for an event from `pointer`, which a capture and a release apply to.
+    #[must_use]
+    pub fn for_pointer(mut self, pointer: zgui_vocab::PointerId) -> Self {
+        self.pointer = Some(pointer);
+        self
+    }
+
+    /// The same sink answering `line_height` for a wheel event.
+    #[must_use]
+    pub fn with_line_height(mut self, line_height: Option<CssPx>) -> Self {
+        self.line_height = line_height;
+        self
     }
 }
 
@@ -76,6 +90,14 @@ impl EventSink for HostSink<'_> {
 
     fn synthesize(&mut self, node: NodeId, event: EventKind) {
         self.host.issue(Command::Synthesize { node, event });
+    }
+
+    fn click_settings(&self) -> ClickSettings {
+        self.click_settings
+    }
+
+    fn line_height(&self) -> Option<CssPx> {
+        self.line_height
     }
 }
 

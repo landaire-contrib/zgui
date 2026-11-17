@@ -19,6 +19,7 @@
 //! * how far one detent of a wheel is meant to travel, and who animates it, are properties of the
 //!   desktop rather than of the event, so they are answered separately ([`scrolling`]).
 
+pub mod clicks;
 pub mod ime;
 pub mod keyboard;
 pub mod pointer;

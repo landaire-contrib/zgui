@@ -82,7 +82,8 @@ objc2.workspace = true
 objc2-app-kit.workspace = true
 objc2-foundation.workspace = true
 
-# The font smoothing settings, which say how the system draws its own text.
+# The font smoothing settings, which say how the system draws its own text, and the desktop's
+# double-click time and distance.
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys.workspace = true
 

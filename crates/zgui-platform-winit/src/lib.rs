@@ -94,6 +94,7 @@ pub use crate::app::{WinitApp, event_loop, run};
 pub use crate::clipboard::DesktopClipboard;
 pub use crate::clock::SystemClock;
 pub use crate::cx::WinitCx;
+pub use crate::input::clicks::desktop_click_settings;
 pub use crate::input::scrolling::desktop_scroll_settings;
 pub use crate::park::{Install, Park, Parked};
 pub use crate::surface::WinitSurface;

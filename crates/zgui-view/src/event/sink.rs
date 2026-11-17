@@ -1,6 +1,7 @@
 //! Commands a handler issues, carried out after the dispatch it was issued in.
 
-use zgui_vocab::EventKind;
+use zgui_geom::CssPx;
+use zgui_vocab::{ClickSettings, EventKind};
 
 use crate::id::NodeId;
 
@@ -55,6 +56,17 @@ pub trait EventSink {
     /// same path an inbound accessibility action takes, so a control written this way is operable
     /// by an assistive technology without any further work.
     fn synthesize(&mut self, node: NodeId, event: EventKind);
+
+    /// The desktop's double-click time and distance.
+    fn click_settings(&self) -> ClickSettings {
+        ClickSettings::default()
+    }
+
+    /// The line height of the element a wheel event was aimed at, which its scroll container
+    /// moves by per line. `None` for other events.
+    fn line_height(&self) -> Option<CssPx> {
+        None
+    }
 }
 
 /// An [`EventSink`] that drops every command.
