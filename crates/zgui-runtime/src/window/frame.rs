@@ -38,6 +38,7 @@ use zgui_profile::{Counter, counter};
 use zgui_render::{FrameOutcome, RenderTarget, SkipReason};
 
 use crate::window::Window;
+use crate::window::scroll::shift::PortShift;
 
 /// The fewest document nodes a broad restyle hands to the cascade pool.
 ///
@@ -1527,8 +1528,9 @@ impl Window {
             // moving pixels the renderer already has replaces the whole port with the bands the
             // move leaves undefined, and everything the frame damaged for any *other* reason is
             // kept and drawn over them.
-            shift = self.scroll_shift(viewport).ok();
-            if let Some(shift) = shift {
+            let moved = self.scroll_shift(viewport).ok();
+            shift = moved.map(|moved| moved.shift);
+            if let Some(PortShift { shift, touched }) = moved {
                 // Everything this frame owes that the copy does not answer: what it owed before
                 // any layout pass, what the passes damaged beyond their movement, what the stages
                 // after them damaged, and the bands the copy uncovers. What is dropped is exactly
@@ -1545,6 +1547,8 @@ impl Window {
                 self.damage.absorb_set(&self.rigid_moves.beyond);
                 self.damage.absorb_set(&self.damage_after_layout);
                 shift.expose_into(&mut self.damage);
+                // The pixels the port covers in part are not moved, so they are drawn again.
+                shift.for_each_outside(touched, |rim| self.damage.absorb(rim));
             }
             self.damage
                 .clip_to(zgui_geom::Rect::new(zgui_geom::Point::new(0, 0), viewport));

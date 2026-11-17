@@ -19,6 +19,48 @@ pub struct RoundedTest {
     pub shape: f32,
 }
 
+impl RoundedTest {
+    /// Whether the test changes no pixel inside `aabb`, which lies inside the test's rectangle.
+    ///
+    /// The shader samples pixel centres, applies `aabb` as a hard edge and antialiases the test
+    /// over one pixel. A straight side of the test is inert when it falls on a pixel boundary, or
+    /// when `aabb` stays at least half a pixel inside it. A corner is inert when `aabb` misses its
+    /// `rx` by `ry` box grown by one pixel for the antialiasing band.
+    pub fn is_inert(&self, aabb: [f32; 4]) -> bool {
+        let [x, y, width, height] = self.rect;
+        let (right, bottom) = (x + width, y + height);
+        let (inner_left, inner_top) = (aabb[0], aabb[1]);
+        let (inner_right, inner_bottom) = (aabb[0] + aabb[2], aabb[1] + aabb[3]);
+        if aabb[2] <= 0.0 || aabb[3] <= 0.0 {
+            return true;
+        }
+        let side = |edge: f32, inset: f32| edge == edge.round() || inset >= 0.5;
+        if !(side(x, inner_left - x)
+            && side(y, inner_top - y)
+            && side(right, right - inner_right)
+            && side(bottom, bottom - inner_bottom))
+        {
+            return false;
+        }
+        let r = self.radii;
+        // Each corner's box as `[left, top, right, bottom]`, with its two radii.
+        let corners = [
+            ([x, y, x + r[0], y + r[1]], r[0], r[1]),
+            ([right - r[2], y, right, y + r[3]], r[2], r[3]),
+            ([right - r[4], bottom - r[5], right, bottom], r[4], r[5]),
+            ([x, bottom - r[7], x + r[6], bottom], r[6], r[7]),
+        ];
+        corners.iter().all(|&([left, top, right, bottom], rx, ry)| {
+            rx <= 0.0
+                || ry <= 0.0
+                || inner_left >= right + 1.0
+                || inner_right <= left - 1.0
+                || inner_top >= bottom + 1.0
+                || inner_bottom <= top - 1.0
+        })
+    }
+}
+
 /// A whole clip chain, flattened into what one draw call can apply.
 ///
 /// A chain of any length collapses to an intersection rectangle plus at most two rounded tests plus

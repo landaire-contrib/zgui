@@ -29,8 +29,8 @@ pub struct ScrollShift {
     /// The region whose pixels move, in device pixels, already clipped to the surface.
     ///
     /// Nothing outside it is touched, and nothing from outside it is moved *in*: the region is the
-    /// scrollport, which clips its own content, so what lies beyond the edge is not the content's
-    /// to bring with it.
+    /// part of the scrollport its ancestors' clips show, in the pixels it covers whole. What lies
+    /// beyond that edge is not the content's to bring with it.
     pub port: Rect<i32, Device>,
     /// How far they move, in whole device pixels.
     ///
@@ -204,7 +204,11 @@ impl ScrollShift {
     }
 
     /// The parts of `rect` outside the port: up to four, which do not overlap.
-    fn for_each_outside(&self, rect: Rect<i32, Device>, mut piece: impl FnMut(Rect<i32, Device>)) {
+    pub fn for_each_outside(
+        &self,
+        rect: Rect<i32, Device>,
+        mut piece: impl FnMut(Rect<i32, Device>),
+    ) {
         let Some(inside) = rect.intersection(self.port) else {
             if !rect.is_empty() {
                 piece(rect);

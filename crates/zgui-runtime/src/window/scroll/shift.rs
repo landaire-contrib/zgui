@@ -10,7 +10,7 @@
 //! other frame is the frame the window would have drawn anyway — so a refusal costs the saving and
 //! never the picture.
 //!
-//! # The five questions
+//! # The six questions
 //!
 //! 1. **Can the renderer do it at all?** A renderer without a persistent composed target cannot,
 //!    and is never handed a damage set short of what it has to draw.
@@ -21,14 +21,26 @@
 //!    is what lets a scrollbar thumb move, or a row arrive at the edge, without costing the port.
 //! 4. **Was the movement whole pixels, and settled?** A fraction cannot be copied, and an elastic
 //!    bounce is deliberately fractional (`Scroller::compose`) so that it does not ratchet.
-//! 5. **Is the port the container's alone, and opaque?** Asked of the document, in
-//!    [`zgui_paint::shiftable`].
+//! 5. **Is the port the container's alone, and opaque, and how much of it is shown?** Asked of the
+//!    document, in [`zgui_paint::shiftable`].
+//! 6. **Which pixels does it cover whole?** Only those are moved. A pixel the port covers in part
+//!    also holds what is past its edge, so it is drawn again.
 
-use zgui_geom::{Device, Rect};
+use zgui_geom::{Device, DevicePx, Point, Rect, Size};
 use zgui_paint::shiftable;
 use zgui_render::ScrollShift;
 
 use crate::window::Window;
+
+/// A scroll answered by moving pixels, and the pixels the port touches.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PortShift {
+    /// The move, over the pixels the port covers whole.
+    pub(crate) shift: ScrollShift,
+    /// Every pixel the port touches, on the surface. What lies outside `shift.port` is covered in
+    /// part and is owed as damage.
+    pub(crate) touched: Rect<i32, Device>,
+}
 
 /// Why a frame's scroll was not answered by moving pixels.
 ///
@@ -58,7 +70,7 @@ impl Window {
     pub(crate) fn scroll_shift(
         &self,
         viewport: zgui_geom::Size<i32, Device>,
-    ) -> Result<ScrollShift, Refused> {
+    ) -> Result<PortShift, Refused> {
         if !self.renderer.shifts_composed_pixels() {
             return Err(Refused::NoComposedTarget);
         }
@@ -91,16 +103,38 @@ impl Window {
 
         let port = {
             let layout = self.layout.borrow();
-            shiftable::port_may_be_shifted(&layout, scrolled.container, &self.host.placements())
-                .map_err(Refused::Document)?
+            shiftable::port_may_be_shifted(
+                &layout,
+                scrolled.container,
+                &self.host.placements(),
+                &self.scene.clips,
+            )
+            .map_err(Refused::Document)?
         };
-        let surface = Rect::new(zgui_geom::Point::new(0, 0), viewport);
-        let Some(port) = zgui_layout::fragment::diff::pixels(port).intersection(surface) else {
+        let surface = Rect::new(Point::new(0, 0), viewport);
+        let Some(touched) = zgui_layout::fragment::diff::pixels(port).intersection(surface) else {
             return Err(Refused::NotOneContainer);
         };
-        Ok(ScrollShift {
-            port,
-            by: (dx as i32, dy as i32),
+        let Some(covered) = covered_pixels(port).and_then(|covered| covered.intersection(surface))
+        else {
+            return Err(Refused::NotOneContainer);
+        };
+        Ok(PortShift {
+            shift: ScrollShift {
+                port: covered,
+                by: (dx as i32, dy as i32),
+            },
+            touched,
         })
     }
+}
+
+/// The whole device pixels inside `rect`, rounded inwards on every side.
+fn covered_pixels(rect: Rect<DevicePx, Device>) -> Option<Rect<i32, Device>> {
+    let left = rect.left().0.ceil() as i32;
+    let top = rect.top().0.ceil() as i32;
+    let right = rect.right().0.floor() as i32;
+    let bottom = rect.bottom().0.floor() as i32;
+    (right > left && bottom > top)
+        .then(|| Rect::new(Point::new(left, top), Size::new(right - left, bottom - top)))
 }
