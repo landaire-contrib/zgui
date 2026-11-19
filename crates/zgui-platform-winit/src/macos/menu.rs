@@ -1,4 +1,5 @@
-//! The application menu, built with muda from the contract's menu tree.
+//! The application menu and the menu of the status item, built with muda from the contract's
+//! menu tree.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -31,13 +32,20 @@ impl core::fmt::Debug for Menus {
     }
 }
 
-/// Shows `menu` as the application menu, and sends what the user picks to `waker`.
-pub(crate) fn install(menus: &mut Menus, menu: &AppMenu, waker: Arc<dyn Waker>) {
+/// Sends what the user picks from any menu built here to `waker`.
+///
+/// muda keeps one handler for the whole process, so the application menu and the status item
+/// share this one. Installing twice does nothing, and the first waker stays.
+pub(crate) fn listen(waker: Arc<dyn Waker>) {
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         if let Some(event) = app_event(event.id().as_ref()) {
             waker.wake(WakeReason::App(event));
         }
     }));
+}
+
+/// Shows `menu` as the application menu.
+pub(crate) fn install(menus: &mut Menus, menu: &AppMenu) {
     let bar = Menu::new();
     for submenu in &menu.menus {
         let built = build_submenu(submenu);
@@ -92,10 +100,32 @@ fn role_id(role: MenuRole) -> String {
     format!("{ROLE}{index}")
 }
 
+/// A menu holding `entries`, for a menu that no menu bar shows.
+pub(crate) fn build_menu(entries: &[MenuEntry]) -> Menu {
+    let built = Menu::new();
+    for item in build_items(entries) {
+        if let Err(error) = built.append(item.as_ref()) {
+            tracing::warn!(target: "zgui::platform", %error, "a menu entry could not be added");
+        }
+    }
+    built
+}
+
 /// One submenu, with everything in it.
 fn build_submenu(submenu: &Submenu) -> muda::Submenu {
     let built = muda::Submenu::new(submenu.label.as_str(), true);
-    for entry in &submenu.entries {
+    for item in build_items(&submenu.entries) {
+        if let Err(error) = built.append(item.as_ref()) {
+            tracing::warn!(target: "zgui::platform", %error, "a menu entry could not be added");
+        }
+    }
+    built
+}
+
+/// The muda items `entries` stand for, top to bottom.
+fn build_items(entries: &[MenuEntry]) -> Vec<Box<dyn IsMenuItem>> {
+    let mut items = Vec::with_capacity(entries.len());
+    for entry in entries {
         let item: Box<dyn IsMenuItem> = match entry {
             MenuEntry::Action(action) => {
                 let id = format!("{ACTION}{}", action.id.as_str());
@@ -125,11 +155,9 @@ fn build_submenu(submenu: &Submenu) -> muda::Submenu {
             MenuEntry::Separator => Box::new(PredefinedMenuItem::separator()),
             _ => continue,
         };
-        if let Err(error) = built.append(item.as_ref()) {
-            tracing::warn!(target: "zgui::platform", %error, "a menu entry could not be added");
-        }
+        items.push(item);
     }
-    built
+    items
 }
 
 /// The entry a role stands for.

@@ -149,9 +149,10 @@ accesskit_unix = "0.22.1"
 # unconditionally and the Wayland clipboard goes through smithay-clipboard instead.
 arboard = { version = "3.6", default-features = false }
 smithay-clipboard = "0.7"
-# The macOS application menu, the dock's reopen request and the title-bar buttons. All three are
-# AppKit objects winit does not expose, so `zgui-platform-winit` reaches them through objc2 and
-# builds the menu with muda. `default-features = false` keeps gtk out of every other desktop.
+# The macOS application menu, the status item, the dock's reopen request and the title-bar
+# buttons. All four are AppKit objects winit does not expose, so `zgui-platform-winit` reaches them
+# through objc2 and builds the menus with muda. `default-features = false` keeps gtk out of every
+# other desktop.
 muda = { version = "0.21.0", default-features = false }
 objc2 = "0.6.4"
 block2 = "0.6.2"
@@ -160,7 +161,7 @@ block2 = "0.6.2"
 # distance. winit does not expose them.
 windows-sys = { version = "0.61.2", features = ["Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSUserDefaults", "NSGeometry", "NSObject", "NSNotification", "NSOperation", "block2"] }
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSResponder", "NSButton", "NSControl", "NSGraphics", "NSRunningApplication", "NSEvent", "block2"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSResponder", "NSButton", "NSControl", "NSGraphics", "NSRunningApplication", "NSEvent", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSMenu", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSCell", "objc2-core-foundation", "block2"] }
 zbus = "5.18"
 # The native handles a surface hands a graphics API, named by the platform contract and by both
 # backends that implement it.
