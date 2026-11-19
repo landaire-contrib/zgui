@@ -337,7 +337,11 @@ impl PlatformCx for WinitCx<'_> {
 
     fn set_status_item(&self, item: Option<&StatusItem>) {
         #[cfg(target_os = "macos")]
-        crate::macos::install_status_item(&mut self.shared.status_items.borrow_mut(), item);
+        crate::macos::install_status_item(
+            &mut self.shared.status_items.borrow_mut(),
+            item,
+            self.shared.waker(),
+        );
         #[cfg(not(target_os = "macos"))]
         let _ = item;
     }

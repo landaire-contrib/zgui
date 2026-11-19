@@ -1,5 +1,7 @@
 //! The status item, shown as a menu bar extra.
 
+use std::sync::Arc;
+
 use objc2::rc::Retained;
 use objc2::{AllocAnyThread, MainThreadMarker};
 use objc2_app_kit::{
@@ -7,7 +9,9 @@ use objc2_app_kit::{
     NSStatusBar, NSStatusItem, NSVariableStatusItemLength,
 };
 use objc2_foundation::{NSSize, NSString};
-use zgui_platform::{MenuEntry, StatusIcon, StatusItem};
+use zgui_platform::{MenuEntry, StatusIcon, StatusItem, StatusPress, Waker};
+
+use crate::macos::status_press::Presses;
 
 /// The height a picture is drawn at in the menu bar, in points.
 const ICON_HEIGHT: f64 = 18.0;
@@ -25,8 +29,12 @@ struct Shown {
     item: Retained<NSStatusItem>,
     /// The entries the menu was built from.
     entries: Vec<MenuEntry>,
+    /// What a primary click on the item does.
+    press: StatusPress,
     /// The muda menu behind the item's menu, kept so its items keep reporting picks.
     _menu: muda::Menu,
+    /// What reports the item's presses, when it reports them.
+    _presses: Option<Presses>,
 }
 
 impl core::fmt::Debug for StatusItems {
@@ -41,9 +49,9 @@ impl core::fmt::Debug for StatusItems {
 /// Shows `item` in the menu bar, or removes the item shown when `item` is absent.
 ///
 /// An item already on show is changed in place, so it keeps its position in the menu bar. Its
-/// menu is built again only when the entries change, because a new menu closes the old one while
-/// the user has it open.
-pub(crate) fn install(items: &mut StatusItems, item: Option<&StatusItem>) {
+/// menu is built again only when the entries or what a click does change, because a new menu
+/// closes the old one while the user has it open. A press the item reports goes to `waker`.
+pub(crate) fn install(items: &mut StatusItems, item: Option<&StatusItem>, waker: Arc<dyn Waker>) {
     let Some(main) = MainThreadMarker::new() else {
         return;
     };
@@ -55,20 +63,12 @@ pub(crate) fn install(items: &mut StatusItems, item: Option<&StatusItem>) {
     };
 
     let shown = match items.current.take() {
-        Some(shown) if shown.entries == item.menu => shown,
-        Some(shown) => Shown {
-            _menu: attach_menu(&shown.item, &item.menu),
-            entries: item.menu.clone(),
-            item: shown.item,
-        },
+        Some(shown) if shown.entries == item.menu && shown.press == item.press => shown,
+        Some(shown) => attach(shown.item, item, waker, main),
         None => {
             let status =
                 NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
-            Shown {
-                _menu: attach_menu(&status, &item.menu),
-                entries: item.menu.clone(),
-                item: status,
-            }
+            attach(status, item, waker, main)
         }
     };
 
@@ -88,17 +88,42 @@ pub(crate) fn install(items: &mut StatusItems, item: Option<&StatusItem>) {
     items.current = Some(shown);
 }
 
-/// Builds a menu holding `entries` and gives it to `status`.
-///
-/// Answers the muda menu, which the caller keeps for as long as `status` holds its menu.
-fn attach_menu(status: &NSStatusItem, entries: &[MenuEntry]) -> muda::Menu {
-    let menu = crate::macos::menu::build_menu(entries);
+/// Builds a menu holding the entries of `item` and gives it to `status`, to open as the item's
+/// press says.
+fn attach(
+    status: Retained<NSStatusItem>,
+    item: &StatusItem,
+    waker: Arc<dyn Waker>,
+    main: MainThreadMarker,
+) -> Shown {
+    let menu = crate::macos::menu::build_menu(&item.menu);
     // SAFETY: muda's pointer is to the NSMenu the muda menu owns, which is alive for this call.
-    // Retaining it keeps it alive for as long as the status item holds it.
+    // Retaining it keeps it alive for as long as the status item or the press target holds it.
     let ns_menu: Option<Retained<NSMenu>> =
         unsafe { Retained::retain(muda::ContextMenu::ns_menu(&menu).cast()) };
-    status.setMenu(ns_menu.as_deref());
-    menu
+
+    let presses = match item.press {
+        StatusPress::Reports => {
+            let ns_menu = ns_menu.filter(|_| !item.menu.is_empty());
+            Some(crate::macos::status_press::report(
+                &status, ns_menu, waker, main,
+            ))
+        }
+        // Every other press opens the menu. The target of an item that reported its presses goes
+        // with the `Presses` it was kept by.
+        _ => {
+            status.setMenu(ns_menu.as_deref());
+            None
+        }
+    };
+
+    Shown {
+        item: status,
+        entries: item.menu.clone(),
+        press: item.press,
+        _menu: menu,
+        _presses: presses,
+    }
 }
 
 /// The AppKit picture `icon` stands for, drawn [`ICON_HEIGHT`] points tall.
