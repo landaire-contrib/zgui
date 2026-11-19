@@ -263,6 +263,10 @@ impl Surface for WinitSurface {
         self.window.set_theme(theme.map(crate::theme::theme));
     }
 
+    fn set_blur(&self, blur: bool) {
+        self.window.set_blur(blur);
+    }
+
     fn focus(&self) {
         self.window.focus_window();
     }

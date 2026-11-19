@@ -30,6 +30,7 @@ pub(crate) fn window(
         .with_resizable(attributes.resizable)
         .with_decorations(chrome::decorated(attributes.decorations))
         .with_transparent(attributes.transparent)
+        .with_blur(attributes.blur)
         .with_maximized(attributes.maximized)
         .with_window_level(chrome::level(attributes.level))
         .with_theme(theme)
@@ -173,12 +174,14 @@ mod tests {
         requested.decorations = Decorations::None;
         requested.resizable = false;
         requested.transparent = true;
+        requested.blur = true;
 
         let attributes = window(&requested, None);
         assert_eq!(attributes.title, "counter");
         assert!(!attributes.decorations);
         assert!(!attributes.resizable);
         assert!(attributes.transparent);
+        assert!(attributes.blur);
         assert!(attributes.inner_size.is_some());
     }
 

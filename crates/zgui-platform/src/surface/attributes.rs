@@ -43,6 +43,10 @@ pub struct SurfaceAttributes {
     pub decorations: Decorations,
     /// Whether the surface may be partly transparent.
     pub transparent: bool,
+    /// Whether the desktop blurs what shows through the transparent parts of the surface.
+    ///
+    /// Read only with `transparent`. A desktop that cannot blur a window ignores it.
+    pub blur: bool,
     /// The identifier the desktop groups this application's windows under.
     ///
     /// Getting this wrong is what makes an application show the wrong icon in a task bar, so it is
@@ -105,6 +109,7 @@ impl SurfaceAttributes {
             resizable: true,
             decorations: Decorations::Full,
             transparent: false,
+            blur: false,
             application_id: None,
             position: None,
             maximized: false,

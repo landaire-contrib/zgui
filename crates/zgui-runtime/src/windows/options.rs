@@ -150,6 +150,15 @@ impl WindowOptions {
         self
     }
 
+    /// Whether the desktop blurs what shows through the transparent parts of the window.
+    ///
+    /// Read only with [`WindowOptions::with_transparent`]. A desktop that cannot blur a window
+    /// ignores it.
+    pub fn with_blur(mut self, blur: bool) -> Self {
+        self.attributes.blur = blur;
+        self
+    }
+
     /// Where it should open, measured from the desktop's origin.
     ///
     /// Ignored where a desktop places windows itself, which is every Wayland compositor.
@@ -290,6 +299,15 @@ mod tests {
             .with_transparent(true);
         assert_eq!(options.attributes().decorations, Decorations::None);
         assert!(options.attributes().transparent);
+    }
+
+    #[test]
+    fn a_transparent_window_may_ask_for_a_blurred_background() {
+        let options = WindowOptions::new("panel")
+            .with_transparent(true)
+            .with_blur(true);
+        assert!(options.attributes().blur);
+        assert!(!WindowOptions::new("plain").attributes().blur);
     }
 
     #[test]
