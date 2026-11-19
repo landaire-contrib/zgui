@@ -233,6 +233,10 @@ impl Surface for WinitSurface {
     }
 
     fn is_maximized(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        if let Some(zoomed) = crate::macos::is_zoomed(&self.window) {
+            return zoomed;
+        }
         self.window.is_maximized()
     }
 
