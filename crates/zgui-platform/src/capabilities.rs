@@ -79,6 +79,11 @@ pub struct PlatformCapabilities {
     /// Where it does, an application can hide its last window and wait for
     /// [`AppEvent::Reopen`](crate::AppEvent::Reopen).
     pub reopen: bool,
+    /// Whether the desktop shows an item for the application in its status area.
+    ///
+    /// Where it does, [`PlatformCx::set_status_item`](crate::PlatformCx::set_status_item) fills
+    /// it. On macOS this is a menu bar extra.
+    pub status_item: bool,
 }
 
 impl PlatformCapabilities {
@@ -107,6 +112,7 @@ impl PlatformCapabilities {
             system_color_scheme: false,
             app_menu: false,
             reopen: false,
+            status_item: false,
         }
     }
 

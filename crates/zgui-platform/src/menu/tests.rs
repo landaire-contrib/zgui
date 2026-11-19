@@ -66,3 +66,23 @@ fn a_submenu_knows_the_roles_it_holds() {
     assert!(menu.menus[0].holds(MenuRole::About));
     assert!(!menu.menus[0].holds(MenuRole::Copy));
 }
+
+#[test]
+fn a_status_item_keeps_its_entries_in_order_and_its_icon_as_a_mask() {
+    use crate::menu::{MenuEntry, StatusIcon, StatusItem};
+    use crate::surface::WindowIcon;
+
+    let image = WindowIcon::from_rgba(vec![0; 4 * 4 * 4], 4, 4).expect("the length matches");
+    let item = StatusItem::new()
+        .with_icon(StatusIcon::new(image).with_template(true))
+        .with_tooltip("Vault")
+        .with(MenuAction::new("show", "Show"))
+        .separator()
+        .with(MenuAction::new("quit", "Quit"));
+
+    assert!(item.icon.as_ref().is_some_and(|icon| icon.template));
+    assert_eq!(item.title, None);
+    assert!(matches!(&item.menu[0], MenuEntry::Action(action) if action.id.as_str() == "show"));
+    assert_eq!(item.menu[1], MenuEntry::Separator);
+    assert!(matches!(&item.menu[2], MenuEntry::Action(action) if action.id.as_str() == "quit"));
+}

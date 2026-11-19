@@ -89,7 +89,9 @@ pub use crate::clipboard::{
 pub use crate::clock::{Clock, VirtualClock};
 pub use crate::cx::PlatformCx;
 pub use crate::error::{PlatformError, Unsupported};
-pub use crate::menu::{AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, Submenu};
+pub use crate::menu::{
+    AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusIcon, StatusItem, Submenu,
+};
 pub use crate::monitor::{MonitorInfo, refresh_interval};
 pub use crate::scroll::ScrollSettings;
 pub use crate::surface::{

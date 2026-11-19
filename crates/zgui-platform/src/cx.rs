@@ -8,7 +8,7 @@ use crate::capabilities::PlatformCapabilities;
 use crate::clipboard::Clipboard;
 use crate::clock::Clock;
 use crate::error::PlatformError;
-use crate::menu::AppMenu;
+use crate::menu::{AppMenu, StatusItem};
 use crate::monitor::MonitorInfo;
 use crate::scroll::ScrollSettings;
 use crate::surface::{Surface, SurfaceAttributes, SurfaceId};
@@ -111,6 +111,15 @@ pub trait PlatformCx {
     /// it, which is what the default does.
     fn set_app_menu(&self, menu: &AppMenu) {
         let _ = menu;
+    }
+
+    /// Shows `item` in the desktop's status area, or removes the item shown when `item` is
+    /// absent.
+    ///
+    /// Replaces the item shown before. A backend whose desktop has no status area ignores it,
+    /// which is what the default does.
+    fn set_status_item(&self, item: Option<&StatusItem>) {
+        let _ = item;
     }
 
     /// Asks the loop to finish.
