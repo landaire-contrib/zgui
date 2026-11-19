@@ -82,6 +82,22 @@ fn a_head_may_be_a_path_a_keyword_or_hyphenated() {
 }
 
 #[test]
+fn a_path_head_may_start_at_the_crate_or_a_parent_module() {
+    for head in [
+        "crate::screen::Unlock",
+        "self::Unlock",
+        "super::super::Unlock",
+    ] {
+        assert!(lower(&format!("{head}()")).is_ok(), "`{head}`");
+        assert!(
+            lower(&format!("{head}() {{ row() }}")).is_ok(),
+            "`{head}` with children"
+        );
+    }
+    assert_eq!(expand("crate::html::div()"), "crate::html::div()");
+}
+
+#[test]
 fn the_words_control_flow_uses_may_not_name_a_node() {
     for reserved in ["while", "loop", "match"] {
         let message = error(&format!("{reserved}() {{}}"));
