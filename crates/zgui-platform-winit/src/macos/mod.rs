@@ -13,6 +13,7 @@ mod menu;
 mod reopen;
 mod scroll;
 mod status_item;
+mod status_press;
 mod window;
 
 pub(crate) use crate::macos::buttons::place as place_title_buttons;
