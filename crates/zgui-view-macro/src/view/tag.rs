@@ -30,14 +30,13 @@ impl Tag {
             return Ok(Self::Component(syn::parse_quote!(#ident)));
         }
         let mut path: syn::Path = {
-            let ident = first.ident()?;
+            let ident = segment(&first)?;
             syn::parse_quote!(#ident)
         };
         while input.peek(Token![::]) {
             input.parse::<Token![::]>()?;
-            let segment = Name::parse(input)?;
-            let ident = segment.ident()?;
-            path.segments.push(syn::parse_quote!(#ident));
+            let next = segment(&Name::parse(input)?)?;
+            path.segments.push(syn::parse_quote!(#next));
         }
         let last = path
             .segments
@@ -80,6 +79,17 @@ impl Tag {
     /// Whether this names a component rather than an element.
     pub(crate) fn is_component(&self) -> bool {
         matches!(self, Self::Component(_))
+    }
+}
+
+/// One segment of a path head.
+///
+/// `crate`, `self`, `super` and `Self` are keywords that a path may hold as they are, and none of
+/// them can be written as a raw identifier. Every other name goes through [`Name::ident`].
+fn segment(name: &Name) -> syn::Result<syn::Ident> {
+    match name.text.as_str() {
+        "crate" | "self" | "super" | "Self" => Ok(syn::Ident::new(&name.text, name.span)),
+        _ => name.ident(),
     }
 }
 
