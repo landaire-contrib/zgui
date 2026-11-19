@@ -167,9 +167,12 @@ pub use zgui_elements as elements;
 /// request to show it again, and its exit.
 pub mod desktop {
     pub use zgui_platform::{
-        AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusIcon, StatusItem, Submenu,
+        AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusAnchor, StatusIcon,
+        StatusItem, StatusPress, Submenu,
     };
-    pub use zgui_runtime::desktop::{AppHookGuard, on_exit, on_menu, on_reopen};
+    pub use zgui_runtime::desktop::{
+        AppHookGuard, on_exit, on_menu, on_reopen, on_status_item_press,
+    };
 }
 /// The pixel spaces and the geometry every stage agrees in.
 pub use zgui_geom as geom;

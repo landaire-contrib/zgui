@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use zgui_platform::MenuId;
+use zgui_platform::{MenuId, StatusAnchor};
 
 /// A callback shared between the registry and a dispatch that is running it.
 type Shared<F> = Rc<RefCell<F>>;
@@ -31,7 +31,7 @@ impl<F: ?Sized> List<F> {
     }
 }
 
-/// The registry behind [`on_reopen`], [`on_menu`] and [`on_exit`].
+/// The registry behind [`on_reopen`], [`on_menu`], [`on_status_item_press`] and [`on_exit`].
 #[derive(Default)]
 struct Registry {
     /// The next id to hand out.
@@ -40,6 +40,8 @@ struct Registry {
     reopen: List<dyn FnMut()>,
     /// What runs when the user picks a menu action.
     menu: List<dyn FnMut(&MenuId)>,
+    /// What runs when the user presses a status item that reports its presses.
+    status_item_press: List<dyn FnMut(&StatusAnchor)>,
     /// What runs when the application exits.
     exit: List<dyn FnMut()>,
 }
@@ -51,6 +53,8 @@ enum Kind {
     Reopen,
     /// [`on_menu`].
     Menu,
+    /// [`on_status_item_press`].
+    StatusItemPress,
     /// [`on_exit`].
     Exit,
 }
@@ -91,6 +95,14 @@ impl AppHooks {
         }
     }
 
+    /// Runs every status item press callback with `anchor`.
+    pub(crate) fn status_item_press(&self, anchor: &StatusAnchor) {
+        let callbacks = self.registry.borrow().status_item_press.snapshot();
+        for callback in callbacks {
+            (callback.borrow_mut())(anchor);
+        }
+    }
+
     /// Runs every exit callback.
     pub(crate) fn exit(&self) {
         let callbacks = self.registry.borrow().exit.snapshot();
@@ -119,6 +131,21 @@ impl AppHooks {
         self.guard(Kind::Menu, id)
     }
 
+    /// Registers a status item press callback.
+    pub(crate) fn add_status_item_press(
+        &self,
+        callback: impl FnMut(&StatusAnchor) + 'static,
+    ) -> AppHookGuard {
+        let id = self.mint();
+        let callback: Shared<dyn FnMut(&StatusAnchor)> = Rc::new(RefCell::new(callback));
+        self.registry
+            .borrow_mut()
+            .status_item_press
+            .entries
+            .push((id, callback));
+        self.guard(Kind::StatusItemPress, id)
+    }
+
     /// Registers an exit callback.
     pub(crate) fn add_exit(&self, callback: impl FnMut() + 'static) -> AppHookGuard {
         let id = self.mint();
@@ -142,6 +169,10 @@ impl AppHooks {
         match kind {
             Kind::Reopen => registry.reopen.entries.retain(|(own, _)| *own != id),
             Kind::Menu => registry.menu.entries.retain(|(own, _)| *own != id),
+            Kind::StatusItemPress => registry
+                .status_item_press
+                .entries
+                .retain(|(own, _)| *own != id),
             Kind::Exit => registry.exit.entries.retain(|(own, _)| *own != id),
         }
     }
@@ -201,6 +232,19 @@ pub fn on_reopen(callback: impl FnMut() + 'static) -> AppHookGuard {
 /// Panics when called outside a running application.
 pub fn on_menu(callback: impl FnMut(&MenuId) + 'static) -> AppHookGuard {
     hooks().add_menu(callback)
+}
+
+/// Runs `callback` with where the status item is, each time the user presses it.
+///
+/// Only a status item whose [`press`](zgui_platform::StatusItem::press) is
+/// [`StatusPress::Reports`](zgui_platform::StatusPress::Reports) reports its presses. Open a window
+/// at the bottom left of [`StatusAnchor::item`] to show it right under the item.
+///
+/// # Panics
+///
+/// Panics when called outside a running application.
+pub fn on_status_item_press(callback: impl FnMut(&StatusAnchor) + 'static) -> AppHookGuard {
+    hooks().add_status_item_press(callback)
 }
 
 /// Runs `callback` once, as the application exits.

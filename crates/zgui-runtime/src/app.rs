@@ -262,7 +262,9 @@ impl App {
     /// whenever a signal it read changes. An absent item removes the item from the status area.
     /// Only a desktop with a status area shows it; see
     /// [`PlatformCapabilities::status_item`](zgui_platform::PlatformCapabilities::status_item).
-    /// What the user picks from its menu reaches [`on_menu`](crate::desktop::on_menu).
+    /// What the user picks from its menu reaches [`on_menu`](crate::desktop::on_menu), and a press
+    /// of an item that reports its presses reaches
+    /// [`on_status_item_press`](crate::desktop::on_status_item_press).
     pub fn with_status_item(
         mut self,
         build: impl Fn() -> Option<zgui_platform::StatusItem> + 'static,
@@ -1015,6 +1017,13 @@ impl Runtime {
                 self.scope.with(|| {
                     let _zone = zgui_reactive::enter_non_reactive_zone();
                     hooks.menu(&id);
+                });
+            }
+            AppEvent::StatusItemPressed(anchor) => {
+                let hooks = self.hooks.clone();
+                self.scope.with(|| {
+                    let _zone = zgui_reactive::enter_non_reactive_zone();
+                    hooks.status_item_press(&anchor);
                 });
             }
             // The focused window receives the press the menu took from it.

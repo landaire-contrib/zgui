@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use zgui_geom::{DevicePx, Size};
 use zgui_platform::{
-    ClickSettings, Clipboard, Clock, ColorScheme, MonitorInfo, PlatformCapabilities, PlatformCx,
-    PlatformError, ScrollSettings, StatusItem, Surface, SurfaceAttributes, SurfaceId, VirtualClock,
-    WakeReason, Waker,
+    AppEvent, ClickSettings, Clipboard, Clock, ColorScheme, MonitorInfo, PlatformCapabilities,
+    PlatformCx, PlatformError, ScrollSettings, StatusAnchor, StatusItem, StatusPress, Surface,
+    SurfaceAttributes, SurfaceId, VirtualClock, WakeReason, Waker,
 };
 
 use crate::clipboard::MemoryClipboard;
@@ -137,6 +137,24 @@ impl Headless {
             .lock()
             .expect("the log is not poisoned")
             .clone()
+    }
+
+    /// Clicks the status item on show with the primary button, as the user would.
+    ///
+    /// An item whose [`press`](StatusItem::press) is [`StatusPress::Reports`] reports the press
+    /// from `anchor`. An item that opens its menu instead, or no item at all, reports nothing.
+    pub fn press_status_item(&self, anchor: StatusAnchor) {
+        let reports = matches!(
+            self.status_items
+                .lock()
+                .expect("the log is not poisoned")
+                .last(),
+            Some(Some(item)) if item.press == StatusPress::Reports
+        );
+        if reports {
+            self.waker
+                .wake(WakeReason::App(AppEvent::StatusItemPressed(anchor)));
+        }
     }
 
     /// Every Dock icon visibility the application asked for, in order.
