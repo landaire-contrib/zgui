@@ -108,6 +108,12 @@ pub struct PlatformCapabilities {
     /// Where it does, [`PlatformCx::set_status_item`](crate::PlatformCx::set_status_item) fills
     /// it. On macOS this is a menu bar extra.
     pub status_item: bool,
+    /// Whether the application can remove its icon from the Dock and the application switcher.
+    ///
+    /// Where it can,
+    /// [`PlatformCx::set_dock_icon_visible`](crate::PlatformCx::set_dock_icon_visible) shows or
+    /// hides it. An application that lives in the status area hides it while no window shows.
+    pub dock_icon: bool,
 }
 
 impl PlatformCapabilities {
@@ -141,6 +147,7 @@ impl PlatformCapabilities {
             reopen: false,
             window_controls: false,
             status_item: false,
+            dock_icon: false,
         }
     }
 

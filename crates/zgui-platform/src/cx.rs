@@ -172,6 +172,13 @@ pub trait PlatformCx {
         let _ = item;
     }
 
+    /// Shows or hides the application's icon in the Dock and the application switcher.
+    ///
+    /// A backend whose desktop has no such icon ignores it, which is what the default does.
+    fn set_dock_icon_visible(&self, visible: bool) {
+        let _ = visible;
+    }
+
     /// Asks the loop to finish.
     ///
     /// Nothing stops at once: the loop finishes what it is doing, reports that it is shutting
