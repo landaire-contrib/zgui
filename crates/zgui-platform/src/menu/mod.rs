@@ -17,7 +17,7 @@ mod status;
 pub use crate::menu::model::{AppMenu, MenuAction, MenuEntry, MenuId, Submenu};
 pub use crate::menu::role::MenuRole;
 pub use crate::menu::shortcut::Shortcut;
-pub use crate::menu::status::{StatusIcon, StatusItem};
+pub use crate::menu::status::{StatusAnchor, StatusIcon, StatusItem, StatusPress};
 
 #[cfg(test)]
 mod tests;

@@ -90,7 +90,8 @@ pub use crate::clock::{Clock, VirtualClock};
 pub use crate::cx::PlatformCx;
 pub use crate::error::{PlatformError, Unsupported};
 pub use crate::menu::{
-    AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusIcon, StatusItem, Submenu,
+    AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusAnchor, StatusIcon,
+    StatusItem, StatusPress, Submenu,
 };
 pub use crate::monitor::{MonitorInfo, refresh_interval};
 pub use crate::scroll::ScrollSettings;
