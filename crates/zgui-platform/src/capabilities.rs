@@ -103,6 +103,11 @@ pub struct PlatformCapabilities {
     /// set. A page of a browser is no window: the browser owns the tab, and a button that closes
     /// the application leaves an empty page.
     pub window_controls: bool,
+    /// Whether the desktop shows an item for the application in its status area.
+    ///
+    /// Where it does, [`PlatformCx::set_status_item`](crate::PlatformCx::set_status_item) fills
+    /// it. On macOS this is a menu bar extra.
+    pub status_item: bool,
 }
 
 impl PlatformCapabilities {
@@ -135,6 +140,7 @@ impl PlatformCapabilities {
             app_menu: false,
             reopen: false,
             window_controls: false,
+            status_item: false,
         }
     }
 

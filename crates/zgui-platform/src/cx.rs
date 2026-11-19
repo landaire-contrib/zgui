@@ -9,7 +9,7 @@ use crate::clipboard::Clipboard;
 use crate::clock::Clock;
 use crate::error::PlatformError;
 use crate::grab::FocusGrabId;
-use crate::menu::AppMenu;
+use crate::menu::{AppMenu, StatusItem};
 use crate::monitor::MonitorInfo;
 use crate::scroll::ScrollSettings;
 use crate::surface::{Surface, SurfaceAttributes, SurfaceId};
@@ -162,6 +162,15 @@ pub trait PlatformCx {
     /// ended. Destroy the lock surfaces after this call: a lock surface destroyed while the
     /// session is locked leaves its output blank.
     fn unlock_session(&self) {}
+
+    /// Shows `item` in the desktop's status area, or removes the item shown when `item` is
+    /// absent.
+    ///
+    /// Replaces the item shown before. A backend whose desktop has no status area ignores it,
+    /// which is what the default does.
+    fn set_status_item(&self, item: Option<&StatusItem>) {
+        let _ = item;
+    }
 
     /// Asks the loop to finish.
     ///
