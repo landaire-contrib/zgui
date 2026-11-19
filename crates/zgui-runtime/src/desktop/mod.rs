@@ -16,7 +16,7 @@ mod hooks;
 mod menu;
 mod replay;
 
-pub use crate::desktop::hooks::{AppHookGuard, on_exit, on_menu, on_reopen};
+pub use crate::desktop::hooks::{AppHookGuard, on_exit, on_menu, on_reopen, on_status_item_press};
 
 pub(crate) use crate::desktop::hooks::AppHooks;
 pub(crate) use crate::desktop::menu::{MenuKeys, MenuSlot};
