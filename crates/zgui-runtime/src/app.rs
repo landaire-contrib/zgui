@@ -150,6 +150,8 @@ pub struct App {
     exit: ExitPolicy,
     /// What builds the application menu, when the application has one.
     menu: Option<Box<dyn Fn() -> zgui_platform::AppMenu>>,
+    /// What builds the status item, when the application has one.
+    status_item: Option<Box<dyn Fn() -> Option<zgui_platform::StatusItem>>>,
     /// How many workers the style cascade may use, when the default is not wanted.
     style_threads: Option<usize>,
     /// How many workers the layout engine may use, when the default is not wanted.
@@ -179,6 +181,7 @@ impl App {
             shared: None,
             exit: ExitPolicy::default(),
             menu: None,
+            status_item: None,
             style_threads: None,
             layout_threads: None,
             zoom: crate::windows::Zoom::ONE,
@@ -250,6 +253,21 @@ impl App {
     /// user picks reaches [`on_menu`](crate::desktop::on_menu).
     pub fn with_menu(mut self, build: impl Fn() -> zgui_platform::AppMenu + 'static) -> Self {
         self.menu = Some(Box::new(build));
+        self
+    }
+
+    /// Gives the application an item in the desktop's status area.
+    ///
+    /// `build` runs in the scope above every window, after [`App::with_context`], and runs again
+    /// whenever a signal it read changes. An absent item removes the item from the status area.
+    /// Only a desktop with a status area shows it; see
+    /// [`PlatformCapabilities::status_item`](zgui_platform::PlatformCapabilities::status_item).
+    /// What the user picks from its menu reaches [`on_menu`](crate::desktop::on_menu).
+    pub fn with_status_item(
+        mut self,
+        build: impl Fn() -> Option<zgui_platform::StatusItem> + 'static,
+    ) -> Self {
+        self.status_item = Some(Box::new(build));
         self
     }
 
@@ -465,7 +483,9 @@ pub struct Runtime {
     /// What the application asked to hear about outside its windows.
     hooks: crate::desktop::AppHooks,
     /// The application menu, when the application has one.
-    menu: Option<crate::desktop::MenuSlot>,
+    menu: Option<crate::desktop::MenuSlot<zgui_platform::AppMenu>>,
+    /// The status item, when the application has one.
+    status_item: Option<crate::desktop::MenuSlot<Option<zgui_platform::StatusItem>>>,
     /// The shortcuts of the menu's actions, shared with every window.
     menu_keys: crate::desktop::MenuKeys,
     /// The next document identity to mint.
@@ -620,7 +640,9 @@ impl Runtime {
         let shared = app.shared.take();
         let hooks = crate::desktop::AppHooks::new();
         let build_menu = app.menu.take();
+        let build_status_item = app.status_item.take();
         let mut menu = None;
+        let mut status_item = None;
         scope.with(|| {
             zgui_reactive::provide_local_context(commands.clone());
             // How every window reaches the others, and how any of them opens one.
@@ -635,8 +657,9 @@ impl Runtime {
             if let Some(setup) = shared {
                 setup();
             }
-            // After the application's own state, which the menu is built from.
+            // After the application's own state, which the menus are built from.
             menu = build_menu.map(crate::desktop::MenuSlot::new);
+            status_item = build_status_item.map(crate::desktop::MenuSlot::new);
         });
         let application_id = app.attributes.application_id.clone();
         let primary = commands.mint();
@@ -668,6 +691,7 @@ impl Runtime {
             exit: app.exit,
             hooks,
             menu,
+            status_item,
             menu_keys: crate::desktop::MenuKeys::default(),
             next_document: 0,
             application_id: application_id.clone(),
@@ -951,15 +975,21 @@ impl Runtime {
         }
     }
 
-    /// Gives the desktop the version of the application menu it has not seen.
-    fn apply_menu(&self, cx: &dyn PlatformCx) {
-        let Some(slot) = &self.menu else { return };
-        if !cx.capabilities().app_menu {
-            return;
-        }
-        if let Some(menu) = slot.take() {
+    /// Gives the desktop the versions of the application menu and the status item it has not
+    /// seen.
+    fn apply_menus(&self, cx: &dyn PlatformCx) {
+        if let Some(slot) = &self.menu
+            && cx.capabilities().app_menu
+            && let Some(menu) = slot.take()
+        {
             cx.set_app_menu(&menu);
             self.menu_keys.follow(&menu);
+        }
+        if let Some(slot) = &self.status_item
+            && cx.capabilities().status_item
+            && let Some(item) = slot.take()
+        {
+            cx.set_status_item(item.as_ref());
         }
     }
 
@@ -1173,7 +1203,7 @@ impl AppHandler for Runtime {
             }
         }
         self.drain_window_commands(cx);
-        self.apply_menu(cx);
+        self.apply_menus(cx);
     }
 
     fn surfaces_lost(&mut self, _cx: &dyn PlatformCx) {
@@ -1270,8 +1300,8 @@ impl AppHandler for Runtime {
         for id in fired {
             self.app_event(cx, zgui_platform::AppEvent::Menu(id));
         }
-        // A frame just ran, and an effect inside it may have rebuilt the menu.
-        self.apply_menu(cx);
+        // A frame just ran, and an effect inside it may have rebuilt a menu.
+        self.apply_menus(cx);
         // A frame just ran, and a listener, an effect or a timer inside it may have asked for a
         // window. This is the first point since then that holds a platform context.
         if !self.commands.is_empty() {
@@ -1351,7 +1381,7 @@ impl AppHandler for Runtime {
             }
             _ => {}
         }
-        self.apply_menu(cx);
+        self.apply_menus(cx);
         // Every wake is a turn of the loop with a platform context in hand, which is what carrying
         // out a queued window needs. A wake that queued nothing drains nothing.
         if !self.commands.is_empty() {

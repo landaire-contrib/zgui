@@ -270,6 +270,20 @@ impl App {
         self
     }
 
+    /// Gives the application an item in the desktop's status area.
+    ///
+    /// `build` runs after [`App::with_context`], in the same scope, and runs again whenever a
+    /// signal it read changes. An absent item removes the item from the status area. Only a
+    /// desktop with a status area shows it. What the user picks from its menu reaches
+    /// [`on_menu`](crate::desktop::on_menu).
+    pub fn with_status_item(
+        mut self,
+        build: impl Fn() -> Option<zgui_platform::StatusItem> + 'static,
+    ) -> Self {
+        self.inner = self.inner.with_status_item(build);
+        self
+    }
+
     /// Whether the window may be partly transparent.
     ///
     /// What a window that draws its own rounded corners needs, so the desktop shows through them.

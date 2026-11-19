@@ -1,5 +1,5 @@
-//! What an application has outside its windows: the application menu, the request to show it
-//! again, and its exit.
+//! What an application has outside its windows: the application menu, the status item, the
+//! request to show it again, and its exit.
 //!
 //! ```no_run
 //! use zgui_runtime::desktop::{on_exit, on_menu, on_reopen};
