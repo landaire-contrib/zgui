@@ -2,7 +2,7 @@
 
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::window::{Fullscreen, WindowAttributes};
-use zgui_platform::{ColorScheme, Decorations, FullscreenMode, SurfaceAttributes};
+use zgui_platform::{ColorScheme, FullscreenMode, SurfaceAttributes};
 
 use crate::surface::chrome;
 use crate::theme;
@@ -56,23 +56,26 @@ pub(crate) fn window(
     if let Some(id) = &attributes.application_id {
         window = application_name(window, id.as_str());
     }
-    title_bar(window, attributes.decorations)
+    title_bar(window, attributes)
 }
 
 /// Applies a frame that carries no title bar.
 ///
 /// macOS draws the title bar over the content once the content view is given the full window, so
-/// the bar is made transparent and its title hidden. The window buttons stay, and they sit over
-/// the top left of the content: the application leaves room for them.
+/// the bar is made transparent and its title hidden. The window buttons stay unless the request
+/// hides them, and they sit over the top left of the content: the application leaves room for
+/// them.
 #[cfg(target_os = "macos")]
-fn title_bar(window: WindowAttributes, decorations: Decorations) -> WindowAttributes {
+fn title_bar(window: WindowAttributes, attributes: &SurfaceAttributes) -> WindowAttributes {
     use winit::platform::macos::WindowAttributesExtMacOS;
+    use zgui_platform::Decorations;
 
-    match decorations {
+    match attributes.decorations {
         Decorations::NoTitleBar => window
             .with_fullsize_content_view(true)
             .with_titlebar_transparent(true)
-            .with_title_hidden(true),
+            .with_title_hidden(true)
+            .with_titlebar_buttons_hidden(attributes.title_buttons_hidden),
         _ => window,
     }
 }
@@ -81,10 +84,10 @@ fn title_bar(window: WindowAttributes, decorations: Decorations) -> WindowAttrib
 ///
 /// Wayland negotiates the frame through `xdg-decoration`, which offers the whole frame or none of
 /// it, and Windows draws a title bar for every framed window. [`chrome::decorated`] has already
-/// read the request as [`Decorations::None`] for both.
+/// read the request as [`Decorations::None`](zgui_platform::Decorations::None) for both.
 #[cfg(not(target_os = "macos"))]
-fn title_bar(window: WindowAttributes, decorations: Decorations) -> WindowAttributes {
-    let _ = decorations;
+fn title_bar(window: WindowAttributes, attributes: &SurfaceAttributes) -> WindowAttributes {
+    let _ = attributes;
     window
 }
 
