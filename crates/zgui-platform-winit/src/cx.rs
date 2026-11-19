@@ -7,8 +7,8 @@ use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::window::WindowId;
 use zgui_platform::{
     AppMenu, Clipboard, ClipboardFormat, Clock, ColorScheme, DecorationSource, FullscreenMode,
-    MonitorInfo, PlatformCapabilities, PlatformCx, PlatformError, ScrollSettings, Surface,
-    SurfaceAttributes, SurfaceId, Waker,
+    MonitorInfo, PlatformCapabilities, PlatformCx, PlatformError, ScrollSettings, StatusItem,
+    Surface, SurfaceAttributes, SurfaceId, Waker,
 };
 
 use crate::clipboard::DesktopClipboard;
@@ -44,6 +44,9 @@ pub(crate) struct Shared {
     /// The application menu on show.
     #[cfg(target_os = "macos")]
     menus: RefCell<crate::macos::Menus>,
+    /// The status item on show.
+    #[cfg(target_os = "macos")]
+    status_items: RefCell<crate::macos::StatusItems>,
 }
 
 impl Shared {
@@ -61,6 +64,8 @@ impl Shared {
             retiring: RefCell::new(Vec::new()),
             #[cfg(target_os = "macos")]
             menus: RefCell::new(crate::macos::Menus::default()),
+            #[cfg(target_os = "macos")]
+            status_items: RefCell::new(crate::macos::StatusItems::default()),
         }
     }
 
@@ -77,7 +82,10 @@ impl Shared {
         self.clipboard
             .attach(event_loop, Arc::clone(&self.waker) as Arc<dyn Waker>);
         #[cfg(target_os = "macos")]
-        crate::macos::install_reopen(self.waker());
+        {
+            crate::macos::install_reopen(self.waker());
+            crate::macos::listen_to_menus(self.waker());
+        }
     }
 
     /// The clock, as the contract's view of it.
@@ -321,13 +329,16 @@ impl PlatformCx for WinitCx<'_> {
 
     fn set_app_menu(&self, menu: &AppMenu) {
         #[cfg(target_os = "macos")]
-        crate::macos::install_menu(
-            &mut self.shared.menus.borrow_mut(),
-            menu,
-            self.shared.waker(),
-        );
+        crate::macos::install_menu(&mut self.shared.menus.borrow_mut(), menu);
         #[cfg(not(target_os = "macos"))]
         let _ = menu;
+    }
+
+    fn set_status_item(&self, item: Option<&StatusItem>) {
+        #[cfg(target_os = "macos")]
+        crate::macos::install_status_item(&mut self.shared.status_items.borrow_mut(), item);
+        #[cfg(not(target_os = "macos"))]
+        let _ = item;
     }
 
     fn request_exit(&self) {
@@ -381,5 +392,6 @@ fn capabilities(event_loop: &ActiveEventLoop, knows_scheme: bool) -> PlatformCap
     capabilities.system_color_scheme = knows_scheme;
     capabilities.app_menu = cfg!(target_os = "macos");
     capabilities.reopen = cfg!(target_os = "macos");
+    capabilities.status_item = cfg!(target_os = "macos");
     capabilities
 }

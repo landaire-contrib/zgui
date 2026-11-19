@@ -74,7 +74,8 @@ harness = false
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 smithay-clipboard.workspace = true
 
-# The application menu, the reopen request and the title-bar buttons, which only AppKit has.
+# The application menu, the status item, the reopen request and the title-bar buttons, which only
+# AppKit has.
 [target.'cfg(target_os = "macos")'.dependencies]
 block2.workspace = true
 muda.workspace = true
