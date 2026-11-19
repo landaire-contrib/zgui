@@ -168,9 +168,11 @@ impl ConfiguredSurface {
             frame_latency = FRAME_LATENCY,
             "surface presentation modes"
         );
+        let backend = gpu.adapter().get_info().backend;
+        let offered = crate::gpu::formats::offered_alpha_modes(backend, &capabilities.alpha_modes);
         let formats = crate::gpu::formats::choose(
             &capabilities.formats,
-            &capabilities.alpha_modes,
+            &offered,
             setup.opaque,
             gpu.capabilities().mutable_texture_formats,
         );
@@ -190,7 +192,11 @@ impl ConfiguredSurface {
             height: setup.size.height.max(1) as u32,
             present_mode: mode,
             desired_maximum_frame_latency: FRAME_LATENCY,
-            alpha_mode: formats.alpha_mode,
+            alpha_mode: crate::gpu::formats::configured_alpha_mode(
+                backend,
+                &capabilities.alpha_modes,
+                formats.alpha_mode,
+            ),
             view_formats: formats.view_formats(),
         };
         let native = if crate::target::native::wanted() {
