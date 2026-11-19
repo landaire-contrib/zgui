@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex};
 use zgui_geom::{DevicePx, Size};
 use zgui_platform::{
     ClickSettings, Clipboard, Clock, ColorScheme, FocusGrabId, MonitorInfo, PlatformCapabilities,
-    PlatformCx, PlatformError, ScrollSettings, Surface, SurfaceAttributes, SurfaceId, VirtualClock,
-    WakeReason, Waker,
+    PlatformCx, PlatformError, ScrollSettings, StatusItem, Surface, SurfaceAttributes, SurfaceId,
+    VirtualClock, WakeReason, Waker,
 };
 
 use crate::clipboard::MemoryClipboard;
@@ -53,6 +53,8 @@ pub struct Headless {
     scroll: Mutex<ScrollSettings>,
     /// What this platform says the desktop's double-click time and distance are.
     click: Mutex<ClickSettings>,
+    /// Every status item the application set, in order, with an absent one for each removal.
+    status_items: Mutex<Vec<Option<StatusItem>>>,
     /// Whether the loop has been asked to finish.
     exiting: AtomicBool,
     /// Every focus grab that exists, with the surfaces it limits focus to.
@@ -105,6 +107,7 @@ impl Headless {
             color_scheme: Mutex::new(None),
             scroll: Mutex::new(ScrollSettings::desktop()),
             click: Mutex::new(ClickSettings::desktop()),
+            status_items: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
             grabs: Mutex::new(Vec::new()),
             next_grab: AtomicU64::new(1),
@@ -164,6 +167,17 @@ impl Headless {
             .color_scheme
             .lock()
             .expect("the preference is not poisoned") = scheme;
+    }
+
+    /// Every status item the application set, in order, with an absent one for each removal.
+    ///
+    /// Recorded whatever the declared capabilities say, so a test can also check that an
+    /// application asks for nothing the platform does not offer.
+    pub fn status_item_log(&self) -> Vec<Option<StatusItem>> {
+        self.status_items
+            .lock()
+            .expect("the log is not poisoned")
+            .clone()
     }
 
     /// The clock, as itself rather than as the contract's view of it.
@@ -413,6 +427,13 @@ impl PlatformCx for Headless {
 
     fn waker(&self) -> Arc<dyn Waker> {
         Arc::clone(&self.waker) as Arc<dyn Waker>
+    }
+
+    fn set_status_item(&self, item: Option<&StatusItem>) {
+        self.status_items
+            .lock()
+            .expect("the log is not poisoned")
+            .push(item.cloned());
     }
 
     fn request_exit(&self) {

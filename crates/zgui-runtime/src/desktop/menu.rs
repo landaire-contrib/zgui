@@ -1,4 +1,4 @@
-//! The application menu, rebuilt whenever what it was built from changes.
+//! The menus outside the windows, rebuilt whenever what they were built from changes.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -7,17 +7,20 @@ use zgui_platform::{AppMenu, MenuEntry, MenuId, Shortcut};
 use zgui_reactive::RenderEffect;
 use zgui_vocab::{KeyEvent, Modifiers};
 
-/// The menu the application builds, and whether the desktop has seen its last version.
-pub(crate) struct MenuSlot {
+/// A menu the application builds, and whether the desktop has seen its last version.
+///
+/// `T` is an [`AppMenu`] for the application menu, and an optional
+/// [`StatusItem`](zgui_platform::StatusItem) for the status item.
+pub(crate) struct MenuSlot<T> {
     /// The effect that builds the menu, kept for as long as the application runs.
     _effect: RenderEffect<()>,
     /// The version the desktop has not been given yet.
-    pending: Rc<RefCell<Option<AppMenu>>>,
+    pending: Rc<RefCell<Option<T>>>,
 }
 
-impl MenuSlot {
+impl<T: 'static> MenuSlot<T> {
     /// Builds the menu with `build` now, and again whenever a signal it read changes.
-    pub(crate) fn new(build: Box<dyn Fn() -> AppMenu>) -> Self {
+    pub(crate) fn new(build: Box<dyn Fn() -> T>) -> Self {
         let pending = Rc::new(RefCell::new(None));
         let effect = {
             let pending = Rc::clone(&pending);
@@ -33,7 +36,7 @@ impl MenuSlot {
     }
 
     /// The version the desktop has not been given yet.
-    pub(crate) fn take(&self) -> Option<AppMenu> {
+    pub(crate) fn take(&self) -> Option<T> {
         self.pending.borrow_mut().take()
     }
 }
