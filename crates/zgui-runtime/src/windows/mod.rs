@@ -129,6 +129,15 @@ impl Windows {
         self.commands.quit();
     }
 
+    /// Shows or hides the application's icon in the Dock and the application switcher.
+    ///
+    /// An application that lives in the status area hides the icon while no window shows, and
+    /// shows it again with its window. Does nothing where the desktop has no such icon; see
+    /// [`PlatformCapabilities::dock_icon`].
+    pub fn set_dock_icon_visible(&self, visible: bool) {
+        self.commands.set_dock_icon_visible(visible);
+    }
+
     /// Every window that is open, as a snapshot.
     pub fn all(&self) -> Vec<WindowHandle> {
         self.registry.get_untracked()
