@@ -17,7 +17,9 @@
 //!   before the bar sees it;
 //! * the grips hide themselves while the window is maximised, where there is nothing to drag;
 //! * on a desktop that refuses any of this — resizing from an edge on macOS — the call does nothing
-//!   and the rest of the window still works.
+//!   and the rest of the window still works;
+//! * `with_blur` and `set_blur`: the frame is translucent, and the desktop blurs what shows through
+//!   it where it can.
 
 use zgui::prelude::*;
 
@@ -49,6 +51,14 @@ fn Frame() -> impl IntoView {
             // was put.
             None => "this desktop does not say where the window is".to_owned(),
             Some(at) => format!("at {:.0}, {:.0}", at.x.0, at.y.0),
+        }
+    };
+    let blurred = RwSignal::new(true);
+    let blur_label = move || {
+        if blurred.get() {
+            "Blur: on"
+        } else {
+            "Blur: off"
         }
     };
 
@@ -101,6 +111,18 @@ fn Frame() -> impl IntoView {
                 label(class = "hint") {"Drag any edge or corner to resize."}
                 label(class = "readout") {{extent}}
                 label(class = "readout") {{placement}}
+                control(
+                    class = "toggle",
+                    tabindex = Focus::Sequential,
+                    on:click = {
+                        let window = window.clone();
+                        move |_| {
+                            let blur = !blurred.get_untracked();
+                            blurred.set(blur);
+                            window.set_blur(blur);
+                        }
+                    }
+                ) {{blur_label}}
             }
 
             // One strip per edge and corner. Each asks the desktop to resize from its own side.
@@ -179,7 +201,7 @@ const SHEET: &str = css!(
         height: 100%;
         border-radius: 12px;
         border: 1px solid #2f3646;
-        background-color: #12141a;
+        background-color: rgba(18, 20, 26, 0.72);
         overflow: hidden;
     }
 
@@ -188,7 +210,7 @@ const SHEET: &str = css!(
         justify-content: space-between;
         padding: 0 8px 0 14px;
         height: 38px;
-        background-color: #191d26;
+        background-color: rgba(25, 29, 38, 0.8);
         border-bottom: 1px solid #262b36;
     }
 
@@ -198,6 +220,17 @@ const SHEET: &str = css!(
     }
 
     .titlebar__controls { gap: 6px; }
+
+    .toggle {
+        margin-top: 8px;
+        padding: 6px 12px;
+        border-radius: 7px;
+        background-color: #232936;
+        color: #b9c2d4;
+        font-size: 12px;
+    }
+
+    .toggle:hover { background-color: #2f3646; }
 
     .chip {
         width: 26px;
@@ -255,9 +288,10 @@ fn main() -> Result<(), zgui::Error> {
         .with_title("Client-side decorations")
         .with_size(560.0, 380.0)
         .with_min_size(320.0, 200.0)
-        // The two that make the window the application's to draw.
+        // The two that make the window the application's to draw, and the blur behind it.
         .with_decorations(Decorations::None)
         .with_transparent(true)
+        .with_blur(true)
         .with_stylesheet(SHEET)
         .run(|| view! { Frame() })
 }
