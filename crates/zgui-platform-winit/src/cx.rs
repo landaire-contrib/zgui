@@ -362,9 +362,11 @@ impl PlatformCx for WinitCx<'_> {
     }
 }
 
-/// Where the window buttons of a window opened with `attributes` sit, when the application says.
+/// Where the window buttons of a window opened with `attributes` sit, when the window shows them
+/// and the application says.
 fn title_buttons(attributes: &SurfaceAttributes) -> Option<zgui_platform::TitleButtons> {
-    (attributes.decorations == zgui_platform::Decorations::NoTitleBar)
+    (attributes.decorations == zgui_platform::Decorations::NoTitleBar
+        && !attributes.title_buttons_hidden)
         .then_some(attributes.title_buttons)
         .flatten()
 }

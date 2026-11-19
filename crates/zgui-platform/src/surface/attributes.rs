@@ -71,6 +71,12 @@ pub struct SurfaceAttributes {
     /// Read only with [`Decorations::NoTitleBar`] on a desktop that draws its buttons over the
     /// content, which is macOS. Absent leaves them where the desktop puts them.
     pub title_buttons: Option<TitleButtons>,
+    /// Whether the desktop leaves its window buttons out.
+    ///
+    /// Read only with [`Decorations::NoTitleBar`] on a desktop that draws its buttons over the
+    /// content, which is macOS. The window keeps its corners and its shadow, as a panel does, and
+    /// the application gives the user another way to close it.
+    pub title_buttons_hidden: bool,
     /// Whether the surface composes its next frame before the platform is ready to show it.
     pub compose_ahead: ComposeAhead,
 }
@@ -118,6 +124,7 @@ impl SurfaceAttributes {
             icon: None,
             theme: None,
             title_buttons: None,
+            title_buttons_hidden: false,
             compose_ahead: ComposeAhead::Auto,
         }
     }

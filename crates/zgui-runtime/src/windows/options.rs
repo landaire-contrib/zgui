@@ -142,6 +142,15 @@ impl WindowOptions {
         self
     }
 
+    /// Whether the desktop leaves its window buttons out of a window with
+    /// [`Decorations::NoTitleBar`].
+    ///
+    /// Only macOS draws its buttons over the content. Elsewhere this does nothing.
+    pub fn with_title_buttons_hidden(mut self, hidden: bool) -> Self {
+        self.attributes.title_buttons_hidden = hidden;
+        self
+    }
+
     /// Whether the window may be partly transparent.
     ///
     /// What a window with rounded corners of its own needs, so the desktop shows through them.

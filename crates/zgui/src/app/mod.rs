@@ -281,6 +281,15 @@ impl App {
         self
     }
 
+    /// Whether the desktop leaves its window buttons out of a window with
+    /// [`Decorations::NoTitleBar`].
+    ///
+    /// Only macOS draws its buttons over the content. Elsewhere this does nothing.
+    pub fn with_title_buttons_hidden(mut self, hidden: bool) -> Self {
+        self.inner.attributes_mut().title_buttons_hidden = hidden;
+        self
+    }
+
     /// Gives the application a menu outside its windows.
     ///
     /// `build` runs after [`App::with_context`], in the same scope, and runs again whenever a
