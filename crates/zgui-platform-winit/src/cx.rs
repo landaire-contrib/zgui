@@ -341,6 +341,13 @@ impl PlatformCx for WinitCx<'_> {
         let _ = item;
     }
 
+    fn set_dock_icon_visible(&self, visible: bool) {
+        #[cfg(target_os = "macos")]
+        crate::macos::set_dock_icon_visible(visible);
+        #[cfg(not(target_os = "macos"))]
+        let _ = visible;
+    }
+
     fn request_exit(&self) {
         self.event_loop.exit();
     }
@@ -393,5 +400,6 @@ fn capabilities(event_loop: &ActiveEventLoop, knows_scheme: bool) -> PlatformCap
     capabilities.app_menu = cfg!(target_os = "macos");
     capabilities.reopen = cfg!(target_os = "macos");
     capabilities.status_item = cfg!(target_os = "macos");
+    capabilities.dock_icon = cfg!(target_os = "macos");
     capabilities
 }
