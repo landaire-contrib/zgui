@@ -210,9 +210,47 @@ fn pick(
     }
 }
 
+/// The alpha modes a surface on `backend` offers, under the names [`choose`] reads them by.
+///
+/// wgpu's Metal backend offers `PostMultiplied` and implements it by marking the layer non-opaque.
+/// Core Animation composites a non-opaque layer's pixels as premultiplied, which is what this
+/// pipeline draws, so on Metal that mode is the premultiplied one under another name. Without this
+/// a translucent window on macOS would be composited opaque.
+pub fn offered_alpha_modes(
+    backend: wgpu::Backend,
+    offered: &[wgpu::CompositeAlphaMode],
+) -> Vec<wgpu::CompositeAlphaMode> {
+    offered
+        .iter()
+        .map(|&mode| match (backend, mode) {
+            (wgpu::Backend::Metal, wgpu::CompositeAlphaMode::PostMultiplied) => {
+                wgpu::CompositeAlphaMode::PreMultiplied
+            }
+            _ => mode,
+        })
+        .collect()
+}
+
+/// The name a surface on `backend` is configured with for `chosen`, which [`choose`] picked from
+/// [`offered_alpha_modes`].
+pub fn configured_alpha_mode(
+    backend: wgpu::Backend,
+    offered: &[wgpu::CompositeAlphaMode],
+    chosen: wgpu::CompositeAlphaMode,
+) -> wgpu::CompositeAlphaMode {
+    let renamed = backend == wgpu::Backend::Metal
+        && chosen == wgpu::CompositeAlphaMode::PreMultiplied
+        && !offered.contains(&wgpu::CompositeAlphaMode::PreMultiplied);
+    if renamed {
+        wgpu::CompositeAlphaMode::PostMultiplied
+    } else {
+        chosen
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Formats, SrgbTier, choose};
+    use super::{Formats, SrgbTier, choose, configured_alpha_mode, offered_alpha_modes};
     use wgpu::CompositeAlphaMode as Alpha;
     use wgpu::TextureFormat as Format;
 
@@ -339,6 +377,26 @@ mod tests {
     #[test]
     fn post_multiplied_is_never_chosen_even_when_it_is_the_only_translucent_mode() {
         let offered = [Alpha::Opaque, Alpha::PostMultiplied];
+        assert_eq!(
+            choose(&[Format::Bgra8Unorm], &offered, false, true).alpha_mode,
+            Alpha::Opaque
+        );
+    }
+
+    #[test]
+    fn a_translucent_window_on_metal_is_composited_premultiplied() {
+        let metal = [Alpha::Opaque, Alpha::PostMultiplied];
+        let offered = offered_alpha_modes(wgpu::Backend::Metal, &metal);
+        let chosen = choose(&[Format::Bgra8Unorm], &offered, false, true).alpha_mode;
+        assert_eq!(chosen, Alpha::PreMultiplied);
+        assert_eq!(
+            configured_alpha_mode(wgpu::Backend::Metal, &metal, chosen),
+            Alpha::PostMultiplied,
+            "Metal names its non-opaque layer PostMultiplied"
+        );
+
+        // Elsewhere the same offer still means an un-premultiply nothing here performs.
+        let offered = offered_alpha_modes(wgpu::Backend::Vulkan, &metal);
         assert_eq!(
             choose(&[Format::Bgra8Unorm], &offered, false, true).alpha_mode,
             Alpha::Opaque
