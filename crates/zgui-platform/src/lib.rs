@@ -92,7 +92,8 @@ pub use crate::cx::PlatformCx;
 pub use crate::error::{PlatformError, Unsupported};
 pub use crate::grab::FocusGrabId;
 pub use crate::menu::{
-    AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusIcon, StatusItem, Submenu,
+    AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusAnchor, StatusIcon,
+    StatusItem, StatusPress, Submenu,
 };
 pub use crate::monitor::{
     MonitorId, MonitorInfo, MonitorTarget, MonitorTransform, refresh_interval,
