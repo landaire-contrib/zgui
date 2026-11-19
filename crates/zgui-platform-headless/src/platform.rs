@@ -44,6 +44,8 @@ pub struct Headless {
     click: Mutex<ClickSettings>,
     /// Every status item the application set, in order, with an absent one for each removal.
     status_items: Mutex<Vec<Option<StatusItem>>>,
+    /// Every Dock icon visibility the application asked for, in order.
+    dock_icon: Mutex<Vec<bool>>,
     /// Whether the loop has been asked to finish.
     exiting: AtomicBool,
 }
@@ -74,6 +76,7 @@ impl Headless {
             scroll: Mutex::new(ScrollSettings::desktop()),
             click: Mutex::new(ClickSettings::desktop()),
             status_items: Mutex::new(Vec::new()),
+            dock_icon: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
         }
     }
@@ -131,6 +134,14 @@ impl Headless {
     /// application asks for nothing the platform does not offer.
     pub fn status_item_log(&self) -> Vec<Option<StatusItem>> {
         self.status_items
+            .lock()
+            .expect("the log is not poisoned")
+            .clone()
+    }
+
+    /// Every Dock icon visibility the application asked for, in order.
+    pub fn dock_icon_log(&self) -> Vec<bool> {
+        self.dock_icon
             .lock()
             .expect("the log is not poisoned")
             .clone()
@@ -258,6 +269,13 @@ impl PlatformCx for Headless {
             .lock()
             .expect("the log is not poisoned")
             .push(item.cloned());
+    }
+
+    fn set_dock_icon_visible(&self, visible: bool) {
+        self.dock_icon
+            .lock()
+            .expect("the log is not poisoned")
+            .push(visible);
     }
 
     fn request_exit(&self) {

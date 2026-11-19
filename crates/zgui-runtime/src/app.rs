@@ -967,6 +967,11 @@ impl Runtime {
                         window.request_frame();
                     }
                 }
+                WindowCommand::DockIcon(visible) => {
+                    if cx.capabilities().dock_icon {
+                        cx.set_dock_icon_visible(visible);
+                    }
+                }
                 WindowCommand::Quit => cx.request_exit(),
             }
         }

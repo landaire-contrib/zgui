@@ -162,6 +162,8 @@ pub(crate) enum WindowCommand {
     Close(WindowToken),
     /// Apply the zoom the window's handle holds.
     Zoom(WindowToken),
+    /// Show or hide the application's icon in the Dock.
+    DockIcon(bool),
     /// Stop the application.
     Quit,
 }
@@ -256,6 +258,16 @@ impl WindowCommands {
     /// Asks for the application to stop.
     pub fn quit(&self) {
         self.inner.borrow_mut().queue.push_back(WindowCommand::Quit);
+        self.ping();
+    }
+
+    /// Asks for the application's icon in the Dock and the application switcher to be shown or
+    /// hidden.
+    pub fn set_dock_icon_visible(&self, visible: bool) {
+        self.inner
+            .borrow_mut()
+            .queue
+            .push_back(WindowCommand::DockIcon(visible));
         self.ping();
     }
 
