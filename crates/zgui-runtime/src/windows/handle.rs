@@ -480,6 +480,15 @@ impl WindowHandle {
         self.act(|surface| surface.set_theme(theme));
     }
 
+    /// Asks the desktop to blur what shows through the transparent parts of the window, or to
+    /// stop.
+    ///
+    /// Does nothing for a window that is not transparent, or where the desktop cannot blur a
+    /// window.
+    pub fn set_blur(&self, blur: bool) {
+        self.act(|surface| surface.set_blur(blur));
+    }
+
     /// Sets what the pointer looks like over this window.
     pub fn set_cursor(&self, cursor: CursorStyle) {
         self.act(|surface| surface.set_cursor(cursor));

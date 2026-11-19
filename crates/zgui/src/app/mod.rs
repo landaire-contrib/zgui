@@ -282,6 +282,15 @@ impl App {
         self
     }
 
+    /// Whether the desktop blurs what shows through the transparent parts of the window.
+    ///
+    /// Read only with [`App::with_transparent`]. macOS blurs the desktop behind the window. A
+    /// desktop that cannot blur a window ignores it.
+    pub fn with_blur(mut self, blur: bool) -> Self {
+        self.inner.attributes_mut().blur = blur;
+        self
+    }
+
     /// Where the window should open, measured from the desktop's origin.
     ///
     /// Ignored where a desktop places windows itself, which is every Wayland compositor.

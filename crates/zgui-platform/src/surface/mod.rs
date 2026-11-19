@@ -229,6 +229,12 @@ pub trait Surface: Send + Sync + 'static {
         let _ = theme;
     }
 
+    /// Asks the desktop to blur what shows through the transparent parts of this surface, or to
+    /// stop.
+    fn set_blur(&self, blur: bool) {
+        let _ = blur;
+    }
+
     /// Asks for keyboard focus.
     ///
     /// A desktop is free to refuse: stealing focus from what the user is typing into is the
