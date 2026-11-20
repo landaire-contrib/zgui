@@ -2,8 +2,8 @@
 
 use zgui_geom::{Device, DevicePx, Size};
 use zgui_vocab::{
-    DropEvent, EventKind, ImeEvent, KeyEvent, KeyState, Modifiers, Payload, PointerAction,
-    PointerEvent, Timestamp, WheelEvent,
+    DropEvent, EventKind, ImeEvent, KeyEvent, KeyState, Modifiers, Payload, PinchEvent,
+    PointerAction, PointerEvent, Timestamp, WheelEvent,
 };
 
 use crate::surface::chrome::DecorationSource;
@@ -98,6 +98,15 @@ pub enum SurfaceEvent {
         /// When it happened.
         timestamp: Timestamp,
     },
+    /// Two fingers moved together or apart on a trackpad or a touch screen.
+    Pinch {
+        /// How far, and where in the gesture.
+        event: PinchEvent,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
+        /// When it happened.
+        timestamp: Timestamp,
+    },
     /// A key went down or came up.
     Key {
         /// Which way it went.
@@ -146,6 +155,7 @@ impl SurfaceEvent {
             self,
             Self::Pointer { .. }
                 | Self::Wheel { .. }
+                | Self::Pinch { .. }
                 | Self::Key { .. }
                 | Self::ModifiersChanged(_)
                 | Self::Ime(_)
@@ -166,6 +176,7 @@ impl SurfaceEvent {
         match self {
             Self::Pointer { modifiers, .. }
             | Self::Wheel { modifiers, .. }
+            | Self::Pinch { modifiers, .. }
             | Self::Key { modifiers, .. }
             | Self::ModifiersChanged(modifiers) => Some(*modifiers),
             _ => None,
@@ -177,6 +188,7 @@ impl SurfaceEvent {
         match self {
             Self::Pointer { timestamp, .. }
             | Self::Wheel { timestamp, .. }
+            | Self::Pinch { timestamp, .. }
             | Self::Key { timestamp, .. } => Some(*timestamp),
             _ => None,
         }
@@ -216,6 +228,7 @@ impl SurfaceEvent {
                 Some((action.event_kind(), Payload::Pointer(*event)))
             }
             Self::Wheel { event, .. } => Some((EventKind::Wheel, Payload::Wheel(*event))),
+            Self::Pinch { event, .. } => Some((EventKind::Pinch, Payload::Pinch(*event))),
             Self::Key { state, event, .. } => {
                 Some((state.event_kind(), Payload::Key(event.clone())))
             }
@@ -239,9 +252,9 @@ mod tests {
     use crate::theme::ColorScheme;
     use zgui_geom::{CssPx, DevicePx, Point, Size};
     use zgui_vocab::{
-        EventKind, ImeEvent, KeyCode, KeyEvent, KeyState, Modifiers, NamedKey, PhysicalKey,
-        PointerAction, PointerEvent, PointerId, PointerKind, ScrollDelta, ScrollPhase, Timestamp,
-        WheelEvent,
+        EventKind, GesturePhase, ImeEvent, KeyCode, KeyEvent, KeyState, Modifiers, NamedKey,
+        PhysicalKey, PinchEvent, PointerAction, PointerEvent, PointerId, PointerKind, ScrollDelta,
+        ScrollPhase, Timestamp, WheelEvent,
     };
 
     fn pointer() -> SurfaceEvent {
@@ -257,6 +270,18 @@ mod tests {
     fn input_is_told_apart_from_everything_else() {
         assert!(pointer().is_input());
         assert!(SurfaceEvent::Drag(DragEvent::Left).is_input());
+        assert!(
+            SurfaceEvent::Pinch {
+                event: PinchEvent {
+                    scale_delta: 0.1,
+                    phase: GesturePhase::Moved,
+                    position: Point::new(CssPx(0.0), CssPx(0.0)),
+                },
+                modifiers: Modifiers::NONE,
+                timestamp: Timestamp::ORIGIN,
+            }
+            .is_input()
+        );
         assert!(!SurfaceEvent::RedrawRequested.is_input());
         assert!(!SurfaceEvent::Occluded(true).is_input());
         assert!(!SurfaceEvent::ColorSchemeChanged(ColorScheme::Dark).is_input());
@@ -302,6 +327,15 @@ mod tests {
                     position: Point::new(CssPx(0.0), CssPx(0.0)),
                     id: PointerId::MOUSE,
                     kind: PointerKind::Mouse,
+                },
+                modifiers: Modifiers::NONE,
+                timestamp: Timestamp::ORIGIN,
+            },
+            SurfaceEvent::Pinch {
+                event: PinchEvent {
+                    scale_delta: 0.1,
+                    phase: GesturePhase::Moved,
+                    position: Point::new(CssPx(0.0), CssPx(0.0)),
                 },
                 modifiers: Modifiers::NONE,
                 timestamp: Timestamp::ORIGIN,
