@@ -7,6 +7,7 @@ mod drag;
 mod drop;
 mod focus;
 mod ime;
+mod pinch;
 mod pointer;
 mod scroll;
 mod text;
@@ -26,6 +27,7 @@ pub use crate::event::payload::key::{
     Key, KeyCode, KeyEvent, KeyLocation, KeyState, NamedKey, PhysicalKey, UnknownKeyCode,
     UnknownNamedKey,
 };
+pub use crate::event::payload::pinch::{GesturePhase, PinchEvent};
 pub use crate::event::payload::pointer::{
     PointerAction, PointerButton, PointerEvent, PointerId, PointerKind, PointerSample,
 };
@@ -46,6 +48,8 @@ pub enum PayloadKind {
     Pointer,
     /// A scroll request from a wheel or a gesture.
     Wheel,
+    /// A pinch on a trackpad or a touch screen.
+    Pinch,
     /// A key press or release.
     Key,
     /// Text produced by the keyboard.
@@ -89,6 +93,8 @@ pub enum Payload {
     Pointer(PointerEvent),
     /// A scroll request from a wheel or a gesture.
     Wheel(WheelEvent),
+    /// A pinch on a trackpad or a touch screen.
+    Pinch(PinchEvent),
     /// A key press or release.
     Key(KeyEvent),
     /// Text produced by the keyboard.
@@ -117,6 +123,7 @@ impl Payload {
         match self {
             Self::Pointer(_) => PayloadKind::Pointer,
             Self::Wheel(_) => PayloadKind::Wheel,
+            Self::Pinch(_) => PayloadKind::Pinch,
             Self::Key(_) => PayloadKind::Key,
             Self::Text(_) => PayloadKind::Text,
             Self::Ime(_) => PayloadKind::Ime,
@@ -142,6 +149,14 @@ impl Payload {
     pub const fn as_wheel(&self) -> Option<&WheelEvent> {
         match self {
             Self::Wheel(event) => Some(event),
+            _ => None,
+        }
+    }
+
+    /// The pinch, when this is one.
+    pub const fn as_pinch(&self) -> Option<&PinchEvent> {
+        match self {
+            Self::Pinch(event) => Some(event),
             _ => None,
         }
     }
