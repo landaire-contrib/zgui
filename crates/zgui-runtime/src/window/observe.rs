@@ -18,9 +18,13 @@
 //!   again, which is an effect re-run and a frame; a document with a popover in it would otherwise
 //!   never settle. Each watched quantity is compared on its own, and an unwatched one is never
 //!   measured.
-//! * **It is bounded at two passes.** A popover converges in one: the first lays the positioner
-//!   out, the second places it. What the last pass laid out is compared once more without being
-//!   delivered, and only a value that still moved is warned about and left to the next frame.
+//! * **It is bounded at three passes.** A popover converges in one: the first lays the positioner
+//!   out, the second places it. A measured virtual list that scrolls onto rows it has not measured
+//!   uses all three: the first builds the rows for the new offset, the second measures them and
+//!   scrolls to keep the rows on screen in place, and the third delivers that scroll back to the
+//!   list. The third pass changes nothing in the document, so it skips its relayout. What the
+//!   last pass laid out is compared once more without being delivered, and only a value that
+//!   still moved is warned about and left to the next frame.
 
 use zgui_bits::Dirty;
 use zgui_dom::side::observed::{ObservationSlots, ObservedMask};
@@ -31,7 +35,7 @@ use zgui_vocab::Timestamp;
 use crate::window::Window;
 
 /// The most passes a delivery is allowed to take before it is truncated.
-const MAX_PASSES: u8 = 2;
+const MAX_PASSES: u8 = 3;
 
 impl Window {
     /// Delivers every observed measurement that changed, and re-runs the reactive work if any did.
