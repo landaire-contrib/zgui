@@ -6479,6 +6479,7 @@ dependencies = [
  "zgui",
  "zgui-layout",
  "zgui-platform-headless",
+ "zgui-profile",
  "zgui-render-vector-vello",
  "zgui-render-wgpu",
  "zgui-testkit-view",

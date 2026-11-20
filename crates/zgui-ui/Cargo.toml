@@ -41,6 +41,9 @@ zgui-platform-headless = { path = "../zgui-platform-headless", version = "0.1.0"
 # through the same two crates a window is drawn through.
 zgui-render-wgpu = { path = "../zgui-render-wgpu", version = "0.1.0" }
 zgui-render-vector-vello = { path = "../zgui-render-vector-vello", version = "0.1.0" }
+# The frame counters, for fixtures that assert how much work a frame did. Named with the feature so
+# that a release test build reads them.
+zgui-profile = { path = "../zgui-profile", version = "0.1.0", features = ["counters"] }
 # The map the ink measurement tallies colours in.
 rustc-hash.workspace = true
 # The accessibility tree, read by the consumer a screen reader's platform adapter is built on.

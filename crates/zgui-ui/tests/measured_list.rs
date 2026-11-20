@@ -1,7 +1,8 @@
 //! A virtualised list whose rows differ in height, in a window with a real layout.
 //!
 //! The rows are measured from the layout the window gives them, and a row that grows above the port
-//! moves the list by the same amount. Both are checked against the boxes the window laid out.
+//! moves the list by the same amount. Both are checked against the boxes the window laid out, and
+//! a scroll onto rows not yet measured is checked to settle in the frame it was made in.
 
 mod desktop;
 
@@ -13,6 +14,7 @@ use zgui::prelude::*;
 use zgui::reactive::{LocalStorage, RwSignal};
 use zgui::view;
 use zgui::view::{ScrollBehavior, ScrollTarget};
+use zgui_profile::{Counter, counter};
 use zgui_ui::prelude::*;
 
 use crate::desktop::stage::Stage;
@@ -26,8 +28,8 @@ const SHEET: &str = ".list { width: 300px; height: 400px }
 /// The port and the open row, handed out of the view once it is built.
 type Handed = Rc<Cell<Option<(NodeRef, RwSignal<Option<usize>, LocalStorage>)>>>;
 
-/// A list of ten thousand rows, estimated at 20px, opened and settled.
-fn open() -> (Stage, NodeRef, RwSignal<Option<usize>, LocalStorage>) {
+/// A list of ten thousand rows, estimated at `estimate` CSS pixels, opened and settled.
+fn open(estimate: f32) -> (Stage, NodeRef, RwSignal<Option<usize>, LocalStorage>) {
     let handed: Handed = Rc::default();
     let out = Rc::clone(&handed);
     let mut stage = Stage::open(SHEET, move || {
@@ -38,7 +40,7 @@ fn open() -> (Stage, NodeRef, RwSignal<Option<usize>, LocalStorage>) {
             VirtualList(
                 class = "list",
                 count = 10_000_usize,
-                measured = MeasuredRows::new(20.0),
+                measured = MeasuredRows::new(estimate),
                 overscan = 2_usize,
                 node_ref = port,
                 label = "Rows",
@@ -85,9 +87,15 @@ fn first_visible(stage: &Stage, port: NodeRef) -> (usize, f32) {
         .expect("a row is on screen")
 }
 
+/// How far the port is scrolled down, in device pixels.
+fn scrolled(stage: &Stage, port: NodeRef) -> f32 {
+    let node = port.get_untracked().expect("the port is bound");
+    stage.handles().host.scroll_position(node).offset.y.0
+}
+
 #[test]
 fn rows_are_built_for_the_heights_they_are_laid_out_at() {
-    let (stage, port, _) = open();
+    let (stage, port, _) = open(20.0);
 
     // Rows 0 to 12 start inside the 400px port, and two more are slack.
     let census = stage.census();
@@ -117,7 +125,7 @@ fn rows_are_built_for_the_heights_they_are_laid_out_at() {
 
 #[test]
 fn a_row_that_opens_above_the_port_leaves_the_rows_on_screen_where_they_are() {
-    let (mut stage, port, opened) = open();
+    let (mut stage, port, opened) = open(20.0);
     port.scroll_to(
         ScrollTarget::Offset(Point::new(DevicePx(0.0), DevicePx(2_010.0))),
         ScrollBehavior::Instant,
@@ -140,4 +148,42 @@ fn a_row_that_opens_above_the_port_leaves_the_rows_on_screen_where_they_are() {
         .and_then(|seen| seen.rect)
         .expect("the open row is built");
     assert_eq!(open.size.height.0, 200.0);
+}
+
+/// A step up builds a row above the port at its estimate. The row's height is delivered after the
+/// row is laid out, the list scrolls by the difference to keep the rows on screen in place, and
+/// that scroll is delivered back to the list. The frame of the step settles all three deliveries.
+#[test]
+fn a_step_onto_rows_not_yet_measured_settles_in_its_frame() {
+    // Each row differs from a 40px estimate: a short row by -20px and a tall row by 20px.
+    let (mut stage, port, _) = open(40.0);
+    port.scroll_to(
+        ScrollTarget::Offset(Point::new(DevicePx(0.0), DevicePx(100_000.0))),
+        ScrollBehavior::Instant,
+    );
+    stage.settle();
+
+    let mut kept = 0;
+    for step in 0..20 {
+        let before = scrolled(&stage, port);
+        counter::reset();
+        port.scroll_to(
+            ScrollTarget::Adjust(Point::new(DevicePx(0.0), DevicePx(-50.0))),
+            ScrollBehavior::Instant,
+        );
+        stage.settle();
+
+        assert_eq!(
+            counter::get(Counter::ObservationsTruncated),
+            0,
+            "step {step} left measured geometry for a later frame to deliver"
+        );
+        if scrolled(&stage, port) != before - 50.0 {
+            kept += 1;
+        }
+    }
+    assert!(
+        kept > 0,
+        "no step measured a row above the port, so no step scrolled to keep the rows in place"
+    );
 }
