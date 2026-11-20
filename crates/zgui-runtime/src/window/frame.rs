@@ -581,6 +581,8 @@ impl Window {
 
         mark("f.recycle");
         self.dom.end_frame();
+        // Here, because `end_frame` is what drops every node of a removed subtree.
+        self.editors.forget_dropped(self.document.borrow().store());
         mark("f.recycle.layout");
         // The box arena ends its frame here for the same reason the document's does, and it has to
         // be here rather than inside `lay_out`: a removed box stays readable until this call, and
