@@ -22,9 +22,15 @@ style! { pub RadioItemStyle =>
         background-color: transparent;
         color: var(--zui-color-primary);
         outline: none;
-        transition-property: color, box-shadow, border-color;
+        cursor: pointer;
+        transition-property: color, box-shadow, border-color, background-color;
         transition-duration: var(--zui-motion-duration-normal);
         transition-timing-function: var(--zui-motion-ease-standard);
+    }"
+// The pointer over the item or over its label.
+":scope:hover, :scope[data-label-hover] {
+        border-color: var(--zui-color-ring);
+        background-color: var(--zui-color-accent);
     }"
 ":scope:focus-visible {
         border-color: var(--zui-color-ring);
