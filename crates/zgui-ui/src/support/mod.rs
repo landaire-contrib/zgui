@@ -1,10 +1,12 @@
 //! What every component here does the same way.
 
 mod edit;
+mod label;
 mod press;
 mod value;
 
 pub use crate::support::edit::{Edit, apply, key_edit};
+pub use crate::support::label::{LABEL_HOVER, OPERATES, operated_by_label};
 pub use crate::support::press::{activate_on_press, activate_on_press_keeping_focus};
 pub use crate::support::value::{Bound, clamp_to_step};
 

@@ -14,7 +14,7 @@ use zgui_ui_icons::prelude::*;
 use zgui_ui_icons::set::mark::{CHECK, MINUS};
 use zgui_ui_primitives::{Binding, Controllable};
 
-use crate::support::activate_on_press;
+use crate::support::{LABEL_HOVER, activate_on_press, operated_by_label};
 
 /// What the checkbox's rules are installed under.
 const SHEET: &str = "zui-checkbox";
@@ -82,6 +82,9 @@ pub fn Checkbox(
     #[prop(into, default = Signal::stored_local(false))]
     invalid: Signal<bool, LocalStorage>,
     /// The element whose text names this one.
+    ///
+    /// A press on that element toggles the checkbox, and the pointer over it shows the
+    /// checkbox's hover state.
     #[prop(optional)]
     labelled_by: Option<NodeRef>,
     /// Where to record this component's own element, for relating it to something else.
@@ -114,8 +117,13 @@ pub fn Checkbox(
         semantics = semantics.labelled_by(label);
     }
 
+    let label_hovered = operated_by_label(element, labelled_by, move || disabled.get());
+
     let own = Attrs::new()
         .class_toggle(zgui::view::ClassName::new("zui-checkbox"), true)
+        .attribute(zgui::view::AttrName::new(LABEL_HOVER), move || {
+            label_hovered.get().then(String::new)
+        })
         .attribute(zgui::view::AttrName::new("data-state"), move || {
             Some(value.get().name().to_owned())
         })

@@ -21,7 +21,10 @@ style! { pub LabelStyle =>
         color: var(--zui-color-foreground);
         user-select: none;
     }"
-    // A label whose control is disabled is faded with it. There is no prop for that and no signal
-    // behind it: the state is the control's, and this is a sibling selector reading it.
+    // A checkbox, a switch or a radio item that names this label sets `data-operates` while a press
+    // here operates it, and `data-disabled` while it is disabled. There is no prop for either: the
+    // state is the control's.
+    ":scope[data-operates] { cursor: pointer; }"
+    // A label whose control is disabled is faded with it, and a press on it reaches nothing.
     ":scope[data-disabled] { opacity: 0.5; pointer-events: none; }"
 }

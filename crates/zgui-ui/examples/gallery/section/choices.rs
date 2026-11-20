@@ -26,6 +26,9 @@ pub(crate) fn Choices() -> impl IntoView {
     let terms_box = NodeRef::new();
     let emails_label = NodeRef::new();
     let emails_switch = NodeRef::new();
+    let monthly_label = NodeRef::new();
+    let yearly_label = NodeRef::new();
+    let never_label = NodeRef::new();
 
     view! {
         Panel(title = "Checkbox", note = "on, off, part-way and disabled") {
@@ -47,12 +50,18 @@ pub(crate) fn Choices() -> impl IntoView {
             Row(label = "radio group") {
                 RadioGroup(value = plan, label = "Billing") {
                     row(class = "row__items") {
-                        RadioGroupItem(value = "monthly", label = "Monthly")
-                        text {"Monthly"}
-                        RadioGroupItem(value = "yearly", label = "Yearly")
-                        text {"Yearly"}
-                        RadioGroupItem(value = "never", disabled = true, label = "Never")
-                        text {"Never"}
+                        row(class = "pair") {
+                            RadioGroupItem(value = "monthly", labelled_by = monthly_label)
+                            Label(node_ref = monthly_label) {"Monthly"}
+                        }
+                        row(class = "pair") {
+                            RadioGroupItem(value = "yearly", labelled_by = yearly_label)
+                            Label(node_ref = yearly_label) {"Yearly"}
+                        }
+                        row(class = "pair") {
+                            RadioGroupItem(value = "never", disabled = true, labelled_by = never_label)
+                            Label(node_ref = never_label) {"Never"}
+                        }
                     }
                 }
             }

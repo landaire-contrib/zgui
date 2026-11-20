@@ -363,3 +363,249 @@ fn enter_still_runs_a_menu_item_that_answers_the_press() {
         "Enter on the highlighted item ran nothing, so the keyboard lost the item the pointer kept"
     );
 }
+
+/// The elements a page of labelled controls was built with.
+#[derive(Clone, Copy)]
+struct Labelled {
+    /// The checkbox.
+    checkbox: NodeRef,
+    /// The label that names the checkbox.
+    checkbox_name: NodeRef,
+    /// The second radio item.
+    yearly: NodeRef,
+    /// The disabled checkbox.
+    locked: NodeRef,
+    /// The label that names the disabled checkbox.
+    locked_name: NodeRef,
+    /// The checkbox inside the label that names it.
+    nested: NodeRef,
+}
+
+impl Labelled {
+    /// Handles for a page that has not been built yet.
+    fn new() -> Self {
+        Self {
+            checkbox: NodeRef::new(),
+            checkbox_name: NodeRef::new(),
+            yearly: NodeRef::new(),
+            locked: NodeRef::new(),
+            locked_name: NodeRef::new(),
+            nested: NodeRef::new(),
+        }
+    }
+}
+
+/// What the labelled controls hold.
+#[derive(Clone, Copy)]
+struct Answers {
+    /// The checkbox.
+    ticked: RwSignal<Checked, zgui::reactive::LocalStorage>,
+    /// The switch.
+    on: RwSignal<bool, zgui::reactive::LocalStorage>,
+    /// The radio group.
+    plan: RwSignal<String, zgui::reactive::LocalStorage>,
+    /// The disabled checkbox.
+    locked: RwSignal<Checked, zgui::reactive::LocalStorage>,
+    /// The checkbox inside its label.
+    nested: RwSignal<Checked, zgui::reactive::LocalStorage>,
+}
+
+impl Answers {
+    /// Every control at rest.
+    fn new() -> Self {
+        Self {
+            ticked: RwSignal::new_local(Checked::No),
+            on: RwSignal::new_local(false),
+            plan: RwSignal::new_local("monthly".to_owned()),
+            locked: RwSignal::new_local(Checked::No),
+            nested: RwSignal::new_local(Checked::No),
+        }
+    }
+}
+
+/// A checkbox, a switch, a radio group and a disabled checkbox, each beside a label that names it,
+/// and a checkbox inside the label that names it.
+fn labelled_page(refs: Labelled, answers: Answers) -> impl IntoView {
+    let switch_name = NodeRef::new();
+    let monthly_name = NodeRef::new();
+    let yearly_name = NodeRef::new();
+    let nested_name = NodeRef::new();
+    view! {
+        column(class = "page") {
+            row {
+                Checkbox(node_ref = refs.checkbox, checked = answers.ticked, labelled_by = refs.checkbox_name)
+                Label(node_ref = refs.checkbox_name, control = refs.checkbox) {"Accept terms"}
+            }
+            row {
+                Switch(checked = answers.on, labelled_by = switch_name)
+                Label(node_ref = switch_name) {"Dark mode"}
+            }
+            RadioGroup(value = answers.plan, label = "Billing") {
+                row {
+                    RadioGroupItem(value = "monthly", labelled_by = monthly_name)
+                    Label(node_ref = monthly_name) {"Monthly"}
+                }
+                row {
+                    RadioGroupItem(node_ref = refs.yearly, value = "yearly", labelled_by = yearly_name)
+                    Label(node_ref = yearly_name) {"Yearly"}
+                }
+            }
+            row {
+                Checkbox(
+                    node_ref = refs.locked,
+                    checked = answers.locked,
+                    disabled = true,
+                    labelled_by = refs.locked_name
+                )
+                Label(node_ref = refs.locked_name, control = refs.locked) {"Locked"}
+            }
+            Label(node_ref = nested_name) {
+                Checkbox(node_ref = refs.nested, checked = answers.nested, labelled_by = nested_name)
+                text {"Nested"}
+            }
+            text {"elsewhere"}
+        }
+    }
+}
+
+/// The node `handle` is bound to.
+fn bound(handle: NodeRef) -> zgui::view::NodeId {
+    handle
+        .get_untracked()
+        .expect("the page bound its reference when it was built")
+}
+
+/// Whether `node` carries the attribute `name` with no value.
+fn carries(stage: &Stage, node: zgui::view::NodeId, name: &str) -> bool {
+    stage
+        .handles()
+        .dom
+        .attribute_is(node, zgui::view::AttrName::new(name), "")
+}
+
+#[test]
+fn a_press_on_a_label_toggles_its_checkbox_once_and_focuses_it() {
+    let refs = Labelled::new();
+    let answers = Answers::new();
+    let mut stage = Stage::open(SHEET, move || labelled_page(refs, answers));
+
+    stage.click_saying("Accept terms");
+    stage.settle();
+    assert_eq!(answers.ticked.get_untracked(), Checked::Yes);
+    assert_eq!(stage.focused(), Some(bound(refs.checkbox)));
+
+    stage.click_saying("Accept terms");
+    stage.settle();
+    assert_eq!(
+        answers.ticked.get_untracked(),
+        Checked::No,
+        "the second press toggled the checkbox other than once"
+    );
+}
+
+#[test]
+fn a_press_on_a_label_flips_its_switch() {
+    let refs = Labelled::new();
+    let answers = Answers::new();
+    let mut stage = Stage::open(SHEET, move || labelled_page(refs, answers));
+
+    stage.click_saying("Dark mode");
+    stage.settle();
+    assert!(answers.on.get_untracked());
+}
+
+#[test]
+fn a_press_on_a_label_chooses_its_radio_item_and_focuses_it() {
+    let refs = Labelled::new();
+    let answers = Answers::new();
+    let mut stage = Stage::open(SHEET, move || labelled_page(refs, answers));
+
+    stage.click_saying("Yearly");
+    stage.settle();
+    assert_eq!(answers.plan.get_untracked(), "yearly");
+    assert_eq!(stage.focused(), Some(bound(refs.yearly)));
+}
+
+#[test]
+fn a_press_on_the_label_of_a_disabled_control_does_nothing() {
+    let refs = Labelled::new();
+    let answers = Answers::new();
+    let mut stage = Stage::open(SHEET, move || labelled_page(refs, answers));
+
+    stage.click_saying("Locked");
+    stage.settle();
+    assert_eq!(answers.locked.get_untracked(), Checked::No);
+    assert_ne!(stage.focused(), Some(bound(refs.locked)));
+}
+
+#[test]
+fn the_pointer_over_a_label_shows_the_hover_state_of_its_control() {
+    let refs = Labelled::new();
+    let answers = Answers::new();
+    let mut stage = Stage::open(SHEET, move || labelled_page(refs, answers));
+    let checkbox = bound(refs.checkbox);
+    let locked = bound(refs.locked);
+    let at = |stage: &Stage, text: &str| {
+        stage
+            .census()
+            .control(text)
+            .and_then(|seen| seen.centre())
+            .expect("the text is laid out")
+    };
+
+    assert!(carries(&stage, bound(refs.checkbox_name), "data-operates"));
+    assert!(
+        !carries(&stage, bound(refs.locked_name), "data-operates"),
+        "the label of a disabled control shows a pointer cursor"
+    );
+    assert!(
+        carries(&stage, bound(refs.locked_name), "data-disabled"),
+        "the label of a disabled control is not faded with it"
+    );
+    assert!(!carries(&stage, checkbox, "data-label-hover"));
+
+    let terms = at(&stage, "Accept terms");
+    stage.move_to(terms);
+    stage.settle();
+    assert!(carries(&stage, checkbox, "data-label-hover"));
+
+    let elsewhere = at(&stage, "elsewhere");
+    stage.move_to(elsewhere);
+    stage.settle();
+    assert!(!carries(&stage, checkbox, "data-label-hover"));
+
+    let locked_name = at(&stage, "Locked");
+    stage.move_to(locked_name);
+    stage.settle();
+    assert!(
+        !carries(&stage, locked, "data-label-hover"),
+        "a disabled control shows a hover state"
+    );
+}
+
+#[test]
+fn a_press_on_a_checkbox_inside_its_label_toggles_it_once() {
+    let refs = Labelled::new();
+    let answers = Answers::new();
+    let mut stage = Stage::open(SHEET, move || labelled_page(refs, answers));
+    let nested = bound(refs.nested);
+
+    let at = stage
+        .census()
+        .nodes
+        .iter()
+        .find(|seen| seen.id == nested)
+        .and_then(|seen| seen.centre())
+        .expect("the checkbox is laid out");
+    stage.click(at);
+    stage.settle();
+    assert_eq!(
+        answers.nested.get_untracked(),
+        Checked::Yes,
+        "a press on the box toggled it other than once"
+    );
+
+    stage.click_saying("Nested");
+    stage.settle();
+    assert_eq!(answers.nested.get_untracked(), Checked::No);
+}
