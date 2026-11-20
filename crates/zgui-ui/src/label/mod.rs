@@ -39,9 +39,12 @@ const SHEET: &str = "zui-label";
 ///
 /// # Pressing it
 ///
-/// A press on a label moves focus to the control it names, which is the whole reason a label is
-/// worth clicking. Nothing else happens: a label does not activate its control, because a label
-/// on a text field would then be a field that selects itself when its name is touched.
+/// A press on a label moves focus to the control it names. A [`Checkbox`](crate::Checkbox), a
+/// [`Switch`](crate::Switch) or a [`RadioGroupItem`](crate::RadioGroupItem) that names the label
+/// with `labelled_by` also takes the press as its own: the press toggles or chooses it, and the
+/// pointer over the label shows the control's hover state. While the control is disabled, the
+/// label fades with it and a press on it does nothing. Other controls only take focus, so a press
+/// on the label of a text field does not change the field.
 #[component]
 pub fn Label(
     /// The control this names. A press here focuses it.

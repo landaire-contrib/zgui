@@ -10,7 +10,7 @@ use zgui::vocab::UiState;
 use zgui::{component, variants, view};
 use zgui_ui_primitives::{Binding, Controllable};
 
-use crate::support::{activate_on_press, variant_attrs};
+use crate::support::{LABEL_HOVER, activate_on_press, operated_by_label, variant_attrs};
 
 /// What the switch's rules are installed under.
 const SHEET: &str = "zui-switch";
@@ -77,6 +77,9 @@ pub fn Switch(
     #[prop(default = SwitchSize::Md)]
     size: SwitchSize,
     /// The element whose text names this one.
+    ///
+    /// A press on that element flips the switch, and the pointer over it shows the switch's hover
+    /// state.
     #[prop(optional)]
     labelled_by: Option<NodeRef>,
     /// Where to record this component's own element, for relating it to something else.
@@ -100,8 +103,13 @@ pub fn Switch(
         semantics = semantics.labelled_by(label);
     }
 
+    let label_hovered = operated_by_label(element, labelled_by, move || disabled.get());
+
     let variants = SwitchVariants { size };
     let own = variant_attrs(variants.classes(), variants.data_attributes())
+        .attribute(zgui::view::AttrName::new(LABEL_HOVER), move || {
+            label_hovered.get().then(String::new)
+        })
         .attribute(zgui::view::AttrName::new("data-state"), move || {
             Some(if value.get() { "checked" } else { "unchecked" }.to_owned())
         })

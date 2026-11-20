@@ -10,6 +10,7 @@ use zgui_ui_primitives::use_roving_item;
 
 use crate::radio_group::style::RadioItemStyle;
 use crate::radio_group::{ITEM_SHEET, RadioContext};
+use crate::support::{LABEL_HOVER, operated_by_label};
 
 /// One choice.
 ///
@@ -55,6 +56,9 @@ pub fn RadioGroupItem(
     #[prop(into, optional)]
     label: Option<String>,
     /// The element whose text names this one, when it is named by something on the surface.
+    ///
+    /// A press on that element chooses this item, and the pointer over it shows the item's hover
+    /// state.
     #[prop(optional)]
     labelled_by: Option<NodeRef>,
     /// Where to record this item's own element, for relating it to something else.
@@ -102,9 +106,14 @@ pub fn RadioGroupItem(
         });
     }
 
+    let label_hovered = operated_by_label(node, labelled_by, is_out);
+
     let own = Attrs::new()
         .class_toggle(zgui::view::ClassName::new("zui-radio-group__item"), true)
         .class_toggle(zgui::view::ClassName::new(RadioItemStyle::CLASS), true)
+        .attribute(zgui::view::AttrName::new(LABEL_HOVER), move || {
+            label_hovered.get().then(String::new)
+        })
         .attribute(zgui::view::AttrName::new("data-state"), {
             let chosen = chosen.clone();
             move || Some(if chosen() { "checked" } else { "unchecked" }.to_owned())
