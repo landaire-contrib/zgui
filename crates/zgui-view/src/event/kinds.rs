@@ -2,7 +2,7 @@
 
 use zgui_vocab::{
     AnimationEvent, DragLeaveEvent, DropEvent, EventKind, FocusEvent, ImeEvent, KeyEvent, Payload,
-    PointerEvent, ScrollEvent, TextEvent, TransitionEvent, ValueEvent, WheelEvent,
+    PinchEvent, PointerEvent, ScrollEvent, TextEvent, TransitionEvent, ValueEvent, WheelEvent,
 };
 
 use crate::event::{EventType, EventView};
@@ -70,6 +70,8 @@ events! {
 
     WHEEL: Wheel => Wheel, WheelEvent, as_wheel,
         "A wheel or scroll gesture asked to scroll over the element.";
+    PINCH: Pinch => Pinch, PinchEvent, as_pinch,
+        "Two fingers moved together or apart over the element.";
 
     KEY_DOWN: KeyDown => KeyDown, KeyEvent, as_key,
         "A key went down while the element had focus.";

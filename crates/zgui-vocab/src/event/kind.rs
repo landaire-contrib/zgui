@@ -142,6 +142,10 @@ events! {
     Wheel => "wheel", "wheel", Wheel,
         bubbles: true, cancelable: true,
         "A wheel or scroll gesture asked to scroll over the element.";
+    Pinch => "pinch", "gesturechange", Pinch,
+        bubbles: true, cancelable: false,
+        "Two fingers moved together or apart over the element. A document-object-model backend \
+         receives only the stages between the first and the last.";
 
     KeyDown => "key_down", "keydown", Key,
         bubbles: true, cancelable: true,

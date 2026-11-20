@@ -278,6 +278,7 @@ fn every_event_name_the_grammar_accepts_resolves_to_a_constant() {
             on:double_click = |_| {},
             on:context_menu = |_| {},
             on:wheel = |_| {},
+            on:pinch = |_| {},
             on:key_down = |_| {},
             on:key_up = |_| {},
             on:text = |_| {},

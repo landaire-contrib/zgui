@@ -34,6 +34,7 @@ const EVENTS: &[&str] = &[
     "input",
     "key_down",
     "key_up",
+    "pinch",
     "pointer_cancel",
     "pointer_down",
     "pointer_enter",

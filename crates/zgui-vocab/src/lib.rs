@@ -68,10 +68,10 @@ pub use crate::a11y::{
 };
 pub use crate::event::payload::{
     AnimationEvent, AnimationPhase, DragData, DragLeaveEvent, DropEvent, FocusCause, FocusEvent,
-    ImeEvent, Key, KeyCode, KeyEvent, KeyLocation, KeyState, NamedKey, PhysicalKey, PointerAction,
-    PointerButton, PointerEvent, PointerId, PointerKind, PointerSample, Pseudo, ScrollDelta,
-    ScrollEvent, ScrollPhase, TextEvent, TransitionEvent, TransitionPhase, UnknownKeyCode,
-    UnknownNamedKey, ValueChange, ValueEvent, WheelEvent,
+    GesturePhase, ImeEvent, Key, KeyCode, KeyEvent, KeyLocation, KeyState, NamedKey, PhysicalKey,
+    PinchEvent, PointerAction, PointerButton, PointerEvent, PointerId, PointerKind, PointerSample,
+    Pseudo, ScrollDelta, ScrollEvent, ScrollPhase, TextEvent, TransitionEvent, TransitionPhase,
+    UnknownKeyCode, UnknownNamedKey, ValueChange, ValueEvent, WheelEvent,
 };
 pub use crate::event::{
     ClickSettings, DefaultAction, EventKind, ListenerOptions, Listeners, Path, Payload,
