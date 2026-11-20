@@ -77,6 +77,8 @@ style! { pub FieldTextStyle =>
         line-height: 1.375;
         user-select: none;
     }"
+    ".zui-field__label[data-operates] { cursor: pointer; }"
+    ".zui-field__label[data-disabled] { opacity: 0.5; pointer-events: none; }"
     ".zui-field__title {
         display: flex;
         width: fit-content;

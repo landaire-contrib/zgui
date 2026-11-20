@@ -9,8 +9,10 @@ use crate::field::style::FieldTextStyle;
 
 /// What a [`Field`](crate::Field) is asking for.
 ///
-/// Relate it to the control with `control` so that pressing the words moves the keyboard to the
-/// control and a reader announces the two together.
+/// Give it a `node_ref` and name it from the control with `labelled_by`, so that a reader
+/// announces the two together. Relate it to the control with `control` so that a press on the
+/// words moves the keyboard to the control. A press on the label of a checkbox, a switch or a
+/// radio item also operates that control, as for a [`Label`](crate::Label).
 ///
 /// ```
 /// # use zgui::prelude::*;
@@ -18,11 +20,24 @@ use crate::field::style::FieldTextStyle;
 /// # use zgui_ui::prelude::*;
 /// # #[component]
 /// # fn Example() -> impl IntoView {
-/// view! { Field {FieldLabel {"Email"} Input()} }
+/// let name = NodeRef::new();
+/// let control = NodeRef::new();
+/// view! {
+///     Field(orientation = FieldOrientation::Horizontal) {
+///         Switch(node_ref = control, labelled_by = name)
+///         FieldLabel(node_ref = name, control = control) {"Send me email"}
+///     }
+/// }
 /// # }
 /// ```
 #[component]
 pub fn FieldLabel(
+    /// The control this names. A press here focuses it.
+    #[prop(optional)]
+    control: Option<NodeRef>,
+    /// Where to record this component's own element, for relating it to something else.
+    #[prop(optional)]
+    node_ref: Option<NodeRef>,
     /// Classes merged after its own.
     #[prop(into, optional)]
     class: Classes,
@@ -33,8 +48,23 @@ pub fn FieldLabel(
     children: Children,
 ) -> impl IntoView {
     install_stylesheet(TEXT_SHEET, FieldTextStyle::CSS);
+    let element = node_ref.unwrap_or_default();
+    let own = Attrs::new().a11y_from(A11yBinding::new(Role::Label));
     view! {
-        label(class = "zui-field__label", {..attrs}, class = class) {{children.into_view_once()}}
+        label(
+            node_ref = element,
+            class = "zui-field__label",
+            on:click = move |_| {
+                if let Some(control) = control {
+                    control.focus();
+                }
+            },
+            {..own},
+            {..attrs},
+            class = class
+        ) {
+            {children.into_view_once()}
+        }
     }
 }
 
