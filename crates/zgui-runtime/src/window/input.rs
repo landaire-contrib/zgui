@@ -213,6 +213,10 @@ impl Window {
                     let routed = self.router.wheel(&world, event);
                     (routed.target(), routed.steps.to_vec(), routed.default)
                 }
+                SurfaceEvent::Pinch { event, .. } => {
+                    let routed = self.router.pinch(&world, event);
+                    (routed.target(), routed.steps.to_vec(), routed.default)
+                }
                 SurfaceEvent::Key { state, event, .. } => {
                     let shortcuts = self.host.window_shortcuts();
                     let routed = self

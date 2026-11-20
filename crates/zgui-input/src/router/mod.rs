@@ -13,7 +13,8 @@ mod world;
 
 use smallvec::SmallVec;
 use zgui_vocab::{
-    EventKind, KeyEvent, Modifiers, Payload, PointerAction, PointerEvent, Timestamp, WheelEvent,
+    EventKind, GesturePhase, KeyEvent, Modifiers, Payload, PinchEvent, PointerAction, PointerEvent,
+    Timestamp, WheelEvent,
 };
 
 use crate::capture::PointerCapture;
@@ -74,6 +75,8 @@ pub struct Router {
     pressed: SmallVec<[(zgui_vocab::PointerId, zgui_dom::NodeKey); 2]>,
     /// Which scrollbar each pointer is holding.
     bars: Bars,
+    /// Which element the pinch in progress is aimed at, until its last stage.
+    pinch: Option<zgui_dom::NodeKey>,
 }
 
 impl Router {
@@ -184,6 +187,52 @@ impl Router {
             chain,
             steps: self.plan.steps(),
             default,
+            hover: Moved::default(),
+            active: Moved::default(),
+        }
+    }
+
+    /// Routes one pinch, which has no framework default.
+    ///
+    /// A pinch starts at what is under the pointer, and each later stage goes to the same element,
+    /// so a listener that scales its element hears the whole gesture. A stage goes to what is under
+    /// the pointer when that element is gone.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the document is poisoned by an earlier batch that unwound.
+    pub fn pinch(&mut self, world: &World<'_>, event: &PinchEvent) -> Routed<'_> {
+        let held = match event.phase {
+            GesturePhase::Started => None,
+            _ => self
+                .pinch
+                .map(|node| HitChain::to_root(world.document.store(), node))
+                .filter(|chain| chain.target().is_some()),
+        };
+        let chain = held.unwrap_or_else(|| {
+            world.chain_at(zgui_geom::Point::new(
+                zgui_geom::DevicePx(event.position.x.0 * world.scale.get()),
+                zgui_geom::DevicePx(event.position.y.0 * world.scale.get()),
+            ))
+        });
+        self.pinch = if event.phase.is_last() {
+            None
+        } else {
+            chain.target()
+        };
+
+        resolve(
+            world.document.store(),
+            &chain,
+            EventKind::Pinch,
+            &mut self.plan,
+        );
+        Routed {
+            kind: EventKind::Pinch,
+            payload: Payload::Pinch(*event),
+            chain,
+            steps: self.plan.steps(),
+            default: None,
             hover: Moved::default(),
             active: Moved::default(),
         }
