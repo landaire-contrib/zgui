@@ -1295,6 +1295,11 @@ impl Window {
         &self.layout
     }
 
+    /// The editing models of the editable elements this window holds.
+    pub fn editors(&self) -> &crate::editing::Editors {
+        &self.editors
+    }
+
     /// Where every scroll container in this window is scrolled to.
     pub fn scroll(&self) -> &Rc<RefCell<zgui_scroll::Scroller>> {
         &self.scroll
@@ -1377,6 +1382,7 @@ impl Window {
             scope.unmount();
         }
         self.dom.end_frame();
+        self.editors.forget_dropped(self.document.borrow().store());
     }
 }
 

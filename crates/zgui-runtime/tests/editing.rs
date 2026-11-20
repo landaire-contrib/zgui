@@ -572,3 +572,74 @@ fn a_field_focused_before_its_first_layout_enables_text_input() {
         "text input stayed disabled for a field focused before its first layout"
     );
 }
+
+/// A window whose editor is shown while `shown` is true, under a wrapper when `wrapped` is.
+///
+/// Returns the harness with the editor focused and typed into, so its model holds the text and an
+/// undo history.
+fn typed_into_removable(
+    shown: zgui_reactive::RwSignal<bool>,
+    wrapped: bool,
+) -> zgui_platform_headless::Harness<zgui_runtime::Runtime> {
+    let mut harness = support::app_with_text(CSS, move |cx: &mut BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(zgui_view::Show::new(
+                    move || zgui_reactive::prelude::Get::get(&shown),
+                    move || {
+                        let editor = zgui_elements::editor().child("ab");
+                        if wrapped {
+                            zgui_view::AnyView::new(zgui_elements::column().child(editor))
+                        } else {
+                            zgui_view::AnyView::new(editor)
+                        }
+                    },
+                ))
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+    for event in [
+        KeyEvent::named(NamedKey::Tab, PhysicalKey::Code(KeyCode::Tab)),
+        letter("z"),
+        letter("y"),
+    ] {
+        harness.deliver_to_first(SurfaceEvent::Key {
+            state: KeyState::Pressed,
+            event,
+            modifiers: Modifiers::NONE,
+            timestamp: Timestamp::ORIGIN,
+        });
+        harness.settle(8);
+    }
+    assert_eq!(
+        harness.app().windows()[0].editors().len(),
+        1,
+        "the fixture never typed into the editor"
+    );
+    harness
+}
+
+/// Hides the editor and reports how many editing models the window holds afterwards.
+fn models_after_removal(wrapped: bool) -> usize {
+    let shown = zgui_reactive::RwSignal::new(true);
+    let mut harness = typed_into_removable(shown, wrapped);
+    zgui_reactive::prelude::Set::set(&shown, false);
+    harness.settle(8);
+    let held = harness.app().windows()[0].editors().len();
+    harness.shut_down();
+    held
+}
+
+#[test]
+fn removing_a_typed_editor_forgets_its_text_and_history() {
+    // The model holds every value the field ever had, and the field can hold a password.
+    assert_eq!(models_after_removal(false), 0);
+}
+
+#[test]
+fn removing_an_ancestor_of_a_typed_editor_forgets_its_text_and_history() {
+    assert_eq!(models_after_removal(true), 0);
+}

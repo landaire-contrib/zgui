@@ -11,7 +11,7 @@
 //! is what makes a numeric-only field writable by an application.
 
 use rustc_hash::FxHashMap;
-use zgui_dom::{Document, EverythingMatters, NodeIndex, NodeKey, NodeKind};
+use zgui_dom::{Document, DocumentStore, EverythingMatters, NodeIndex, NodeKey, NodeKind};
 use zgui_edit::document::Projection;
 use zgui_edit::{Editor, Response};
 use zgui_vocab::{ImeEvent, KeyEvent, Modifiers};
@@ -55,6 +55,8 @@ struct Attached {
 pub struct Editors {
     /// The models, by the element they belong to.
     attached: FxHashMap<NodeKey, Attached>,
+    /// The document's dropped-node count when the models were last checked against it.
+    dropped: u64,
 }
 
 impl core::fmt::Debug for Editors {
@@ -146,9 +148,20 @@ impl Editors {
         self.attached.get(&node).map(|held| held.editor.text())
     }
 
-    /// Forgets an element's model, which is what removing the element does.
-    pub fn detach(&mut self, node: NodeKey) {
-        self.attached.remove(&node);
+    /// Forgets the model of every element the document has dropped.
+    ///
+    /// Removing an element, or any ancestor of it, drops it at the end of the frame. A model kept
+    /// past that holds the text and every value in its undo history for the life of the window,
+    /// and the text can be a password. A node made later in the same slot has a different key, so
+    /// it never finds the model of the one that went.
+    pub fn forget_dropped(&mut self, store: &DocumentStore) {
+        let dropped = store.dropped();
+        if dropped == self.dropped {
+            return;
+        }
+        self.dropped = dropped;
+        self.attached
+            .retain(|node, _| store.index_of(*node).is_some());
     }
 
     /// Whether an element is one a person can type into.
