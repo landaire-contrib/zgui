@@ -13,6 +13,7 @@
 //! running no frames at all.
 
 mod drag;
+mod pinch;
 
 use std::time::{Duration, Instant};
 
