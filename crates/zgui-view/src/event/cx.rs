@@ -255,8 +255,24 @@ impl<'a, E: EventView> EventCx<'a, E> {
     /// # }
     /// ```
     pub fn activate_now(&mut self) {
-        self.control.activation_claimed.set(true);
         let node = self.current;
+        self.activate_now_on(node);
+    }
+
+    /// Clicks `node` now, and stops the release from clicking the pressed element.
+    ///
+    /// For a press on one element that operates a different element, such as a label that
+    /// operates its checkbox. The click goes through the ordinary path, so `node`'s own `click`
+    /// handler does the work, as it does for [`EventCx::activate_now`].
+    ///
+    /// ```no_run
+    /// # use zgui_view::{EventCx, NodeId, events};
+    /// # fn example(ev: &mut EventCx<'_, events::PointerDown>, checkbox: NodeId) {
+    /// ev.activate_now_on(checkbox);
+    /// # }
+    /// ```
+    pub fn activate_now_on(&mut self, node: NodeId) {
+        self.control.activation_claimed.set(true);
         self.sink.synthesize(node, EventKind::Click);
     }
 
@@ -400,5 +416,41 @@ mod tests {
         ev.stop_immediate_propagation();
         ev.stop_propagation();
         assert_eq!(control.propagation(), Propagation::StopImmediate);
+    }
+
+    #[test]
+    fn activating_another_node_clicks_that_node_and_claims_the_press() {
+        /// Records every synthesized event.
+        #[derive(Default)]
+        struct Recorder(Vec<(NodeId, zgui_vocab::EventKind)>);
+
+        impl crate::EventSink for Recorder {
+            fn capture_pointer(&mut self, _node: NodeId) {}
+            fn release_pointer(&mut self, _node: NodeId) {}
+            fn request_focus(&mut self, _node: NodeId) {}
+            fn synthesize(&mut self, node: NodeId, event: zgui_vocab::EventKind) {
+                self.0.push((node, event));
+            }
+        }
+
+        let other = NodeId::new(DocumentId::FIRST, 2).expect("in range");
+        let payload = Payload::Pointer(pointer());
+        let control = EventControl::new();
+        let mut sink = Recorder::default();
+        let mut ev: EventCx<'_, events::PointerDown> = EventCx::new(
+            events::POINTER_DOWN.kind(),
+            node(),
+            node(),
+            Phase::Target,
+            Modifiers::NONE,
+            Timestamp::ORIGIN,
+            &payload,
+            &control,
+            &mut sink,
+        );
+
+        ev.activate_now_on(other);
+        assert!(control.activation_claimed());
+        assert_eq!(sink.0, [(other, zgui_vocab::EventKind::Click)]);
     }
 }
