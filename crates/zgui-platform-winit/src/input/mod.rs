@@ -22,6 +22,7 @@
 pub mod clicks;
 pub mod ime;
 pub mod keyboard;
+pub mod pinch;
 pub mod pointer;
 pub mod scrolling;
 pub mod wheel;

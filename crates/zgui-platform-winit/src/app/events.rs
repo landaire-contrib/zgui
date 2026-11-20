@@ -6,7 +6,7 @@ use zgui_platform::SurfaceEvent;
 use zgui_vocab::{PointerAction, Timestamp};
 
 use crate::app::window::WindowState;
-use crate::input::{ime, keyboard, pointer, wheel};
+use crate::input::{ime, keyboard, pinch, pointer, wheel};
 use crate::theme;
 
 /// What happened to one window, in the contract's vocabulary.
@@ -27,9 +27,10 @@ use crate::theme;
 ///
 /// * a **held-modifier change** is a state the contract carries and the platform reports only when
 ///   it moves, so the new set is remembered as it passes;
-/// * a **pointer position** is remembered for the same reason, because a wheel turn and a file drop
-///   arrive without one and both have to be routed to whatever is under the pointer. A file drop
-///   uses the last position inside the window (see [`Drag::position`](crate::app::drag::Drag::position));
+/// * a **pointer position** is remembered for the same reason, because a wheel turn, a pinch and a
+///   file drop arrive without one and all three have to be routed to whatever is under the pointer.
+///   A file drop uses the last position inside the window (see
+///   [`Drag::position`](crate::app::drag::Drag::position));
 /// * a **dragged file** is one of a set the platform reports one at a time, so it is gathered
 ///   rather than announced (see [`Drag`](crate::app::drag::Drag));
 /// * a **synthetic key event** — the platform's way of reporting which keys were already held when
@@ -137,6 +138,11 @@ pub fn translate(
             modifiers: state.modifiers,
             timestamp,
         }),
+        WindowEvent::PinchGesture { delta, phase, .. } => Some(SurfaceEvent::Pinch {
+            event: pinch::event(delta, phase, state.pointer),
+            modifiers: state.modifiers,
+            timestamp,
+        }),
         WindowEvent::Touch(contact) => {
             let event = pointer::touch(&contact, scale);
             state.pointer = event.position;
@@ -197,7 +203,7 @@ mod tests {
     use winit::keyboard::ModifiersState;
     use zgui_geom::{CssPx, Device, DevicePx, Point, Size};
     use zgui_platform::SurfaceEvent;
-    use zgui_vocab::{Modifiers, PointerAction, ScrollDelta, Timestamp};
+    use zgui_vocab::{GesturePhase, Modifiers, PointerAction, ScrollDelta, Timestamp};
 
     /// Translates `event` for a window at scale two that is never asked for its size.
     fn at_scale_two(state: &mut WindowState, event: WindowEvent) -> Option<SurfaceEvent> {
@@ -289,6 +295,28 @@ mod tests {
                 assert_eq!(event.delta, ScrollDelta::Lines { x: -0.0, y: -1.0 });
             }
             other => panic!("a wheel turn crossed as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_pinch_goes_where_the_pointer_is() {
+        let mut state = WindowState::default();
+        let _ = at_scale_two(&mut state, cursor_at(40.0, 20.0));
+        let pinched = at_scale_two(
+            &mut state,
+            WindowEvent::PinchGesture {
+                device_id: DeviceId::dummy(),
+                delta: 0.5,
+                phase: TouchPhase::Moved,
+            },
+        );
+        match pinched {
+            Some(SurfaceEvent::Pinch { event, .. }) => {
+                assert_eq!(event.position, Point::new(CssPx(20.0), CssPx(10.0)));
+                assert_eq!(event.scale_delta, 0.5);
+                assert_eq!(event.phase, GesturePhase::Moved);
+            }
+            other => panic!("a pinch crossed as {other:?}"),
         }
     }
 
