@@ -59,6 +59,8 @@ impl Window {
                     pixels.height.0 /= zoom;
                 }
             }
+            // The scale delta is a ratio, which a zoom does not change.
+            SurfaceEvent::Pinch { event, .. } => unzoom(&mut event.position),
             SurfaceEvent::Drag(
                 DragEvent::Entered { position, .. }
                 | DragEvent::Moved { position }
