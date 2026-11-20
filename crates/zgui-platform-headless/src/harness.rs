@@ -17,6 +17,7 @@
 //! the ones that ask for a frame: each frame allows one of each.
 
 mod drag;
+mod pinch;
 
 use web_time::{Duration, Instant};
 
