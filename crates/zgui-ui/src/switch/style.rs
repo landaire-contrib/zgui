@@ -19,12 +19,22 @@ style! { pub SwitchStyle =>
         background-color: var(--zui-color-control-switch-off);
         box-shadow: var(--zui-shadow-xs);
         outline: none;
+        cursor: pointer;
         transition-property: background-color, box-shadow, border-color;
         transition-duration: var(--zui-motion-duration-normal);
         transition-timing-function: var(--zui-motion-ease-standard);
     }"
 ":scope[data-size=\"sm\"] { width: 24px; height: 14px; }"
+// The pointer over the switch or over its label mixes some of the text colour into the track, and
+// fades a checked track as it fades a hovered button.
+":scope:hover, :scope[data-label-hover] {
+        background-color: color-mix(in oklab, var(--zui-color-control-switch-off),
+                                    var(--zui-color-foreground) 12%);
+    }"
 ":scope:checked { background-color: var(--zui-color-primary); }"
+":scope:checked:hover, :scope:checked[data-label-hover] {
+        background-color: color-mix(in oklab, var(--zui-color-primary) 90%, transparent);
+    }"
 ":scope:focus-visible {
         border-color: var(--zui-color-ring);
         box-shadow: 0 0 0 3px color-mix(in oklab, var(--zui-color-ring) 50%, transparent),

@@ -23,15 +23,25 @@ style! { pub CheckboxStyle =>
         background-color: transparent;
         color: var(--zui-color-primary-foreground);
         outline: none;
+        cursor: pointer;
         transition-property: box-shadow, background-color, border-color;
         transition-duration: var(--zui-motion-duration-normal);
         transition-timing-function: var(--zui-motion-ease-standard);
+    }"
+// The pointer over the box or over its label. Written before the ticked rule, which keeps its fill.
+":scope:hover, :scope[data-label-hover] {
+        border-color: var(--zui-color-ring);
+        background-color: var(--zui-color-accent);
     }"
 // `:checked` and `:indeterminate` are engine states this component sets, not classes it
 // computes: the appearance follows the same answer the accessibility tree is given.
 ":scope:checked, :scope:indeterminate {
         background-color: var(--zui-color-primary);
         border-color: var(--zui-color-primary);
+    }"
+":scope:checked:hover, :scope:checked[data-label-hover],
+     :scope:indeterminate:hover, :scope:indeterminate[data-label-hover] {
+        background-color: color-mix(in oklab, var(--zui-color-primary) 90%, transparent);
     }"
 ":scope:focus-visible {
         border-color: var(--zui-color-ring);
