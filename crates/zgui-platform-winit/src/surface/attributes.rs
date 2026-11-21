@@ -2,7 +2,7 @@
 
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::window::{Fullscreen, WindowAttributes};
-use zgui_platform::{ColorScheme, FullscreenMode, SurfaceAttributes};
+use zgui_platform::{FullscreenMode, SurfaceAttributes};
 
 use crate::surface::chrome;
 use crate::theme;
@@ -18,13 +18,10 @@ use crate::theme;
 /// Sizes cross as *logical* sizes, which is the platform's name for the space a layout is written
 /// in. Handing physical pixels over instead would make a window on a doubled display come out
 /// twice the size it was asked for.
-pub(crate) fn window(
-    attributes: &SurfaceAttributes,
-    scheme: Option<ColorScheme>,
-) -> WindowAttributes {
-    // The window's own preference wins over the desktop's, because a window that asked to be dark
-    // asked for itself and not for a default to fall back on.
-    let theme = attributes.theme.or(scheme).map(theme::theme);
+pub(crate) fn window(attributes: &SurfaceAttributes) -> WindowAttributes {
+    // Only a stated preference is passed on. On macOS a theme pins the window's appearance, and
+    // the window then stops following a change of the system appearance.
+    let theme = attributes.theme.map(theme::theme);
     let mut window = WindowAttributes::default()
         .with_title(attributes.title.as_str())
         .with_resizable(attributes.resizable)
@@ -166,7 +163,7 @@ mod tests {
     fn a_window_is_always_asked_for_hidden_however_it_was_requested() {
         // The accessibility adapter cannot be attached to a window that has already been shown, so
         // a visible-on-creation window is an application with no accessibility at all.
-        let attributes = window(&SurfaceAttributes::new("zgui"), None);
+        let attributes = window(&SurfaceAttributes::new("zgui"));
         assert!(!attributes.visible);
     }
 
@@ -179,7 +176,7 @@ mod tests {
         requested.transparent = true;
         requested.blur = true;
 
-        let attributes = window(&requested, None);
+        let attributes = window(&requested);
         assert_eq!(attributes.title, "counter");
         assert!(!attributes.decorations);
         assert!(!attributes.resizable);
@@ -197,13 +194,13 @@ mod tests {
         let mut requested = SurfaceAttributes::new("player");
         requested.decorations = Decorations::NoTitleBar;
 
-        let attributes = window(&requested, None);
+        let attributes = window(&requested);
         assert_eq!(attributes.decorations, cfg!(target_os = "macos"));
     }
 
     #[test]
     fn a_full_frame_is_asked_for_everywhere() {
-        let attributes = window(&SurfaceAttributes::new("zgui"), None);
+        let attributes = window(&SurfaceAttributes::new("zgui"));
         assert!(attributes.decorations);
     }
 
@@ -226,17 +223,15 @@ mod tests {
         target_os = "openbsd"
     ))]
     fn an_application_identifier_reaches_the_window_request() {
-        let named = window(
-            &SurfaceAttributes::new("counter").with_application_id("dev.zgui.Counter"),
-            None,
-        );
+        let named =
+            window(&SurfaceAttributes::new("counter").with_application_id("dev.zgui.Counter"));
         let rendered = format!("{named:?}");
         assert!(
             rendered.contains("dev.zgui.Counter"),
             "the window request carries no application name: {rendered}"
         );
 
-        let anonymous = format!("{:?}", window(&SurfaceAttributes::new("counter"), None));
+        let anonymous = format!("{:?}", window(&SurfaceAttributes::new("counter")));
         assert!(
             !anonymous.contains("dev.zgui.Counter"),
             "an unnamed request must not carry a name, or the case above proves nothing"
@@ -249,7 +244,7 @@ mod tests {
 
     #[test]
     fn the_bounds_a_user_may_drag_to_are_absent_until_they_are_asked_for() {
-        let attributes = window(&SurfaceAttributes::new("zgui"), None);
+        let attributes = window(&SurfaceAttributes::new("zgui"));
         assert!(attributes.min_inner_size.is_none());
         assert!(attributes.max_inner_size.is_none());
     }
@@ -262,7 +257,7 @@ mod tests {
         requested.level = WindowLevel::AlwaysOnTop;
         requested.fullscreen = Some(FullscreenMode::Borderless);
 
-        let attributes = window(&requested, None);
+        let attributes = window(&requested);
         assert!(attributes.position.is_some());
         assert!(attributes.maximized);
         assert_eq!(
@@ -273,17 +268,19 @@ mod tests {
     }
 
     #[test]
-    fn a_window_that_states_a_preference_is_not_given_the_desktops() {
-        // A window asking to be dark asked for itself. Letting the desktop's preference win would
-        // make the attribute unusable for the one thing it exists for.
+    fn a_window_that_states_a_preference_is_given_it() {
         let mut requested = SurfaceAttributes::new("zgui");
         requested.theme = Some(ColorScheme::Dark);
-        let attributes = window(&requested, Some(ColorScheme::Light));
+        let attributes = window(&requested);
         assert_eq!(attributes.preferred_theme, Some(winit::window::Theme::Dark));
+    }
 
-        // With no preference of its own it follows the desktop, which is what it did before.
-        let following = window(&SurfaceAttributes::new("zgui"), Some(ColorScheme::Light));
-        assert_eq!(following.preferred_theme, Some(winit::window::Theme::Light));
+    #[test]
+    fn a_window_with_no_preference_follows_the_system() {
+        // A theme taken from the desktop at launch would pin the window to it on macOS, and a
+        // later change of the system appearance would never reach the window.
+        let following = window(&SurfaceAttributes::new("zgui"));
+        assert_eq!(following.preferred_theme, None);
     }
 
     #[test]
@@ -292,7 +289,7 @@ mod tests {
         // which that is before it exists. The surface asks again once it does.
         let mut requested = SurfaceAttributes::new("player");
         requested.fullscreen = Some(FullscreenMode::Exclusive);
-        let attributes = window(&requested, None);
+        let attributes = window(&requested);
         assert!(matches!(
             attributes.fullscreen,
             Some(winit::window::Fullscreen::Borderless(None))
