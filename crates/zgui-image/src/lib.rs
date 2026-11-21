@@ -19,6 +19,9 @@
 //! over it is downscaled proportionally — before premultiplying, on the decoded values — and its
 //! reported extent is the downscaled one. A caller that wants full-resolution zoomable imagery is
 //! outside what an `image` element promises and brings its own texture.
+//!
+//! A source over [`MAX_SOURCE_PIXELS`] is refused instead. A decode holds the whole source before
+//! it downscales, so the extent a header claims is memory the decode would allocate.
 
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
@@ -59,6 +62,19 @@ impl Default for Limits {
     }
 }
 
+/// The most pixels a source may have before it is refused, by a probe and by a decode.
+///
+/// The extent comes from the header, before any pixel is read, so a small file can claim any
+/// extent it likes. One hundred million pixels is a very large photo, and RGBA texels for it are
+/// 400 MB.
+pub const MAX_SOURCE_PIXELS: u64 = 100_000_000;
+
+/// The longest edge a source may have before it is refused, by a probe and by a decode.
+///
+/// A downscale holds an intermediate row as long as the source, so a source of few pixels with a
+/// very long edge costs memory its pixel count does not show.
+pub const MAX_SOURCE_EDGE: u32 = 65_535;
+
 /// What went wrong decoding.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -66,12 +82,36 @@ pub enum DecodeError {
     /// The file could not be read at all.
     #[error("could not read the image file: {0}")]
     Io(#[from] std::io::Error),
-    /// The bytes are not a format this build links, or not an image at all.
+    /// The bytes are not a format this build links, or not an image at all, or the decoded
+    /// pixels need more memory than the codec's allocation limit.
     #[error("could not decode the image: {0}")]
     Decode(#[from] image::ImageError),
     /// The image decoded to no pixels, which nothing downstream can draw.
     #[error("the image is empty")]
     Empty,
+    /// The header claims more pixels than [`MAX_SOURCE_PIXELS`] or an edge longer than
+    /// [`MAX_SOURCE_EDGE`].
+    #[error("a {}x{} image is larger than a decode may hold", size.width, size.height)]
+    TooLarge {
+        /// The extent the header claims.
+        size: Size<u32, Device>,
+    },
+}
+
+/// The extent of a source, refused when it is empty or larger than a decode may hold.
+fn source_extent(width: u32, height: u32) -> Result<Size<u32, Device>, DecodeError> {
+    if width == 0 || height == 0 {
+        return Err(DecodeError::Empty);
+    }
+
+    let size = Size::new(width, height);
+    if width.max(height) > MAX_SOURCE_EDGE
+        || u64::from(width) * u64::from(height) > MAX_SOURCE_PIXELS
+    {
+        return Err(DecodeError::TooLarge { size });
+    }
+
+    Ok(size)
 }
 
 /// Decodes `bytes` into the framework's pixel format, downscaling to fit `limits`.
@@ -81,7 +121,7 @@ pub enum DecodeError {
 /// # Errors
 ///
 /// [`DecodeError::Decode`] for bytes no linked codec accepts, [`DecodeError::Empty`] for an image
-/// with a zero axis.
+/// with a zero axis, and [`DecodeError::TooLarge`] for an image over [`MAX_SOURCE_PIXELS`].
 pub fn decode(bytes: &[u8], limits: Limits) -> Result<Decoded, DecodeError> {
     fused::decode(bytes, limits.max_dimension)
 }
@@ -135,14 +175,11 @@ pub fn decode_file_scaled(
 /// # Errors
 ///
 /// [`DecodeError::Decode`] for bytes no linked codec accepts, [`DecodeError::Empty`] for an image
-/// with a zero axis.
+/// with a zero axis, and [`DecodeError::TooLarge`] for an image over [`MAX_SOURCE_PIXELS`].
 pub fn probe(bytes: &[u8]) -> Result<Size<u32, Device>, DecodeError> {
     let reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
     let (width, height) = reader.into_dimensions()?;
-    if width == 0 || height == 0 {
-        return Err(DecodeError::Empty);
-    }
-    Ok(Size::new(width, height))
+    source_extent(width, height)
 }
 
 /// Reads the pixel extent of the file at `path` from its header, decoding no pixels.
@@ -155,10 +192,7 @@ pub fn probe(bytes: &[u8]) -> Result<Size<u32, Device>, DecodeError> {
 pub fn probe_file(path: &Path) -> Result<Size<u32, Device>, DecodeError> {
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
     let (width, height) = reader.into_dimensions()?;
-    if width == 0 || height == 0 {
-        return Err(DecodeError::Empty);
-    }
-    Ok(Size::new(width, height))
+    source_extent(width, height)
 }
 
 /// Builds the levels of detail below `decoded`: each half the previous one's extent, down to one
@@ -532,5 +566,65 @@ mod tests {
             finish(empty, Limits::default().max_dimension),
             Err(DecodeError::Empty)
         ));
+    }
+
+    /// A PNG signature, a header claiming `width` by `height` RGBA pixels, and an empty data
+    /// chunk: a file of a few dozen bytes whose header names any extent.
+    fn png_header(width: u32, height: u32) -> Vec<u8> {
+        fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            let start = out.len();
+            out.extend_from_slice(kind);
+            out.extend_from_slice(data);
+            let crc = crc32(&out[start..]);
+            out.extend_from_slice(&crc.to_be_bytes());
+        }
+
+        let mut header = Vec::new();
+        header.extend_from_slice(&width.to_be_bytes());
+        header.extend_from_slice(&height.to_be_bytes());
+        header.extend_from_slice(&[8, 6, 0, 0, 0]);
+        let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+        chunk(&mut out, b"IHDR", &header);
+        chunk(&mut out, b"IDAT", &[]);
+        out
+    }
+
+    /// The CRC-32 a PNG chunk ends with.
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = !0u32;
+        for byte in bytes {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xedb8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+
+    #[test]
+    fn a_header_claiming_too_large_an_extent_is_refused_before_anything_is_allocated() {
+        for (width, height) in [(65_535, 65_535), (100_000, 1)] {
+            let bytes = png_header(width, height);
+            let refused = |result: Result<Size<u32, Device>, DecodeError>| {
+                matches!(
+                    result,
+                    Err(DecodeError::TooLarge { size }) if size == Size::new(width, height)
+                )
+            };
+            assert!(refused(probe(&bytes)), "the probe refuses {width}x{height}");
+            assert!(
+                refused(decode(&bytes, Limits::default()).map(|decoded| decoded.size)),
+                "the decode refuses {width}x{height}"
+            );
+            assert!(
+                refused(decode_scaled(&bytes, 64, Limits::default()).map(|decoded| decoded.size)),
+                "a scaled decode refuses {width}x{height}"
+            );
+        }
     }
 }

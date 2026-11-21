@@ -26,12 +26,18 @@ use crate::{DecodeError, Decoded};
 /// Decodes `bytes` with the fewest passes the source's colour type allows, downscaling until the
 /// long edge fits `max_long_edge`.
 pub(crate) fn decode(bytes: &[u8], max_long_edge: u32) -> Result<Decoded, DecodeError> {
-    let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
-    let decoder = reader.into_decoder()?;
+    let mut limits = image::Limits::default();
+    let mut reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
+    reader.limits(limits.clone());
+    let mut decoder = reader.into_decoder()?;
     let (width, height) = decoder.dimensions();
-    if width == 0 || height == 0 {
-        return Err(DecodeError::Empty);
-    }
+    crate::source_extent(width, height)?;
+
+    // The buffer the pixels land in is reserved from the allocation limit first, and the decoder
+    // gets what remains, as `ImageReader::decode` does.
+    limits.reserve(decoder.total_bytes())?;
+    decoder.set_limits(limits)?;
+
     let max = max_long_edge.max(1);
     if width > max || height > max {
         // The downscale needs the whole image in memory anyway, so the general path costs
