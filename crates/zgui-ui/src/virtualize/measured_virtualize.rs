@@ -155,6 +155,11 @@ impl MeasuredVirtualize {
         self.measured.offset_of(index)
     }
 
+    /// The heights, for a list built on this one.
+    pub(crate) const fn measured(&self) -> Measured {
+        self.measured
+    }
+
     /// Scrolls the container so that row `index` starts at the top of the port.
     ///
     /// The offset is where the row sits when this is called. With an instant scroll, the rows

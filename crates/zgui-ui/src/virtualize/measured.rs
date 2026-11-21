@@ -36,6 +36,28 @@ struct State {
     estimate: Estimate,
     /// A scroll the list asked for to keep its first visible row in place, until it is observed.
     pending: Option<Pending>,
+
+    /// How far below the top of the container the first row starts, in CSS pixels.
+    origin: f32,
+    /// The part of `origin` that the box above the rows takes, in CSS pixels.
+    head: f32,
+    /// The sum of every scroll the list asked for to keep its first visible row in place, in CSS
+    /// pixels.
+    shifted: f64,
+}
+
+impl State {
+    /// The offset into the rows that the port shows at its top, when the container last reported
+    /// `observed`.
+    fn rows_offset(&self, observed: f32) -> f64 {
+        anchored(self.pending, observed) - f64::from(self.origin)
+    }
+
+    /// Records the scroll `change` asks for from `observed`.
+    fn absorb(&mut self, observed: f32, change: Change) {
+        self.pending = follow(self.pending, observed, change);
+        self.shifted += change.shift;
+    }
 }
 
 /// A scroll the list asked for and has not yet seen.
@@ -64,6 +86,9 @@ impl Measured {
             heights: RowHeights::new(keys),
             estimate,
             pending: None,
+            origin: 0.0,
+            head: 0.0,
+            shifted: 0.0,
         });
 
         let counted = Memo::new(move |previous: Option<&u64>| {
@@ -72,15 +97,10 @@ impl Measured {
             let observed = observed(scroll, viewport);
             let change = state
                 .try_update_value(|state| {
-                    let State {
-                        heights,
-                        estimate,
-                        pending,
-                    } = state;
-                    let estimate = estimate.read(true)?;
-                    let change =
-                        heights.rebuild(count, &|_| estimate, anchored(*pending, observed));
-                    *pending = follow(*pending, observed, change);
+                    let estimate = state.estimate.read(true)?;
+                    let offset = state.rows_offset(observed);
+                    let change = state.heights.rebuild(count, &|_| estimate, offset);
+                    state.absorb(observed, change);
                     Some(change)
                 })
                 .flatten();
@@ -122,7 +142,7 @@ impl Measured {
                         state.pending = None;
                     }
 
-                    let offset = anchored(state.pending, observed);
+                    let offset = state.rows_offset(observed);
                     state.heights.window(
                         position.scrollport.height.0 / scale,
                         offset as f32,
@@ -159,14 +179,10 @@ impl Measured {
         let change = self
             .state
             .try_update_value(|state| {
-                let State {
-                    heights,
-                    estimate,
-                    pending,
-                } = state;
-                let estimate = estimate.read(false)?;
-                let change = heights.reset(&|_| estimate, anchored(*pending, observed));
-                *pending = follow(*pending, observed, change);
+                let estimate = state.estimate.read(false)?;
+                let offset = state.rows_offset(observed);
+                let change = state.heights.reset(&|_| estimate, offset);
+                state.absorb(observed, change);
                 Some(change)
             })
             .flatten();
@@ -178,9 +194,88 @@ impl Measured {
         self.counted.try_get_untracked()?;
         self.state
             .try_with_value(|state| {
-                (state.heights.len() > 0).then(|| state.heights.offset_of(index))
+                (state.heights.len() > 0).then(|| state.origin + state.heights.offset_of(index))
             })
             .flatten()
+    }
+
+    /// The height row `index` has now, in CSS pixels, or `None` when there is no such row.
+    pub(crate) fn height_of(self, index: usize) -> Option<f32> {
+        self.counted.try_get_untracked()?;
+        self.state
+            .try_with_value(|state| state.heights.height(index))
+            .flatten()
+    }
+
+    /// How far below the top of the container the first row starts, in CSS pixels.
+    pub(crate) fn origin(self) -> f32 {
+        self.state
+            .try_with_value(|state| state.origin)
+            .unwrap_or(0.0)
+    }
+
+    /// Sets the space above the first row, in CSS pixels.
+    ///
+    /// `fill` is space that exists only while the rows are shorter than the port, and `head` is the
+    /// box above the rows. When `head` changes height and the port shows no part of the space, the
+    /// container scrolls by the change, so the rows on screen stay where they are.
+    pub(crate) fn set_origin(self, fill: f32, head: f32) {
+        // Counted first, so that a recount does not answer from the old origin.
+        self.counted.try_get_untracked();
+        let observed = self.observed();
+        let change = self
+            .state
+            .try_update_value(|state| {
+                let origin = fill + head;
+                if state.origin == origin && state.head == head {
+                    return None;
+                }
+
+                let shift = if anchored(state.pending, observed) >= f64::from(state.origin) {
+                    f64::from(head) - f64::from(state.head)
+                } else {
+                    0.0
+                };
+                state.origin = origin;
+                state.head = head;
+                let change = Change { moved: true, shift };
+                state.absorb(observed, change);
+                Some(change)
+            })
+            .flatten();
+        self.apply(change);
+    }
+
+    /// Whether every scroll the list asked for to keep its first visible row in place has been
+    /// seen. Read without subscribing.
+    pub(crate) fn settled(self) -> bool {
+        self.counted.try_get_untracked();
+        let observed = self.observed();
+        self.state
+            .try_with_value(|state| state.pending.is_none_or(|pending| pending.from != observed))
+            .unwrap_or(true)
+    }
+
+    /// The offset of the top of the port, in CSS pixels, with the scrolls the list asked for and
+    /// has not yet seen applied. Read without subscribing.
+    pub(crate) fn offset(self) -> f64 {
+        self.counted.try_get_untracked();
+        let observed = self.observed();
+        self.state
+            .try_with_value(|state| anchored(state.pending, observed))
+            .unwrap_or(f64::from(observed))
+    }
+
+    /// The offset of the top of the port less every scroll the list asked for to keep its first
+    /// visible row in place, in CSS pixels. Read without subscribing.
+    ///
+    /// Only a scroll that the list did not ask for changes it.
+    pub(crate) fn drift(self) -> f64 {
+        self.counted.try_get_untracked();
+        let observed = self.observed();
+        self.state
+            .try_with_value(|state| anchored(state.pending, observed) - state.shifted)
+            .unwrap_or(f64::from(observed))
     }
 
     /// The estimate a row is given, read without subscribing.
@@ -196,8 +291,9 @@ impl Measured {
         self.counted.try_get_untracked();
         let observed = self.observed();
         let change = self.state.try_update_value(|state| {
-            let change = change(&mut state.heights, anchored(state.pending, observed));
-            state.pending = follow(state.pending, observed, change);
+            let offset = state.rows_offset(observed);
+            let change = change(&mut state.heights, offset);
+            state.absorb(observed, change);
             change
         });
         self.apply(change);
@@ -709,6 +805,75 @@ mod tests {
             97,
             "the adjustment was seen, and the offset stands for itself"
         );
+    }
+
+    #[test]
+    fn space_above_the_rows_that_changes_above_the_port_leaves_the_rows_in_place() {
+        let mut list = List::open(2);
+        // Ten pixels into row 100.
+        list.scroll(2_010.0);
+        list.lay_out(|_| 20.0);
+        let measured = list.seen.measured();
+
+        measured.set_origin(0.0, 40.0);
+        assert_eq!(
+            list.scrolls().last(),
+            Some(&ScrollTarget::Adjust(Point::new(
+                DevicePx(0.0),
+                DevicePx(40.0)
+            ))),
+        );
+        assert_eq!(list.seen.window_untracked().first, 98);
+        list.carry_out_scrolls();
+        assert_eq!(
+            list.on_screen(100),
+            -10.0,
+            "row 100 has not moved on screen"
+        );
+        assert_eq!(list.seen.window_untracked().first, 98);
+
+        // At the top the port shows the space, and the rows below it move with it.
+        list.scroll(0.0);
+        let asked = list.scrolls().len();
+        measured.set_origin(0.0, 0.0);
+        assert_eq!(list.scrolls().len(), asked);
+        assert_eq!(list.seen.offset_of(0), Some(0.0));
+    }
+
+    #[test]
+    fn space_that_fills_a_short_list_moves_nothing_when_it_goes() {
+        let mut list = List::open(2);
+        list.lay_out(|_| 20.0);
+        let measured = list.seen.measured();
+        measured.set_origin(75.0, 0.0);
+        let asked = list.scrolls().len();
+
+        // The rows grew past the port, and the layout that dropped the fill scrolled to the end.
+        list.scroll(125.0);
+        measured.set_origin(0.0, 0.0);
+        assert_eq!(
+            list.scrolls().len(),
+            asked,
+            "nothing was scrolled past the fill"
+        );
+        assert_eq!(list.seen.offset_of(0), Some(0.0));
+    }
+
+    #[test]
+    fn only_a_scroll_the_list_did_not_ask_for_moves_the_drift() {
+        let mut list = List::open(2);
+        list.scroll(2_010.0);
+        list.lay_out(|_| 20.0);
+        let measured = list.seen.measured();
+        let before = measured.drift();
+
+        list.resize(99, 140.0);
+        assert_eq!(measured.drift(), before, "the adjustment is asked for");
+        list.carry_out_scrolls();
+        assert_eq!(measured.drift(), before, "and seen");
+
+        list.scroll(list.offset.get() - 30.0);
+        assert_eq!(measured.drift(), before - 30.0);
     }
 
     #[test]

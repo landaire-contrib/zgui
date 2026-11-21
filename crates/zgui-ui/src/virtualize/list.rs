@@ -241,13 +241,14 @@ impl Span {
     }
 }
 
-/// One row of a [`VirtualList`], carrying where it really sits.
+/// One row of a [`VirtualList`] or a [`BottomUpList`](crate::virtualize::BottomUpList), carrying
+/// where it really sits.
 ///
 /// It takes a forwarded bundle like every component here that renders an element of its own, and
 /// the list hands it an empty one: what a *caller* wrote lands on the scroll container, which is
 /// the element they can name, rather than on one of a window's worth of rows that come and go.
 #[component]
-fn Row<V, F>(
+pub(crate) fn Row<V, F>(
     /// Which row this is, counting from zero, in the whole list rather than in the window.
     index: usize,
     /// How long the whole list is.

@@ -11,7 +11,11 @@
 //!
 //! [`Virtualize`] declares one row height. [`MeasuredVirtualize`] is the same mechanism for rows
 //! that differ in height, which are measured as they are built.
+//!
+//! [`BottomUpList`] is a list of measured rows that grows at its bottom and is read from there, as
+//! a conversation is. [`BottomUp`] decides what it keeps in view.
 
+mod bottom_up;
 mod heights;
 mod list;
 mod measure;
@@ -22,6 +26,9 @@ mod style;
 mod sums;
 mod window;
 
+pub use crate::virtualize::bottom_up::{
+    BottomUp, BottomUpList, BottomUpListProps, BottomUpListStyle,
+};
 pub use crate::virtualize::list::{VirtualList, VirtualListProps};
 pub use crate::virtualize::measure::MeasuredRows;
 pub use crate::virtualize::measured_virtualize::MeasuredVirtualize;

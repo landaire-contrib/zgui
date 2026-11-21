@@ -59,6 +59,11 @@ impl RowHeights {
         self.heights.len()
     }
 
+    /// The height of row `index` in CSS pixels, or `None` when there is no such row.
+    pub(crate) fn height(&self, index: usize) -> Option<f32> {
+        self.heights.get(index).copied()
+    }
+
     /// Counts the list again at `rows` rows, and estimates each row that holds no measurement.
     ///
     /// `offset` is the scroll offset, and the change answers how far it moved the row there. In a
