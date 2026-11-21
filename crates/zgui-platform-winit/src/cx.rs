@@ -212,7 +212,7 @@ impl PlatformCx for WinitCx<'_> {
         makes(&attributes.role)?;
         let window = self
             .event_loop
-            .create_window(window_attributes(attributes, self.shared.scheme.get()))
+            .create_window(window_attributes(attributes))
             .map_err(|error| PlatformError::SurfaceCreation(error.to_string()))?;
         let window = Arc::new(window);
 
