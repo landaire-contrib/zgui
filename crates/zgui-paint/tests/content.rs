@@ -174,6 +174,59 @@ fn a_full_pool_makes_room_for_a_new_picture_by_evicting_a_cold_one() {
     );
 }
 
+/// A new picture that needs more room than the coldest generation gave back takes further steps.
+#[test]
+fn a_full_pool_evicts_as_many_cold_pictures_as_a_new_one_needs() {
+    let mut harness = Harness::new(tree(), CSS);
+    harness.compose(200.0, 100.0);
+
+    // One texture of 64 texels square per pool. A 48-square picture overlaps a 20-square one
+    // wherever the smaller one is, so it fits only once both cold pictures have gone.
+    let limits = AtlasLimits {
+        texture_size: 64,
+        max_texture_size: 64,
+        max_textures_per_pool: 1,
+        soft_bytes: None,
+    };
+    let mut cache = ContentCache::new(limits);
+    let id = harness.replaced_id("picture");
+    let texels = |side: u32| {
+        std::sync::Arc::new(
+            (0..side * side)
+                .flat_map(|_| [255u8, 0, 0, 255])
+                .collect::<Vec<u8>>(),
+        )
+    };
+
+    for (handle, side) in [(1, 40u32), (2, 20)] {
+        cache
+            .set_image_shared(id, handle, Size::new(side, side), texels(side))
+            .expect("well formed");
+        harness.paint_content(&mut cache, &NoRaster);
+    }
+    assert_eq!(
+        cache.report().tiles,
+        2,
+        "both pictures share the one texture"
+    );
+
+    cache
+        .set_image_shared(id, 3, Size::new(48, 48), texels(48))
+        .expect("well formed");
+    harness.paint_content(&mut cache, &NoRaster);
+
+    assert_eq!(
+        harness.scene().primitives.color_sprites.len(),
+        1,
+        "the new picture is drawn"
+    );
+    assert_eq!(
+        cache.report().tiles,
+        1,
+        "both cold pictures went, one generation at a time"
+    );
+}
+
 /// After a flush, a shared attachment's texels are given back and the tile serves it; a tile
 /// that later goes missing is reported for a re-decode rather than drawn wrong or lost quietly.
 #[test]

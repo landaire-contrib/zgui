@@ -141,6 +141,15 @@ impl Content {
         }
     }
 
+    /// What the atlas caches this entry under, or `None` for a texture this framework does not
+    /// own.
+    pub(crate) fn key(&self) -> Option<AtlasKey> {
+        match self {
+            Self::Decoded { key, .. } | Self::Uploaded { key, .. } => Some(*key),
+            Self::External(_) => None,
+        }
+    }
+
     /// The entry both constructors build, once the bytes are checked against the extent.
     fn under_key(
         key: AtlasKey,

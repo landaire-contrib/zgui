@@ -366,11 +366,11 @@ counters! {
     /// doing something worse than nothing.
     AtlasTilesEvicted => atlas_tiles_evicted, Group::BackendNeutral;
 
-    /// Images that could not enter the atlas, even after an eviction step made room.
+    /// Images that could not enter the atlas, even after eviction freed everything it could.
     ///
     /// Each count is a picture a frame resolved and then drew nothing for. A nonzero total that
-    /// keeps growing means the colour pool is too small for the working set, or a single image is
-    /// larger than any texture the device may create.
+    /// keeps growing means the image pool is too small for what the frame draws and what replay
+    /// records hold, or a single image is larger than any texture the device may create.
     ImageInsertFailed => image_insert_failed, Group::BackendNeutral;
 
     /// Encoded bytes live `ImageBytes` registrations are holding.
