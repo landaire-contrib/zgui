@@ -2,6 +2,7 @@
 
 use crate::atlas::Atlas;
 use crate::key::AtlasKey;
+use crate::texture::TextureKind;
 
 /// What one eviction freed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -37,12 +38,44 @@ impl Atlas {
 
     /// The detailed form of [`Atlas::evict_least_recently_used`], appending the keys removed.
     pub fn evict_least_recently_used_into(&mut self, removed: &mut Vec<AtlasKey>) -> Eviction {
-        let Some(generation) = self.evictable().map(|(_, age, _)| age).min() else {
+        self.evict_coldest_into(removed, |_| true)
+    }
+
+    /// Frees exactly the coldest generation of evictable entries in `kind`'s pool.
+    ///
+    /// This is [`Atlas::evict_least_recently_used`] for a caller that a pool refused room. The
+    /// other pools share no texture with that pool, so a step that freed their entries would make
+    /// no room in it.
+    pub fn evict_least_recently_used_of(&mut self, kind: TextureKind) -> Eviction {
+        self.evict_least_recently_used_of_into(kind, &mut Vec::new())
+    }
+
+    /// The detailed form of [`Atlas::evict_least_recently_used_of`], appending the keys removed.
+    pub fn evict_least_recently_used_of_into(
+        &mut self,
+        kind: TextureKind,
+        removed: &mut Vec<AtlasKey>,
+    ) -> Eviction {
+        self.evict_coldest_into(removed, |key| key.kind() == kind)
+    }
+
+    /// Frees the coldest generation of the evictable entries `admits` accepts.
+    fn evict_coldest_into(
+        &mut self,
+        removed: &mut Vec<AtlasKey>,
+        admits: impl Fn(AtlasKey) -> bool,
+    ) -> Eviction {
+        let Some(generation) = self
+            .evictable()
+            .filter(|(key, _, _)| admits(*key))
+            .map(|(_, age, _)| age)
+            .min()
+        else {
             return Eviction::default();
         };
         let doomed: Vec<(AtlasKey, u64)> = self
             .evictable()
-            .filter(|(_, age, _)| *age == generation)
+            .filter(|(key, age, _)| *age == generation && admits(*key))
             .map(|(key, _, texels)| (key, texels))
             .collect();
 

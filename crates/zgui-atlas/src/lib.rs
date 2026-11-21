@@ -55,6 +55,8 @@
 //! * **Eviction is by generation, newest kept.** Each frame is a generation; touching an entry
 //!   moves it to the current one. [`Atlas::evict_least_recently_used`] frees exactly the entries
 //!   sharing the oldest generation that are unreferenced and untouched this frame.
+//!   [`Atlas::evict_least_recently_used_of`] does the same within one pool, for a caller that pool
+//!   refused room.
 //! * **Uploads are deferred.** Bytes queue up and leave in one flush, so a frame issues one batch
 //!   of writes at a point it chooses rather than one write per glyph wherever the glyph was needed.
 //! * **So are texture lifetimes.** Growing a pool records a creation rather than issuing one, and

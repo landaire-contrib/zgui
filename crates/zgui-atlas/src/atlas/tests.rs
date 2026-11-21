@@ -352,6 +352,48 @@ fn eviction_spares_what_this_frame_used_and_what_anything_holds() {
 }
 
 #[test]
+fn a_pool_scoped_step_frees_the_coldest_generation_of_that_pool_only() {
+    let (mut atlas, _sink) = atlas();
+    let image = |handle| AtlasKey::new(handle, TextureKind::Image);
+
+    // The monochrome entry is colder than either image.
+    atlas.begin_frame();
+    atlas
+        .get_or_insert(mono(1), square(4), || vec![0; 16])
+        .unwrap();
+    atlas.begin_frame();
+    atlas
+        .get_or_insert(image(2), square(4), || vec![0; 64])
+        .unwrap();
+    atlas.begin_frame();
+    atlas
+        .get_or_insert(image(3), square(4), || vec![0; 64])
+        .unwrap();
+    atlas.begin_frame();
+
+    let first = atlas.evict_least_recently_used_of(TextureKind::Image);
+    assert_eq!(first.tiles, 1, "exactly the oldest generation of the pool");
+    assert!(!atlas.contains(image(2)));
+    assert!(
+        atlas.contains(mono(1)),
+        "a colder entry of another pool stays"
+    );
+    assert!(atlas.contains(image(3)));
+
+    assert_eq!(
+        atlas.evict_least_recently_used_of(TextureKind::Image).tiles,
+        1
+    );
+    assert!(
+        atlas
+            .evict_least_recently_used_of(TextureKind::Image)
+            .is_empty(),
+        "nothing of the pool is left to free"
+    );
+    assert!(atlas.contains(mono(1)));
+}
+
+#[test]
 fn a_lookup_moves_an_entry_into_the_current_generation() {
     let (mut atlas, _sink) = atlas();
     atlas.begin_frame();
