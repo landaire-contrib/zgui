@@ -1,4 +1,4 @@
-//! Album art in a virtual list, watched frame by frame across a scroll glide.
+//! Pictures in a virtual list, watched frame by frame across a scroll glide.
 //!
 //! The shape a music library scrolls in: hundreds of rows, each with a small picture, sharing a
 //! few dozen sources between them. The virtualiser mounts and unmounts rows as the port moves, so
@@ -6,9 +6,12 @@
 //! shared tiles, decode-for-display, and re-emission of rows whose replay records recycling
 //! dropped.
 //!
-//! The assertion is about *flicker*: once a row's picture has been decoded and shown, no later
-//! frame that draws the row may draw it without its picture. A frame that does is the blink a
-//! person sees while the glide is in flight.
+//! The first assertion is about *flicker*: once a row's picture has been decoded and shown, no
+//! later frame that draws the row may draw it without its picture. A frame that does is the blink
+//! a person sees while the glide is in flight.
+//!
+//! The second is about *room*: a conversation of large photos between rows of text fills the
+//! image pool, and every photo that scrolls into view must still find a place in it.
 
 mod desktop;
 mod device;
@@ -20,6 +23,8 @@ use std::time::Duration;
 use zgui::geom::{Device, DevicePx, Point, Rect, Size};
 use zgui::reactive::RwSignal;
 use zgui::view;
+use zgui::view::AnyView;
+use zgui_profile::{Counter, counter};
 use zgui_ui::prelude::*;
 
 use crate::painted::stage::Stage;
@@ -37,10 +42,11 @@ const ARTS: usize = 12;
 /// The declared row height, matching the sheet.
 const ROW: f32 = 32.0;
 
-/// Opens `view`, or reports the run skipped on a machine with no graphics device.
+/// Opens `view` styled by `sheet`, or reports the run skipped on a machine with no graphics
+/// device.
 macro_rules! staged {
-    ($view:expr) => {
-        match Stage::open(SHEET, $view) {
+    ($sheet:expr, $view:expr) => {
+        match Stage::open($sheet, $view) {
             Some(stage) => stage,
             None => {
                 eprintln!("skipped: no usable graphics device");
@@ -122,7 +128,7 @@ fn rows_and_arts(stage: &Stage) -> (usize, usize) {
 #[test]
 fn a_scroll_glide_keeps_every_warm_picture_on_its_row() {
     let dir = fixtures();
-    let mut stage = staged!(move || {
+    let mut stage = staged!(SHEET, move || {
         let dir = dir.clone();
         let count = RwSignal::new_local(ROWS);
         view! {
@@ -175,5 +181,145 @@ fn a_scroll_glide_keeps_every_warm_picture_on_its_row() {
         flickers.is_empty(),
         "warm rows were drawn without their pictures mid-glide \
          (step, rows drawn, rows with art): {flickers:?}"
+    );
+}
+
+const PHOTO_SHEET: &str = ":root { background-color: #101010 }
+    .photos { width: 640px; height: 600px; }
+    .photo-row { height: 130px; background-color: #202028; }
+    .photo { width: 600px; height: 120px; }
+    .caption { color: #e0e0e0; }";
+
+/// How many rows the conversation holds.
+const PHOTO_ROWS: usize = 96;
+/// Every third row is a photo, and the rest are text.
+const PHOTO_EVERY: usize = 3;
+/// The declared row height.
+const PHOTO_ROW: f32 = 130.0;
+
+/// Writes one distinct photo for each photo row and answers where they are.
+///
+/// Each is wider than the long edge below which a picture shares an atlas page, so every photo
+/// is a texture of its own, as a photo in a message is.
+fn photo_fixtures() -> PathBuf {
+    let dir = std::env::temp_dir().join("zgui-scroll-photo-fixtures");
+    std::fs::create_dir_all(&dir).expect("a temp dir can be made");
+    for photo in 0..PHOTO_ROWS / PHOTO_EVERY {
+        let path = dir.join(format!("photo{photo}.png"));
+        if path.exists() {
+            continue;
+        }
+        let tone = (photo * 7) as u8;
+        let picture = image::RgbaImage::from_fn(640, 140, |x, _| {
+            image::Rgba([tone, (x / 3) as u8, 255 - tone, 255])
+        });
+        picture.save(&path).expect("the fixture encodes");
+    }
+    dir
+}
+
+/// How many photo rows the port shows, and how many of them carry their photo.
+fn rows_and_photos(stage: &Stage) -> (usize, usize) {
+    let port = Rect::new(
+        Point::new(DevicePx(0.0), DevicePx(0.0)),
+        Size::new(DevicePx(640.0), DevicePx(600.0)),
+    );
+    let rows: Vec<Rect<DevicePx, Device>> = stage
+        .quads_in(port)
+        .into_iter()
+        .map(|quad| quad.bounds)
+        .filter(|bounds| (bounds.size.height.0 - PHOTO_ROW).abs() < 1.0)
+        .collect();
+    let photos: Vec<Rect<DevicePx, Device>> = stage
+        .glyphs_in(port)
+        .into_iter()
+        .map(|glyph| glyph.bounds)
+        .filter(|bounds| bounds.size.width.0 > 500.0)
+        .collect();
+    let with_photo = rows
+        .iter()
+        .filter(|row| {
+            photos.iter().any(|photo| {
+                photo.origin.y.0 >= row.origin.y.0 - 1.0
+                    && photo.origin.y.0 + photo.size.height.0
+                        <= row.origin.y.0 + row.size.height.0 + 1.0
+            })
+        })
+        .count();
+    (rows.len(), with_photo)
+}
+
+/// Every photo scrolled into view finds room in the image pool.
+///
+/// More photos than the pool has textures pass through the port, so the pool fills with photos
+/// that have left the list. Between them, rows of text in sizes no other row uses leave glyph
+/// tiles that are colder than any of those photos. Room for a new photo comes from the photos,
+/// whatever is colder in the other pools.
+#[test]
+fn photos_scrolled_into_view_find_room_in_a_full_pool() {
+    let dir = photo_fixtures();
+    let mut stage = staged!(PHOTO_SHEET, move || {
+        let dir = dir.clone();
+        let count = RwSignal::new_local(PHOTO_ROWS);
+        view! {
+            VirtualList(
+                count = count,
+                row_size = PHOTO_ROW,
+                overscan = 6,
+                label = "Messages",
+                class = "photos",
+                row = move |index: usize| {
+                    if index % PHOTO_EVERY == 0 {
+                        let src = dir
+                            .join(format!("photo{}.png", index / PHOTO_EVERY))
+                            .to_string_lossy()
+                            .into_owned();
+                        AnyView::new(view! {
+                            box(class = "photo-row") {
+                                image(class = "photo", src = Some(src))
+                            }
+                        })
+                    } else {
+                        let size = format!("{}px", 8.0 + index as f32 * 0.5);
+                        AnyView::new(view! {
+                            box {
+                                text(class = "caption", style:font-size = Some(size)) {
+                                    "Sphinx of black quartz, judge my vow 0123456789"
+                                }
+                            }
+                        })
+                    }
+                }
+            )
+        }
+    });
+
+    stage.move_to(Point::new(DevicePx(320.0), DevicePx(300.0)));
+    counter::reset();
+    let mut refused = Vec::new();
+    let mut before = 0;
+    for step in 0..400 {
+        stage.touchpad_step(30.0);
+        let now = counter::get(Counter::ImageInsertFailed);
+        if now > before {
+            refused.push(step);
+            before = now;
+        }
+    }
+    assert!(
+        counter::get(Counter::AtlasTilesEvicted) > 0,
+        "the glide filled the pool, so photos had to be evicted for room"
+    );
+    assert!(
+        refused.is_empty(),
+        "photos found no room in the pool at glide steps {refused:?}"
+    );
+
+    stage.wait(Duration::from_millis(500));
+    let (rows, with_photo) = rows_and_photos(&stage);
+    assert!(rows >= 1, "the port shows a photo row: {rows}");
+    assert_eq!(
+        with_photo, rows,
+        "after settling, every visible photo row carries its photo"
     );
 }

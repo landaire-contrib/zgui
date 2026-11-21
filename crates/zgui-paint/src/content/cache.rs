@@ -773,18 +773,28 @@ impl ReplacedSource for FrameContent<'_> {
             named,
         } = &mut *writing;
         let mut resolved = crate::content::images::source_of(atlas, content);
-        if matches!(resolved, Err(zgui_atlas::AtlasError::OutOfSpace { .. })) {
-            // The pool is full of colder content. One eviction step spares everything this frame
-            // has drawn and everything anything holds, so a single retry is safe — and it is
-            // enough, because one step frees a whole generation.
+
+        // The pool is full of colder content. Each step frees the coldest generation of that pool
+        // and spares everything this frame has drawn and everything anything holds, so the steps
+        // stop when the picture fits or when nothing in the pool can go. The other pools share no
+        // texture with it, so content there stays whatever its age.
+        let pool = content.key().map(AtlasKey::kind);
+        while let Some(pool) = pool
+            && matches!(resolved, Err(zgui_atlas::AtlasError::OutOfSpace { .. }))
+        {
             let mut removed = Vec::new();
-            let freed = atlas.evict_least_recently_used_into(&mut removed);
+            let freed = atlas.evict_least_recently_used_of_into(pool, &mut removed);
+            if freed.is_empty() {
+                break;
+            }
+
             glyphs.forget_tiles(&removed);
             vector_masks.forget_tiles(&removed);
             vector_layers.forget_tiles(&removed);
             counter::add(Counter::AtlasTilesEvicted, freed.tiles as u64);
             resolved = crate::content::images::source_of(atlas, content);
         }
+
         let (source, key) = match resolved {
             Ok(Some(resolved)) => resolved,
             // An uploaded entry whose tile is gone: nothing here can rebuild it, so the node is
@@ -794,11 +804,10 @@ impl ReplacedSource for FrameContent<'_> {
                 return None;
             }
             Err(error) => {
-                let key = match content {
-                    Content::Decoded { key, .. } | Content::Uploaded { key, .. } => Some(*key),
-                    Content::External(_) => None,
-                };
-                if key.is_none_or(|key| self.image_failures.borrow_mut().insert(key)) {
+                if content
+                    .key()
+                    .is_none_or(|key| self.image_failures.borrow_mut().insert(key))
+                {
                     tracing::warn!(
                         target: "zgui::paint",
                         "content for {id:?} could not enter the atlas: {error}"
