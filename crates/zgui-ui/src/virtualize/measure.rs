@@ -116,8 +116,9 @@ pub(crate) trait RowKeys {
     /// Gives rows `0..rows` their keys, and drops every measurement whose key no row has.
     ///
     /// The key function is read here and nowhere else, so that a row asked about later has the
-    /// key it had when the list was last counted.
-    fn bind(&mut self, rows: usize);
+    /// key it had when the list was last counted. Answers the row that now holds the key row
+    /// `follow` held before, or `None` when no row holds it.
+    fn bind_following(&mut self, rows: usize, follow: usize) -> Option<usize>;
 
     /// The measurement held under the key of row `index`.
     fn height(&self, index: usize) -> Option<f32>;
@@ -147,7 +148,8 @@ where
     K: Hash + Eq + Clone,
     F: Fn(usize) -> K,
 {
-    fn bind(&mut self, rows: usize) {
+    fn bind_following(&mut self, rows: usize, follow: usize) -> Option<usize> {
+        let followed = self.rows.get(follow).cloned();
         self.rows = (0..rows).map(&self.key).collect();
 
         let mut kept = HashMap::with_capacity(self.heights.len().min(rows));
@@ -156,8 +158,10 @@ where
                 kept.insert(key, height);
             }
         }
-
         self.heights = kept;
+
+        let followed = followed?;
+        self.rows.iter().position(|key| *key == followed)
     }
 
     fn height(&self, index: usize) -> Option<f32> {

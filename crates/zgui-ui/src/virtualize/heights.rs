@@ -36,6 +36,12 @@ pub(crate) struct Change {
     pub(crate) shift: f64,
 }
 
+/// What a change did to the heights, and the index the first visible row has after it.
+struct Applied {
+    moved: bool,
+    anchor: usize,
+}
+
 impl RowHeights {
     /// A list of no rows, holding measurements in `keys` when it is given.
     pub(crate) fn new(keys: Option<Box<dyn RowKeys>>) -> Self {
@@ -55,23 +61,28 @@ impl RowHeights {
 
     /// Counts the list again at `rows` rows, and estimates each row that holds no measurement.
     ///
-    /// `offset` is the scroll offset, and the change answers how far it moved the row there.
+    /// `offset` is the scroll offset, and the change answers how far it moved the row there. In a
+    /// keyed list that row is found by its key, so a row that moves to another index stays where
+    /// it was on screen.
     pub(crate) fn rebuild(
         &mut self,
         rows: usize,
         estimate: &dyn Fn(usize) -> f32,
         offset: f64,
     ) -> Change {
-        self.anchored(offset, |heights| {
-            heights.recount(rows, estimate);
-            true
+        self.anchored(offset, |heights, anchor| Applied {
+            moved: true,
+            anchor: heights.recount(rows, estimate, anchor),
         })
     }
 
     /// Sets the heights of `rows` rows from the held measurements and `estimate`.
-    fn recount(&mut self, rows: usize, estimate: &dyn Fn(usize) -> f32) {
-        if let Some(keys) = self.keys.as_mut() {
-            keys.bind(rows);
+    ///
+    /// Answers the index of the row that holds the key row `follow` held before. Without keys,
+    /// or when no row holds that key any more, it is `follow`.
+    fn recount(&mut self, rows: usize, estimate: &dyn Fn(usize) -> f32, follow: usize) -> usize {
+        let followed = if let Some(keys) = self.keys.as_mut() {
+            let followed = keys.bind_following(rows, follow).unwrap_or(follow);
             self.heights.clear();
             self.measured.clear();
             for index in 0..rows {
@@ -79,6 +90,8 @@ impl RowHeights {
                 self.measured.push(held.is_some());
                 self.heights.push(held.unwrap_or_else(|| estimate(index)));
             }
+
+            followed
         } else {
             self.heights.truncate(rows);
             self.measured.truncate(rows);
@@ -93,7 +106,9 @@ impl RowHeights {
                 self.heights.push(estimate(index));
                 self.measured.push(false);
             }
-        }
+
+            follow
+        };
 
         // A built row keeps its laid-out height under whichever key it holds now. Its layout
         // reports nothing new when the key changes and the height does not.
@@ -108,6 +123,8 @@ impl RowHeights {
         }
 
         self.sums = PrefixSums::new(&self.heights);
+
+        followed
     }
 
     /// Records the height the layout gave built row `index`.
@@ -123,7 +140,10 @@ impl RowHeights {
             keys.record(index, height);
         }
 
-        self.anchored(offset, |heights| heights.set(index, height, true))
+        self.anchored(offset, |heights, anchor| Applied {
+            moved: heights.set(index, height, true),
+            anchor,
+        })
     }
 
     /// Forgets that row `index` is built. Its measurement stays.
@@ -141,7 +161,10 @@ impl RowHeights {
             keys.forget(index);
         }
 
-        self.anchored(offset, |heights| heights.set(index, estimate, false))
+        self.anchored(offset, |heights, anchor| Applied {
+            moved: heights.set(index, estimate, false),
+            anchor,
+        })
     }
 
     /// Gives every row that is not built its estimate again.
@@ -153,7 +176,7 @@ impl RowHeights {
             }
         }
 
-        self.anchored(offset, |heights| {
+        self.anchored(offset, |heights, anchor| {
             let mut moved = false;
             for index in 0..heights.len() {
                 let (height, measured) = match heights.built.get(&index) {
@@ -166,7 +189,7 @@ impl RowHeights {
             }
 
             heights.sums = PrefixSums::new(&heights.heights);
-            moved
+            Applied { moved, anchor }
         })
     }
 
@@ -269,29 +292,36 @@ impl RowHeights {
 
     /// Applies `change`, and measures how far it moved the row that covers `offset`.
     ///
-    /// That row is the first visible one. In an ordinary list a row above it that grows or
-    /// shrinks moves it, and a change to the row itself does not. In a compressed list the offset
-    /// names a fraction of the rows and the row sits at the top of the port, so only a change of
-    /// the row count moves it. A change that crosses the cap carries the row from a running total
-    /// to a fraction of the rows, or back. A first visible row that the change removed has no
-    /// position to keep.
-    fn anchored(&mut self, offset: f64, change: impl FnOnce(&mut Self) -> bool) -> Change {
+    /// That row is the first visible one. `change` gets its index and answers the index it has
+    /// after the change. In an ordinary list a row above it that grows or shrinks moves it, and a
+    /// change to the row itself does not. In a compressed list the offset names a fraction of the
+    /// rows and the row sits at the top of the port, so only a change of the row count moves it.
+    /// A change that crosses the cap carries the row from a running total to a fraction of the
+    /// rows, or back. A first visible row that the change removed has no position to keep.
+    fn anchored(
+        &mut self,
+        offset: f64,
+        change: impl FnOnce(&mut Self, usize) -> Applied,
+    ) -> Change {
         let compressed = self.is_compressed();
         let rows = self.len();
         let anchor = self.anchor_at(offset);
         let before = self.sums.before(anchor);
 
-        let moved = change(self);
+        let Applied {
+            moved,
+            anchor: kept,
+        } = change(self, anchor);
 
         let shift =
-            if anchor >= self.len() || (compressed && self.is_compressed() && rows == self.len()) {
+            if kept >= self.len() || (compressed && self.is_compressed() && rows == self.len()) {
                 0.0
             } else if self.is_compressed() {
-                self.compressed_target(anchor) - offset
+                self.compressed_target(kept) - offset
             } else if compressed {
-                self.sums.before(anchor) - offset
+                self.sums.before(kept) - offset
             } else {
-                self.sums.before(anchor) - before
+                self.sums.before(kept) - before
             };
 
         Change { moved, shift }
@@ -475,6 +505,37 @@ mod tests {
         *order.borrow_mut() = vec![10, 14, 12, 11];
         heights.rebuild(4, &estimate, 0.0);
         assert_eq!(heights.offset_of(4), 80.0);
+    }
+
+    #[test]
+    fn rows_inserted_above_a_keyed_first_visible_row_keep_it_in_place() {
+        let order = std::rc::Rc::new(std::cell::RefCell::new((100_u32..200).collect::<Vec<_>>()));
+        let read = std::rc::Rc::clone(&order);
+        let MeasuredRows { keys, .. } =
+            MeasuredRows::new(20.0).keyed(move |index| read.borrow()[index]);
+        let mut heights = RowHeights::new(keys);
+        heights.rebuild(100, &estimate, 0.0);
+        // Rows 0 to 9 measured 50px tall. The port is 15px into row 4, key 104.
+        for index in 0..10 {
+            heights.record(index, 50.0, 0.0);
+            heights.release(index);
+        }
+        let offset = 4.0 * 50.0 + 15.0;
+
+        // Thirty rows of the estimate arrive in front, and three after.
+        *order.borrow_mut() = (70_u32..203).collect();
+        let change = heights.rebuild(133, &estimate, offset);
+
+        assert_eq!(
+            change.shift,
+            30.0 * 20.0,
+            "the rows in front push key 104 down"
+        );
+        assert_eq!(
+            offset + change.shift - f64::from(heights.offset_of(34)),
+            15.0,
+            "the port stays 15px into key 104, now row 34"
+        );
     }
 
     #[test]

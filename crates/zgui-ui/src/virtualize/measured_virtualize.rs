@@ -55,8 +55,9 @@ use crate::virtualize::measured_window::MeasuredWindow;
 /// ```
 ///
 /// When a row above the first visible one changes height, the container scrolls by the same
-/// amount, so the rows on screen stay where they are. That scroll does not stop a smooth scroll or
-/// a fling the container is on. A height reaches the window in the frame that lays the row out.
+/// amount, so the rows on screen stay where they are. In a keyed list the same holds when rows are
+/// inserted or removed above it. That scroll does not stop a smooth scroll or a fling the
+/// container is on. A height reaches the window in the frame that lays the row out.
 #[derive(Copy, Clone)]
 pub struct MeasuredVirtualize {
     /// The window, recomputed whenever the scroll position, the row count or a height changes.
