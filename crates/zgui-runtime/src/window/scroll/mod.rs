@@ -328,10 +328,12 @@ impl Window {
 
     /// Carries out what a touch gesture asked for.
     ///
-    /// A finger dragging a list is a scroll and nothing else here: the content follows the contact,
-    /// so the offset moves *against* the gesture, and lifting the finger hands the container the
-    /// speed it left with. Everything else the recogniser reads — a tap, a long press, a pinch — is
-    /// a reading a component acts on rather than a scroll, and is delivered rather than performed.
+    /// A finger dragging a list is a scroll here: the content follows the contact, so the offset
+    /// moves *against* the gesture, and lifting the finger hands the container the speed it left
+    /// with. An element that listens for pans along the axis of the drag takes it from the
+    /// scrolling instead, as the `pan` module describes. Everything else the recogniser reads — a
+    /// tap, a long press, a pinch — is a reading a component acts on rather than a scroll, and is
+    /// delivered rather than performed.
     ///
     /// The container a drag acts on is decided when the drag begins and not looked at again, so a
     /// finger that carries a list past the edge of its own scrollport keeps carrying that list.
@@ -339,16 +341,27 @@ impl Window {
     /// what a second finger landing on a list is asking for. The moves and the lift of any other
     /// contact are ignored.
     ///
+    /// A drag of either kind is not a press: lifting the finger over the element it went down on
+    /// does not activate that element.
+    ///
     /// A captured pointer belongs to the element that captured it, such as a slider or a drawing
     /// surface, and pans nothing. A capture that arrives during a drag ends the drag.
-    pub(crate) fn carry_out_gestures(&mut self, read: &[zgui_input::Gesture]) {
+    pub(crate) fn carry_out_gestures(
+        &mut self,
+        read: &[zgui_input::Gesture],
+        timestamp: Timestamp,
+    ) {
         for gesture in read {
             match gesture {
-                zgui_input::Gesture::PanStart { pointer, from } => {
+                zgui_input::Gesture::PanStart { pointer, from, at } => {
                     if self.router.capture().of(*pointer).is_some() {
                         if self.panning_pointer == Some(*pointer) {
                             self.end_pan();
                         }
+                        continue;
+                    }
+                    self.router.forget_press(*pointer);
+                    if self.claim_pan(*pointer, *from, *at, timestamp) {
                         continue;
                     }
                     self.panning_pointer = Some(*pointer);
@@ -362,7 +375,15 @@ impl Window {
                         None => Vec::new(),
                     };
                 }
-                zgui_input::Gesture::PanMove { pointer, by } => {
+                zgui_input::Gesture::PanMove {
+                    pointer,
+                    by,
+                    at,
+                    velocity,
+                } => {
+                    if self.follow_element_pan(*pointer, *at, *velocity, timestamp) {
+                        continue;
+                    }
                     if self.panning_pointer != Some(*pointer) {
                         continue;
                     }
@@ -395,7 +416,14 @@ impl Window {
                     self.panning = chain;
                     self.mark_scrolled(&touched);
                 }
-                zgui_input::Gesture::PanEnd { pointer, velocity } => {
+                zgui_input::Gesture::PanEnd {
+                    pointer,
+                    at,
+                    velocity,
+                } => {
+                    if self.end_element_pan(*pointer, *at, *velocity, timestamp) {
+                        continue;
+                    }
                     if self.panning_pointer != Some(*pointer) {
                         continue;
                     }
@@ -469,7 +497,7 @@ impl Window {
     }
 
     /// The innermost element under a point, in CSS pixels from the window's corner.
-    fn node_at(&self, at: zgui_geom::Point<CssPx, zgui_geom::Css>) -> Option<NodeKey> {
+    pub(super) fn node_at(&self, at: zgui_geom::Point<CssPx, zgui_geom::Css>) -> Option<NodeKey> {
         let document = self.document.borrow();
         let layout = self.layout.borrow();
         let filter = self.engine.filter();
@@ -704,7 +732,7 @@ impl Window {
     /// makes a wheel, a trackpad and a key all leave the page where it is behind a modal surface
     /// without anything about the page having been restyled. Everything else in the chain is
     /// untouched: a list inside the page still takes what is aimed at it.
-    fn scroll_chain(&self, from: NodeKey) -> Vec<NodeKey> {
+    pub(super) fn scroll_chain(&self, from: NodeKey) -> Vec<NodeKey> {
         let mut chain = {
             let document = self.document.borrow();
             let layout = self.layout.borrow();

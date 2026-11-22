@@ -29,10 +29,10 @@ use core::time::Duration;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use zgui_geom::{Css, CssPx, Point, Size};
-use zgui_vocab::{PointerAction, PointerEvent, PointerId, PointerKind, Timestamp};
+use zgui_vocab::{PointerAction, PointerEvent, PointerId, PointerKind, Timestamp, Velocity};
 
 pub use crate::gesture::longpress::LONG_PRESS;
-pub use crate::gesture::pan::{Track, Velocity};
+pub use crate::gesture::pan::Track;
 pub use crate::gesture::tap::SLOP;
 
 /// A reading of the touch stream.
@@ -59,6 +59,8 @@ pub enum Gesture {
         pointer: PointerId,
         /// Where it started.
         from: Point<CssPx, Css>,
+        /// Where it is now.
+        at: Point<CssPx, Css>,
     },
     /// A dragging finger moved.
     PanMove {
@@ -66,11 +68,17 @@ pub enum Gesture {
         pointer: PointerId,
         /// How far it moved since the last reading.
         by: Size<CssPx, Css>,
+        /// Where it is now.
+        at: Point<CssPx, Css>,
+        /// How fast it is travelling, in CSS pixels per second.
+        velocity: Velocity,
     },
     /// A dragging finger lifted, with the speed it lifted at.
     PanEnd {
         /// Which pointer.
         pointer: PointerId,
+        /// Where it lifted.
+        at: Point<CssPx, Css>,
         /// How fast it was travelling, in CSS pixels per second.
         velocity: Velocity,
     },
@@ -169,12 +177,15 @@ impl Gestures {
                     read.push(Gesture::PanStart {
                         pointer: event.id,
                         from: track.origin(),
+                        at: event.position,
                     });
                 }
                 if track.is_panning() {
                     read.push(Gesture::PanMove {
                         pointer: event.id,
                         by: moved.by,
+                        at: event.position,
+                        velocity: moved.velocity,
                     });
                 }
                 if let Some(scale) = self.pinch_scale() {
@@ -188,6 +199,7 @@ impl Gestures {
                 if track.is_panning() {
                     read.push(Gesture::PanEnd {
                         pointer: event.id,
+                        at: event.position,
                         velocity: track.velocity(at),
                     });
                 } else if !track.is_spent() {

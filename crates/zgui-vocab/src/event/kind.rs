@@ -146,6 +146,16 @@ events! {
         bubbles: true, cancelable: false,
         "Two fingers moved together or apart over the element. A document-object-model backend \
          receives only the stages between the first and the last.";
+    HorizontalPan => "horizontal_pan", "pointermove", Pan,
+        bubbles: true, cancelable: false,
+        "A touch contact pans across the element. A listener takes horizontal pans that start over \
+         the element from the scrolling, and a document-object-model backend reads them from the \
+         pointer moves.";
+    VerticalPan => "vertical_pan", "pointermove", Pan,
+        bubbles: true, cancelable: false,
+        "A touch contact pans up or down the element. A listener takes vertical pans that start \
+         over the element from the scrolling, and a document-object-model backend reads them from \
+         the pointer moves.";
 
     KeyDown => "key_down", "keydown", Key,
         bubbles: true, cancelable: true,

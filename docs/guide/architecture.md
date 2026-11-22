@@ -172,6 +172,7 @@ assumed.
 - [The reactive model](reactivity.md) — signals, owners, the flush, and the three `Send` escapes.
 - [Doing something that takes time](async.md) — tasks, worker threads, cancellation, and tokio.
 - [Drawing on a canvas](canvas.md) — retained scenes, the view transform, and data-space series.
+- [Touch gestures](gestures.md) — taps, long presses, pinches, and how an element takes a pan from the scrolling.
 - [Writing a `Renderer`](renderer.md) — the contract, damage, and what a second renderer must not do.
 - [Running in a browser](web.md) — the WebAssembly build, its renderers, fonts and limits.
 - [Building a browser on zgui](browser.md) — the extension points, in the order a consumer meets them.

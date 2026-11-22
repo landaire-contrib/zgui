@@ -1,8 +1,9 @@
 //! One type, and one constant, per event.
 
 use zgui_vocab::{
-    AnimationEvent, DragLeaveEvent, DropEvent, EventKind, FocusEvent, ImeEvent, KeyEvent, Payload,
-    PinchEvent, PointerEvent, ScrollEvent, TextEvent, TransitionEvent, ValueEvent, WheelEvent,
+    AnimationEvent, DragLeaveEvent, DropEvent, EventKind, FocusEvent, ImeEvent, KeyEvent, PanEvent,
+    Payload, PinchEvent, PointerEvent, ScrollEvent, TextEvent, TransitionEvent, ValueEvent,
+    WheelEvent,
 };
 
 use crate::event::{EventType, EventView};
@@ -72,6 +73,10 @@ events! {
         "A wheel or scroll gesture asked to scroll over the element.";
     PINCH: Pinch => Pinch, PinchEvent, as_pinch,
         "Two fingers moved together or apart over the element.";
+    HORIZONTAL_PAN: HorizontalPan => HorizontalPan, PanEvent, as_pan,
+        "A touch contact pans across the element, which takes the pan from the scrolling.";
+    VERTICAL_PAN: VerticalPan => VerticalPan, PanEvent, as_pan,
+        "A touch contact pans up or down the element, which takes the pan from the scrolling.";
 
     KEY_DOWN: KeyDown => KeyDown, KeyEvent, as_key,
         "A key went down while the element had focus.";

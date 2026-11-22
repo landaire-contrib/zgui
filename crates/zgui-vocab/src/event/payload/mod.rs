@@ -7,6 +7,7 @@ mod drag;
 mod drop;
 mod focus;
 mod ime;
+mod pan;
 mod pinch;
 mod pointer;
 mod scroll;
@@ -27,6 +28,7 @@ pub use crate::event::payload::key::{
     Key, KeyCode, KeyEvent, KeyLocation, KeyState, NamedKey, PhysicalKey, UnknownKeyCode,
     UnknownNamedKey,
 };
+pub use crate::event::payload::pan::{PanEvent, Velocity};
 pub use crate::event::payload::pinch::{GesturePhase, PinchEvent};
 pub use crate::event::payload::pointer::{
     PointerAction, PointerButton, PointerEvent, PointerId, PointerKind, PointerSample,
@@ -50,6 +52,8 @@ pub enum PayloadKind {
     Wheel,
     /// A pinch on a trackpad or a touch screen.
     Pinch,
+    /// A pan that an element took from the scrolling.
+    Pan,
     /// A key press or release.
     Key,
     /// Text produced by the keyboard.
@@ -95,6 +99,8 @@ pub enum Payload {
     Wheel(WheelEvent),
     /// A pinch on a trackpad or a touch screen.
     Pinch(PinchEvent),
+    /// A pan that an element took from the scrolling.
+    Pan(PanEvent),
     /// A key press or release.
     Key(KeyEvent),
     /// Text produced by the keyboard.
@@ -124,6 +130,7 @@ impl Payload {
             Self::Pointer(_) => PayloadKind::Pointer,
             Self::Wheel(_) => PayloadKind::Wheel,
             Self::Pinch(_) => PayloadKind::Pinch,
+            Self::Pan(_) => PayloadKind::Pan,
             Self::Key(_) => PayloadKind::Key,
             Self::Text(_) => PayloadKind::Text,
             Self::Ime(_) => PayloadKind::Ime,
@@ -157,6 +164,14 @@ impl Payload {
     pub const fn as_pinch(&self) -> Option<&PinchEvent> {
         match self {
             Self::Pinch(event) => Some(event),
+            _ => None,
+        }
+    }
+
+    /// The pan, when this is one.
+    pub const fn as_pan(&self) -> Option<&PanEvent> {
+        match self {
+            Self::Pan(event) => Some(event),
             _ => None,
         }
     }

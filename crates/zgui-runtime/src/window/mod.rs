@@ -17,6 +17,7 @@ mod drag;
 pub mod frame;
 pub mod input;
 pub mod observe;
+mod pan;
 pub mod pointer_text;
 pub mod present;
 pub mod probe;
@@ -343,6 +344,8 @@ pub struct Window {
     panning: Vec<zgui_dom::NodeKey>,
     /// The pointer whose drag `panning` follows.
     panning_pointer: Option<zgui_vocab::PointerId>,
+    /// The pan in progress that an element took from the scrolling.
+    element_pan: Option<crate::window::pan::ElementPan>,
     /// The pointers released or cancelled since the commands were last carried out, whose
     /// captures end after those commands.
     lifted: Vec<zgui_vocab::PointerId>,
@@ -818,6 +821,7 @@ impl Window {
             scroll_frozen: false,
             panning: Vec::new(),
             panning_pointer: None,
+            element_pan: None,
             lifted: Vec::new(),
             owed_scrolls: Vec::new(),
             carried_scrolls: Vec::new(),

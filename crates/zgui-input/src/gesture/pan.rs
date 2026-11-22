@@ -3,25 +3,18 @@
 use core::time::Duration;
 
 use zgui_geom::{Css, CssPx, Point, Size};
-use zgui_vocab::Timestamp;
+use zgui_vocab::{Timestamp, Velocity};
 
 use crate::gesture::longpress::LONG_PRESS;
 use crate::gesture::tap::travelled;
-
-/// How fast a contact was travelling, in CSS pixels per second.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Velocity {
-    /// Sideways.
-    pub x: f32,
-    /// Downwards.
-    pub y: f32,
-}
 
 /// What one move of a tracked contact produced.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Movement {
     /// How far it moved since the previous reading.
     pub by: Size<CssPx, Css>,
+    /// How fast it travels, measured over the window that ends with this move.
+    pub velocity: Velocity,
     /// Whether this is the move that turned it into a pan.
     pub began_panning: bool,
 }
@@ -91,6 +84,9 @@ impl Track {
     pub fn moved(&mut self, to: Point<CssPx, Css>, when: Timestamp) -> Movement {
         let by = Size::new(CssPx(to.x.0 - self.at.x.0), CssPx(to.y.0 - self.at.y.0));
         self.at = to;
+        // Measured before the window moves on, or the move that starts a new window reads as a
+        // contact at rest.
+        let velocity = self.velocity(when);
         if when.saturating_since(self.reference.1) > VELOCITY_WINDOW {
             self.reference = (to, when);
         }
@@ -99,7 +95,11 @@ impl Track {
             self.panning = true;
             self.spent = true;
         }
-        Movement { by, began_panning }
+        Movement {
+            by,
+            velocity,
+            began_panning,
+        }
     }
 
     /// Whether it has now been held long enough to be a long press, marking it spent if so.
@@ -138,9 +138,9 @@ mod tests {
     use core::time::Duration;
 
     use zgui_geom::{Css, CssPx, Point};
-    use zgui_vocab::Timestamp;
+    use zgui_vocab::{Timestamp, Velocity};
 
-    use super::{Track, Velocity};
+    use super::Track;
 
     fn at(x: f32, y: f32) -> Point<CssPx, Css> {
         Point::new(CssPx(x), CssPx(y))
@@ -169,6 +169,19 @@ mod tests {
         assert_eq!(moved.by.height, CssPx(40.0));
         let again = track.moved(at(10.0, 60.0), stamp(32));
         assert_eq!(again.by.height, CssPx(10.0));
+    }
+
+    #[test]
+    fn a_move_that_starts_a_new_window_still_reports_the_speed() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        track.moved(at(30.0, 0.0), stamp(60));
+        // Past the window, so this move becomes the new reference.
+        let moved = track.moved(at(60.0, 0.0), stamp(120));
+        assert!(
+            (moved.velocity.x - 500.0).abs() < 0.01 && moved.velocity.y == 0.0,
+            "a finger travelling steadily read {:?}",
+            moved.velocity
+        );
     }
 
     #[test]

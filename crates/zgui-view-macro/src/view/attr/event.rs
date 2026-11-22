@@ -27,6 +27,7 @@ const EVENTS: &[&str] = &[
     "drop",
     "focus_in",
     "focus_out",
+    "horizontal_pan",
     "ime_commit",
     "ime_end",
     "ime_preedit",
@@ -47,6 +48,7 @@ const EVENTS: &[&str] = &[
     "transition_end",
     "transition_run",
     "transition_start",
+    "vertical_pan",
     "wheel",
 ];
 

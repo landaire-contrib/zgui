@@ -380,7 +380,12 @@ impl Window {
             // instantaneous and every lift a dead stop.
             let read = self.gestures.pointer(*action, event, *sent);
             if !read.is_empty() {
-                self.carry_out_gestures(&read);
+                self.carry_out_gestures(&read, *sent);
+            }
+            // A cancelled contact produces no reading, and an element that follows its pan has to
+            // know that the pan is over.
+            if *action == zgui_vocab::PointerAction::Cancelled {
+                self.cancel_element_pan(event.id, *sent);
             }
         }
         // Nothing is asked for here. Events are drained at the top of a frame and everything a
