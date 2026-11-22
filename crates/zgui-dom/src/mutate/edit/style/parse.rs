@@ -38,7 +38,7 @@ fn base_url() -> UrlExtraData {
 /// stylesheet.
 pub(crate) fn attribute(css: &str) -> PropertyDeclarationBlock {
     parse_style_attribute(
-        css,
+        &zgui_css::environment::substitute(css),
         &base_url(),
         None,
         QuirksMode::NoQuirks,

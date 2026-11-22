@@ -23,6 +23,7 @@ pub mod probe;
 pub mod query;
 pub mod resize;
 mod reveal;
+mod safe_area;
 pub mod scale;
 pub mod scheme;
 pub mod scroll;
@@ -41,7 +42,7 @@ use web_time::{Duration, Instant};
 
 use zgui_bits::DamageSet;
 use zgui_dom::Document;
-use zgui_geom::{CssPx, Device, DevicePx, Scale, Size};
+use zgui_geom::{CssPx, Device, DevicePx, Edges, Scale, Size};
 use zgui_input::Router;
 use zgui_layout::HitIndex;
 use zgui_layout::tree::store::LayoutStore;
@@ -461,6 +462,8 @@ pub struct Window {
     /// time the surface moves, and a preference that lived only inside it would be discarded by
     /// the next resize.
     scheme: zgui_style::ColorScheme,
+    /// How far the system interface covers each edge of the surface, in device pixels.
+    safe_area: Edges<DevicePx>,
     /// Whether the surface is drawn translucent rather than opaque.
     ///
     /// Stated on every [`RenderTarget`](zgui_render::RenderTarget) this window configures and on
@@ -675,8 +678,10 @@ impl Window {
         let zoom = handle.requested_zoom();
         let scale = platform_scale * zoom.get();
         let size = surface.size();
+        let safe_area = surface.safe_area();
         let viewport = Viewport::new(CssPx(size.width.0 / scale), CssPx(size.height.0 / scale))
-            .at_scale(scale);
+            .at_scale(scale)
+            .with_safe_area(safe_area::css_safe_area(safe_area, scale));
         // A handle outlives a suspend, so the scheme it reports is reset to the new document's
         // before the view reads it.
         handle.set_color_scheme(scheme::to_platform(viewport.scheme));
@@ -835,6 +840,7 @@ impl Window {
             platform_scale,
             zoom,
             scheme: viewport.scheme,
+            safe_area,
             translucent: false,
             text_antialiasing: text_aa::TextAntialiasing::default(),
             subpixel_order: None,

@@ -154,6 +154,20 @@ root rather than a rebuild of anything.
 Colour scheme is available to sheets as a media feature as well, so a component can respond to the
 desktop's preference without an application wiring anything.
 
+## The safe area
+
+On a phone, the status bar, the camera housing and the home indicator cover parts of the window.
+Read how far they cover each edge with `env(safe-area-inset-top)`, `-right`, `-bottom` and `-left`.
+The values change when the device rotates. They are zero on a desktop.
+
+```css
+.header { padding-top: env(safe-area-inset-top); }
+.composer { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+```
+
+The style engine has no way to set these values, so each reference is parsed as a `var()` of a
+custom property that the framework sets on the root element (`--zgui-safe-top` and its siblings).
+
 ## Where the boundary is
 
 Parity here means parity with **what the style engine and the vector stack actually support**. That

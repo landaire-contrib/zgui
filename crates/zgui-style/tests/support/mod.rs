@@ -13,7 +13,7 @@ use std::sync::Arc;
 use zgui_bits::Dirty;
 use zgui_dom::dirty::walk;
 use zgui_dom::{Document, NodeIndex, NodeKind, StyleFilter};
-use zgui_geom::CssPx;
+use zgui_geom::{CssPx, Edges};
 use zgui_interned::{ClassName, ElementName};
 use zgui_style::{
     CssDiagnostics, DeviceEpoch, Restyle, SheetHandle, SheetOrigin, SheetSource, StyleEngine,
@@ -27,6 +27,7 @@ pub(crate) const START: Viewport = Viewport {
     height: CssPx(800.0),
     scale: 1.0,
     scheme: zgui_style::ColorScheme::Light,
+    safe_area: Edges::uniform(CssPx(0.0)),
 };
 
 /// A document with a style engine over it.
@@ -203,6 +204,12 @@ impl Harness {
     /// The same, for a change of device pixel ratio.
     pub(crate) fn rescale(&mut self, scale: f32) -> DeviceEpoch {
         let next = self.engine.viewport().at_scale(scale);
+        self.engine.device_epoch(&mut self.document, next)
+    }
+
+    /// The same, for a change of the safe area.
+    pub(crate) fn set_safe_area(&mut self, safe_area: Edges<CssPx>) -> DeviceEpoch {
+        let next = self.engine.viewport().with_safe_area(safe_area);
         self.engine.device_epoch(&mut self.document, next)
     }
 

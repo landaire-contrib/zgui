@@ -52,6 +52,11 @@ pub struct WinitSurface {
     shown: AtomicBool,
     /// Who draws the frame, from the last decorations asked for.
     decoration_source: Mutex<DecorationSource>,
+    /// The safe area as of the last resize, in physical pixels.
+    ///
+    /// UIKit answers only on the main thread, and a surface is read from any thread.
+    #[cfg(target_os = "ios")]
+    safe_area: Mutex<zgui_geom::Edges<DevicePx>>,
 }
 
 impl WinitSurface {
@@ -71,6 +76,8 @@ impl WinitSurface {
             waker,
             shown: AtomicBool::new(false),
             decoration_source: Mutex::new(chrome::source(decorations)),
+            #[cfg(target_os = "ios")]
+            safe_area: Mutex::new(zgui_geom::Edges::uniform(DevicePx(0.0))),
         }
     }
 
@@ -102,6 +109,20 @@ impl WinitSurface {
         let scale = self.window.scale_factor();
         if scale > 0.0 { scale } else { 1.0 }
     }
+
+    /// Reads the safe area again, before a resize is delivered.
+    ///
+    /// UIKit lays the view out again when the safe area changes, and winit reports each layout as a
+    /// resize.
+    pub(crate) fn observe_safe_area(&self) {
+        #[cfg(target_os = "ios")]
+        if let Some(safe_area) = crate::ios::safe_area(&self.window, self.scale()) {
+            *self
+                .safe_area
+                .lock()
+                .expect("the safe area is not poisoned") = safe_area;
+        }
+    }
 }
 
 impl core::fmt::Debug for WinitSurface {
@@ -120,8 +141,21 @@ impl Surface for WinitSurface {
     }
 
     fn size(&self) -> Size<DevicePx, Device> {
+        // winit's UIKit backend reports the safe area as the inner size, and the layer covers the
+        // whole view.
+        #[cfg(target_os = "ios")]
+        let size = self.window.outer_size();
+        #[cfg(not(target_os = "ios"))]
         let size = self.window.inner_size();
         Size::new(DevicePx(size.width as f32), DevicePx(size.height as f32))
+    }
+
+    #[cfg(target_os = "ios")]
+    fn safe_area(&self) -> zgui_geom::Edges<DevicePx> {
+        *self
+            .safe_area
+            .lock()
+            .expect("the safe area is not poisoned")
     }
 
     fn scale_factor(&self) -> f64 {

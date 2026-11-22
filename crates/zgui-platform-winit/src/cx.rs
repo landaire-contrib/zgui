@@ -226,6 +226,7 @@ impl PlatformCx for WinitCx<'_> {
             Arc::clone(&self.shared.waker),
         ));
         surface.place_title_buttons();
+        surface.observe_safe_area();
         #[cfg(target_os = "macos")]
         {
             if let Some(view) = crate::macos::ns_view(&window) {

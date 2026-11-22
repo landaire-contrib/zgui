@@ -88,6 +88,8 @@ pub struct StyleEngine {
     shared: crate::driver::share::SharedStyles,
     /// The user-agent sheet, held so that it stays installed.
     _user_agent: SheetHandle,
+    /// The user-agent sheet that gives [`Viewport::safe_area`] to `env(safe-area-inset-*)`.
+    environment: SheetHandle,
 }
 
 impl StyleEngine {
@@ -119,6 +121,19 @@ impl StyleEngine {
             "this framework's own user-agent sheet must parse whole: {dropped:?}"
         );
 
+        let environment_rule = zgui_css::environment::safe_area_rule(viewport.safe_area);
+        let (environment, dropped) = sheets.add(
+            &mut stylist,
+            &lock,
+            document.store().host().sheets(),
+            SheetOrigin::UserAgent,
+            SheetSource::Text(&environment_rule),
+        );
+        debug_assert!(
+            dropped.is_empty(),
+            "the safe area rule must parse whole: {dropped:?}"
+        );
+
         Self {
             stylist,
             lock,
@@ -137,6 +152,7 @@ impl StyleEngine {
             refs: crate::driver::traversal::RefsCache::default(),
             shared: crate::driver::share::SharedStyles::default(),
             _user_agent: user_agent,
+            environment,
         }
     }
 
@@ -159,8 +175,25 @@ impl StyleEngine {
     /// Rebuilds the device for `next` and invalidates what the change invalidates.
     ///
     /// Runs before anything else in a frame that follows a resize, a monitor change or a theme
-    /// flip, and before the restyle, because which rules apply is decided by the device.
+    /// flip, and before the restyle, because which rules apply is decided by the device. A change of
+    /// the safe area replaces the sheet that gives it to `env()`, and the next restyle matches the
+    /// whole document again.
     pub fn device_epoch(&mut self, document: &mut Document, next: Viewport) -> DeviceEpoch {
+        if next.safe_area != self.viewport.safe_area {
+            let rule = zgui_css::environment::safe_area_rule(next.safe_area);
+            let dropped = self.sheets.replace(
+                &mut self.stylist,
+                &self.lock,
+                document.store().host().sheets(),
+                &self.environment,
+                SheetSource::Text(&rule),
+            );
+            debug_assert!(
+                dropped.is_empty(),
+                "the safe area rule must parse whole: {dropped:?}"
+            );
+        }
+
         let epoch = device::epoch(
             &mut self.stylist,
             &self.lock,

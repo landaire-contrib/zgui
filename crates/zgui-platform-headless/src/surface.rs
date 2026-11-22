@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use accesskit::TreeUpdate;
-use zgui_geom::{Css, CssPx, Device, DevicePx, Rect, Size};
+use zgui_geom::{Css, CssPx, Device, DevicePx, Edges, Rect, Size};
 use zgui_platform::{
     CursorStyle, DecorationSource, Decorations, FullscreenMode, InputSerial, LayerPatch,
     LayerPlacement, PopupPlacement, Surface, SurfaceAttributes, SurfaceId, SurfaceRole, TextInput,
@@ -66,6 +66,8 @@ pub struct OffscreenSurface {
     size: Mutex<Size<DevicePx, Device>>,
     /// How many physical pixels there are to a CSS pixel.
     scale_factor: Mutex<f64>,
+    /// How far the system interface covers each edge, in physical pixels.
+    safe_area: Mutex<Edges<DevicePx>>,
     /// How fast the output this surface is on refreshes, in thousandths of a hertz.
     ///
     /// Zero means the platform does not say, which is what a backend that knows no rate reports.
@@ -150,6 +152,7 @@ impl OffscreenSurface {
             id,
             size: Mutex::new(size),
             scale_factor: Mutex::new(1.0),
+            safe_area: Mutex::new(Edges::uniform(DevicePx(0.0))),
             refresh_rate_millihertz: AtomicU32::new(0),
             pending: AtomicU64::new(0),
             requested: AtomicU64::new(0),
@@ -386,6 +389,17 @@ impl OffscreenSurface {
         *self.scale_factor.lock().expect("the scale is not poisoned") = scale_factor;
     }
 
+    /// Changes how far the system interface covers each edge, as a rotated phone would.
+    ///
+    /// A platform sends a resize with the change, so a test delivers
+    /// [`SurfaceEvent::Resized`](zgui_platform::SurfaceEvent::Resized) after it.
+    pub fn set_safe_area(&self, safe_area: Edges<DevicePx>) {
+        *self
+            .safe_area
+            .lock()
+            .expect("the safe area is not poisoned") = safe_area;
+    }
+
     /// Puts the surface on an output that refreshes at `millihertz`, or on one that does not say.
     ///
     /// Dragging a window from a seventy-five hertz panel onto a two-hundred-and-forty hertz one is
@@ -420,6 +434,13 @@ impl Surface for OffscreenSurface {
 
     fn scale_factor(&self) -> f64 {
         *self.scale_factor.lock().expect("the scale is not poisoned")
+    }
+
+    fn safe_area(&self) -> Edges<DevicePx> {
+        *self
+            .safe_area
+            .lock()
+            .expect("the safe area is not poisoned")
     }
 
     fn refresh_rate_millihertz(&self) -> Option<u32> {

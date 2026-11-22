@@ -34,7 +34,7 @@ pub use crate::surface::timing::{ComposeAhead, PresentPacing, PresentationTiming
 pub use crate::surface::watchdog::Watchdog;
 
 use accesskit::TreeUpdate;
-use zgui_geom::{Css, CssPx, Device, DevicePx, Point, Rect, Size};
+use zgui_geom::{Css, CssPx, Device, DevicePx, Edges, Point, Rect, Size};
 
 use crate::error::Unsupported;
 use crate::theme::ColorScheme;
@@ -66,6 +66,15 @@ pub trait Surface: Send + Sync + 'static {
 
     /// How many physical pixels there are to a CSS pixel on this surface.
     fn scale_factor(&self) -> f64;
+
+    /// How far the system interface covers each edge of the drawable area, in physical pixels.
+    ///
+    /// A status bar, a camera housing, rounded display corners and a home indicator are examples.
+    /// Stylesheets read these lengths as `env(safe-area-inset-*)`. A backend whose safe area can
+    /// change sends [`SurfaceEvent::Resized`] when it changes, also if the size stays the same.
+    fn safe_area(&self) -> Edges<DevicePx> {
+        Edges::uniform(DevicePx(0.0))
+    }
 
     /// How the colour stripes of the display under this surface are arranged.
     ///

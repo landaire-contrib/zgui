@@ -7,14 +7,15 @@ use style::invalidation::element::restyle_hints::RestyleHint;
 use zgui_bits::Dirty;
 use zgui_dom::dirty::propagate;
 use zgui_dom::{Document, DocumentStore, NodeFlags, NodeIndex, NodeKey, NodeKind};
-use zgui_geom::CssPx;
+use zgui_geom::{CssPx, Edges};
 
 use crate::device::color_scheme::ColorScheme;
 
 /// The surface a document is being styled against.
 ///
-/// Three quantities, because three different things in a stylesheet read them: media queries read
-/// all of them, viewport units read the size, and device-pixel rounding reads the ratio.
+/// Three quantities make the device, because three different things in a stylesheet read them:
+/// media queries read all of them, viewport units read the size, and device-pixel rounding reads
+/// the ratio. The safe area is not part of the device. A stylesheet reads it with `env()`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Viewport {
     /// Width of the surface, in CSS pixels.
@@ -25,6 +26,8 @@ pub struct Viewport {
     pub scale: f32,
     /// The colour scheme the surface is presented in.
     pub scheme: ColorScheme,
+    /// How far the system interface covers each edge of the surface, in CSS pixels.
+    pub safe_area: Edges<CssPx>,
 }
 
 impl Viewport {
@@ -35,6 +38,7 @@ impl Viewport {
             height,
             scale: 1.0,
             scheme: ColorScheme::Light,
+            safe_area: Edges::uniform(CssPx(0.0)),
         }
     }
 
@@ -48,6 +52,12 @@ impl Viewport {
     #[must_use]
     pub fn in_scheme(self, scheme: ColorScheme) -> Self {
         Self { scheme, ..self }
+    }
+
+    /// The same surface with the system interface covering `safe_area` of each edge.
+    #[must_use]
+    pub fn with_safe_area(self, safe_area: Edges<CssPx>) -> Self {
+        Self { safe_area, ..self }
     }
 
     /// What changed between `self` and `next`.

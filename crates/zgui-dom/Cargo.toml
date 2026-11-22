@@ -15,6 +15,8 @@ include.workspace = true
 [dependencies]
 zgui-arena = { path = "../zgui-arena", version = "0.1.0" }
 zgui-bits = { path = "../zgui-bits", version = "0.1.0" }
+# The `env()` references a `style` attribute is parsed with.
+zgui-css = { path = "../zgui-css", version = "0.1.0" }
 zgui-geom = { path = "../zgui-geom", version = "0.1.0" }
 zgui-interned = { path = "../zgui-interned", version = "0.1.0" }
 zgui-profile = { path = "../zgui-profile", version = "0.1.0" }
@@ -41,17 +43,13 @@ tracing.workspace = true
 rustc-hash.workspace = true
 smallvec.workspace = true
 
-# The acceptance tests drive the real style engine over this crate's own traits, which needs the
-# feature prefs, a stylesheet parser and a worker pool. None of it is reachable from the library.
+# The acceptance tests drive the real style engine over this crate's own traits, which needs a
+# stylesheet parser and a worker pool. None of it is reachable from the library.
 [dev-dependencies]
 # The frame counters are compiled out of an optimised build unless this feature asks for them, and
 # the invalidation budgets have to be readable from `cargo test --release` as well as from a debug
 # build — a budget that only holds in debug is a budget nobody checks.
 zgui-profile = { path = "../zgui-profile", version = "0.1.0", features = ["counters"] }
-
-# The feature flags have one home, and it is the style facade. These tests parse sheets, so they
-# run the same bootstrap the framework does rather than a second copy of the same list.
-zgui-css = { path = "../zgui-css", version = "0.1.0" }
 
 cssparser.workspace = true
 rayon.workspace = true

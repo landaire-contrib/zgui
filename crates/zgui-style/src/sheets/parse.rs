@@ -48,7 +48,7 @@ impl ParseContext<'_> {
         media: ServoArc<Locked<MediaList>>,
     ) -> Stylesheet {
         Stylesheet::from_str(
-            css,
+            &zgui_css::environment::substitute(css),
             self.url.clone(),
             origin,
             media,

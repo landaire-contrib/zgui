@@ -285,6 +285,14 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
         // withheld leaves a screen reader's highlight in the place the window used to be.
         a11y::observe(Surface::id(surface.as_ref()), surface.window(), &event);
 
+        if matches!(
+            event,
+            winit::event::WindowEvent::Resized(_)
+                | winit::event::WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            surface.observe_safe_area();
+        }
+
         let destroyed = matches!(event, winit::event::WindowEvent::Destroyed);
         let relayout = relays_out_title_bar(&event);
         let timestamp = self.shared.clock().timestamp();

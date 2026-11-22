@@ -11,6 +11,7 @@ mod support;
 use style::values::computed::Display;
 use support::{Harness, color, display, radius, width};
 use zgui_bits::Dirty;
+use zgui_geom::{CssPx, Edges};
 use zgui_style::{DropKind, SheetOrigin};
 
 #[test]
@@ -293,6 +294,55 @@ fn a_removed_reader_is_not_marked_by_a_resize() {
     assert!(
         !harness.owed_below(column).contains(Dirty::RECASCADE),
         "a mark on a detached element would climb to nothing the traversal reaches"
+    );
+}
+
+#[test]
+fn env_reads_the_safe_area_of_the_viewport() {
+    let mut harness = Harness::new();
+    let sheet = harness.append(harness.root, "box");
+    let inline = harness.append(harness.root, "box");
+    harness.edit(|edit| {
+        edit.set_inline_style(inline, Some("width: calc(env(safe-area-inset-bottom) * 2)"));
+    });
+    harness.add_author("box { width: env(safe-area-inset-left, 99px) }");
+    harness.frame();
+    assert_eq!(width(&harness, sheet), 0.0, "a surface with no safe area");
+    assert_eq!(width(&harness, inline), 0.0);
+    harness.retire_all();
+
+    let epoch = harness.set_safe_area(Edges::new(
+        CssPx(59.0),
+        CssPx(0.0),
+        CssPx(34.0),
+        CssPx(44.0),
+    ));
+    assert!(!epoch.changed, "the safe area is not part of the device");
+
+    let pass = harness.frame();
+    assert!(
+        pass.traversed,
+        "the safe area change is the frame's only input"
+    );
+    assert_eq!(width(&harness, sheet), 44.0);
+    assert_eq!(width(&harness, inline), 68.0);
+}
+
+#[test]
+fn a_safe_area_reference_keeps_the_location_of_what_follows_it() {
+    // The two values are the same length, so the unknown property is at the same column in both.
+    let column = |css: &str| {
+        let mut harness = Harness::new();
+        harness
+            .add_author(css)
+            .iter()
+            .map(|entry| entry.location)
+            .next()
+            .expect("the unknown property is reported")
+    };
+    assert_eq!(
+        column("root { padding-top: env(safe-area-inset-top); not-a-property: 3 }"),
+        column("root { padding-top: 0000000000000000000000px; not-a-property: 3 }"),
     );
 }
 
