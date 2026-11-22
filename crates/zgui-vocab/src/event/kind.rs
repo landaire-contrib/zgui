@@ -182,7 +182,7 @@ events! {
     DragOver => "drag_over", "dragover", Drop,
         bubbles: true, cancelable: false,
         "Content dragged from outside the window moved over the element.";
-    DragLeave => "drag_leave", "dragleave", Drop,
+    DragLeave => "drag_leave", "dragleave", DragLeave,
         bubbles: false, cancelable: false,
         "Content dragged from outside the window moved off the element and all of its descendants.";
 

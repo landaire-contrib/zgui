@@ -3,7 +3,7 @@
 //! A drag entering a zone fires `drag_enter` on it, every move fires `drag_over` on the innermost
 //! element and bubbles, and leaving fires `drag_leave`. While the drag is over it, the zone matches
 //! `:state(drag-over)`, which here makes it taller. A drag that leaves the window fires
-//! `drag_leave` at its last position. A drop ends the drag: the state clears with no `drag_leave`,
+//! `drag_leave` with no position. A drop ends the drag: the state clears with no `drag_leave`,
 //! and the drop goes to the element under it, whatever has focus.
 
 mod support;
@@ -52,10 +52,8 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
                             over.borrow_mut().push("over".into())
                         })
                         .on(events::DRAG_LEAVE, move |cx| {
-                            let at = cx.position;
-                            leave
-                                .borrow_mut()
-                                .push(format!("leave {} {}", at.x.0, at.y.0));
+                            let at = cx.position.map(|at| (at.x.0, at.y.0));
+                            leave.borrow_mut().push(format!("leave {at:?}"));
                         })
                         .on(events::DROP, move |cx| {
                             dropped
@@ -98,7 +96,7 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
     app.settle(8);
     assert_eq!(
         log.borrow().last().map(String::as_str),
-        Some("leave 10 200")
+        Some("leave Some((10.0, 200.0))")
     );
     assert_eq!(height(&app), 40.0, "off the zone, the state clears");
 
@@ -110,8 +108,8 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
     app.settle(8);
     assert_eq!(
         log.borrow().last().map(String::as_str),
-        Some("leave 10 10"),
-        "a drag that left the window is announced at its last position"
+        Some("leave None"),
+        "a drag that left the window has no position"
     );
     assert_eq!(
         height(&app),
@@ -132,6 +130,103 @@ fn a_drag_is_announced_and_styled_until_it_leaves_or_drops() {
     app.settle(8);
     assert_eq!(*log.borrow(), ["drop 2"], "a drop is not also a leave");
     assert_eq!(height(&app), 40.0, "a drop ends the drag");
+}
+
+/// A box that logs each drag event it gets, under `name`.
+fn target(
+    name: &'static str,
+    log: &Rc<RefCell<Vec<String>>>,
+) -> zgui_elements::Element<zgui_elements::Box_> {
+    let (enter, over, leave, dropped) = (
+        Rc::clone(log),
+        Rc::clone(log),
+        Rc::clone(log),
+        Rc::clone(log),
+    );
+    zgui_elements::r#box()
+        .class("target")
+        .on(events::DRAG_ENTER, move |cx| {
+            let (paths, at) = (&cx.paths, cx.position);
+            enter
+                .borrow_mut()
+                .push(format!("{name} enter {paths:?} {},{}", at.x.0, at.y.0));
+        })
+        .on(events::DRAG_OVER, move |cx| {
+            let (paths, at) = (&cx.paths, cx.position);
+            over.borrow_mut()
+                .push(format!("{name} over {paths:?} {},{}", at.x.0, at.y.0));
+        })
+        .on(events::DRAG_LEAVE, move |cx| {
+            let at = cx.position.map(|at| (at.x.0, at.y.0));
+            leave.borrow_mut().push(format!("{name} leave {at:?}"));
+        })
+        .on(events::DROP, move |cx| {
+            let (paths, at) = (&cx.paths, cx.position);
+            dropped
+                .borrow_mut()
+                .push(format!("{name} drop {paths:?} {},{}", at.x.0, at.y.0));
+        })
+}
+
+#[test]
+fn each_element_under_the_drag_gets_the_paths_and_a_leave_gets_only_the_position() {
+    let log: Rc<RefCell<Vec<String>>> = Rc::default();
+    let seen = Rc::clone(&log);
+    let mut app = support::app(CSS, move |cx: &mut BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .child(target("a", &seen))
+                .child(target("b", &seen))
+                .into_view()
+                .build(cx),
+        )
+    });
+    app.settle(8);
+    let take = || core::mem::take(&mut *log.borrow_mut());
+    let paths = vec![PathBuf::from("/tmp/a.wav")];
+
+    app.drag_enter(paths.clone(), at(10.0, 10.0));
+    app.settle(8);
+    assert_eq!(
+        take(),
+        [
+            r#"a enter ["/tmp/a.wav"] 10,10"#,
+            r#"a over ["/tmp/a.wav"] 10,10"#
+        ]
+    );
+
+    app.drag_move(at(10.0, 60.0));
+    app.settle(8);
+    assert_eq!(
+        take(),
+        [
+            "a leave Some((10.0, 60.0))",
+            r#"b enter ["/tmp/a.wav"] 10,60"#,
+            r#"b over ["/tmp/a.wav"] 10,60"#,
+        ],
+        "a move carries the paths from the enter, and the leave comes first"
+    );
+
+    app.drag_leave();
+    app.settle(8);
+    assert_eq!(
+        take(),
+        ["b leave None"],
+        "a drag off the window has no position"
+    );
+
+    app.drag_enter(paths.clone(), at(10.0, 60.0));
+    app.drag_drop(paths, at(10.0, 60.0));
+    app.settle(8);
+    assert_eq!(
+        take(),
+        [
+            r#"b enter ["/tmp/a.wav"] 10,60"#,
+            r#"b over ["/tmp/a.wav"] 10,60"#,
+            r#"b drop ["/tmp/a.wav"] 10,60"#,
+        ],
+        "the drop goes to the element under it, with no leave"
+    );
 }
 
 #[test]

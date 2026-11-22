@@ -11,9 +11,10 @@
 //!   the custom state `drag-over` for style sheets, matched by `:state(drag-over)`. Servo's
 //!   selector parser has no pseudo-class for the bit, so the state is the selector's way in.
 //!
-//! Each event carries the dragged paths, which the platform gives only on entry, and where the
-//! drag is. A `drag_leave` for a drag that left the window carries the last position the platform
-//! gave. A drop clears the state without a `drag_leave`: the drop is the drag's end.
+//! `drag_enter` and `drag_over` carry the dragged paths, which the platform gives only on entry,
+//! and where the drag is. `drag_leave` carries only where the drag is, and no position when the
+//! drag left the window. A drop clears the state without a `drag_leave`: the drop is the drag's
+//! end.
 
 use std::path::PathBuf;
 
@@ -21,19 +22,18 @@ use zgui_dom::NodeKey;
 use zgui_geom::{Css, CssPx, Point};
 use zgui_interned::Ident;
 use zgui_platform::DragEvent;
-use zgui_vocab::{DropEvent, EventKind, Payload, Timestamp, UiState};
+use zgui_vocab::{DragLeaveEvent, DropEvent, EventKind, Payload, Timestamp, UiState};
 
 use crate::window::Window;
 
 /// The custom state an element carries while a drag is over it.
 pub(crate) const DRAG_OVER_STATE: &str = "drag-over";
 
-/// The elements a drag is over, root first, what it carries and where it was last.
+/// The elements a drag is over, root first, and what it carries.
 #[derive(Debug, Default)]
 pub(crate) struct DragOver {
     path: Vec<NodeKey>,
     paths: Vec<PathBuf>,
-    at: Point<CssPx, Css>,
 }
 
 impl Window {
@@ -111,25 +111,23 @@ impl Window {
         }
         // Departures from the innermost outwards, then arrivals from the outermost inwards, as
         // pointer crossings are announced.
-        let at = position.unwrap_or(self.drag.at);
-        self.drag.at = at;
-        let payload = |position| {
-            Payload::Drop(DropEvent {
-                paths: self.drag.paths.clone(),
-                position,
-            })
+        let leave = Payload::DragLeave(DragLeaveEvent { position });
+        for node in moved.left.iter().rev() {
+            self.dispatch_synthetic(*node, EventKind::DragLeave, leave.clone(), timestamp);
+        }
+        // Only a drag over the window is over an element, so arrivals and moves have a position.
+        let Some(position) = position else {
+            return;
         };
-        let left: Vec<_> = moved.left.iter().rev().map(|n| (*n, payload(at))).collect();
-        let entered: Vec<_> = moved.entered.iter().map(|n| (*n, payload(at))).collect();
-        let over = position.zip(target).map(|(p, t)| (t, payload(p)));
-        for (node, payload) in left {
-            self.dispatch_synthetic(node, EventKind::DragLeave, payload, timestamp);
+        let over = Payload::Drop(DropEvent {
+            paths: self.drag.paths.clone(),
+            position,
+        });
+        for node in &moved.entered {
+            self.dispatch_synthetic(*node, EventKind::DragEnter, over.clone(), timestamp);
         }
-        for (node, payload) in entered {
-            self.dispatch_synthetic(node, EventKind::DragEnter, payload, timestamp);
-        }
-        if let Some((node, payload)) = over {
-            self.dispatch_synthetic(node, EventKind::DragOver, payload, timestamp);
+        if let Some(target) = target {
+            self.dispatch_synthetic(target, EventKind::DragOver, over, timestamp);
         }
     }
 }

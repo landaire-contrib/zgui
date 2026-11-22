@@ -3,6 +3,7 @@
 pub mod key;
 
 mod animation;
+mod drag;
 mod drop;
 mod focus;
 mod ime;
@@ -17,6 +18,7 @@ use crate::event::kind::EventKind;
 pub use crate::event::payload::animation::{
     AnimationEvent, AnimationPhase, Pseudo, TransitionEvent, TransitionPhase,
 };
+pub use crate::event::payload::drag::DragLeaveEvent;
 pub use crate::event::payload::drop::DropEvent;
 pub use crate::event::payload::focus::{FocusCause, FocusEvent};
 pub use crate::event::payload::ime::ImeEvent;
@@ -54,6 +56,8 @@ pub enum PayloadKind {
     Focus,
     /// Content dropped from outside the window.
     Drop,
+    /// A drag from outside the window moving off an element.
+    DragLeave,
     /// A control's value changing.
     Value,
     /// A scrolling element's offset changing.
@@ -95,6 +99,8 @@ pub enum Payload {
     Focus(FocusEvent),
     /// Content dropped from outside the window.
     Drop(DropEvent),
+    /// A drag from outside the window moving off an element.
+    DragLeave(DragLeaveEvent),
     /// A control's value changing.
     Value(ValueEvent),
     /// A scrolling element's offset changing.
@@ -116,6 +122,7 @@ impl Payload {
             Self::Ime(_) => PayloadKind::Ime,
             Self::Focus(_) => PayloadKind::Focus,
             Self::Drop(_) => PayloadKind::Drop,
+            Self::DragLeave(_) => PayloadKind::DragLeave,
             Self::Value(_) => PayloadKind::Value,
             Self::Scroll(_) => PayloadKind::Scroll,
             Self::Animation(_) => PayloadKind::Animation,
@@ -175,6 +182,14 @@ impl Payload {
     pub const fn as_drop(&self) -> Option<&DropEvent> {
         match self {
             Self::Drop(event) => Some(event),
+            _ => None,
+        }
+    }
+
+    /// The drag leave event, when this is one.
+    pub const fn as_drag_leave(&self) -> Option<&DragLeaveEvent> {
+        match self {
+            Self::DragLeave(event) => Some(event),
             _ => None,
         }
     }
