@@ -434,6 +434,12 @@ fn probe(adapter: &wgpu::Adapter, device: &wgpu::Device) -> RenderCapabilities {
             && downlevel
                 .flags
                 .contains(wgpu::DownlevelFlags::SHADER_F16_IN_F32)
+            // The path renderer dispatches its later stages indirectly, and wgpu refuses the
+            // indirect buffer with a validation panic on a device without this. The iOS Simulator
+            // GPU is one such device.
+            && downlevel
+                .flags
+                .contains(wgpu::DownlevelFlags::INDIRECT_EXECUTION)
             && adapter
                 .get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)
                 .allowed_usages
