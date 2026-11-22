@@ -75,6 +75,11 @@ struct Chat {
 impl Chat {
     /// A list of `rows`, started at the row with key `start` when it is given, opened and settled.
     fn open(rows: Vec<Line>, start: Option<u64>) -> Self {
+        Self::open_with(rows, start, false)
+    }
+
+    /// The same, with `newer` saying whether the host has rows after the last row held.
+    fn open_with(rows: Vec<Line>, start: Option<u64>, newer: bool) -> Self {
         let handed: Handed = Rc::default();
         let out = Rc::clone(&handed);
         let near_start = Rc::new(Cell::new(0));
@@ -83,7 +88,7 @@ impl Chat {
         let mut stage = Stage::open(SHEET, move || {
             let lines = RwSignal::new_local(rows.clone());
             let loading = RwSignal::new_local(false);
-            let newer = RwSignal::new_local(false);
+            let newer = RwSignal::new_local(newer);
             let count = Signal::derive_local(move || lines.with(Vec::len));
             let (told_start, told_end) = (Rc::clone(&told_start), Rc::clone(&told_end));
             let list = BottomUp::new(
@@ -331,6 +336,27 @@ fn a_list_can_start_with_a_row_at_the_top() {
     let row = chat.row(60).expect("the row is built");
     assert_eq!(row.origin.y.0, chat.port().origin.y.0);
     assert!(!chat.list().at_end_untracked());
+}
+
+#[test]
+fn a_held_row_the_port_cannot_bring_to_its_top_lets_the_host_hear_of_both_ends() {
+    for start in [None, Some(0), Some(1), Some(4)] {
+        let chat = Chat::open_with(lines(0..5, |_| 48.0), start, true);
+        assert_eq!(
+            (chat.near_start.get(), chat.near_end.get()),
+            (1, 1),
+            "a short list started at {start:?}"
+        );
+    }
+
+    let chat = Chat::open_with(lines(0..200, mixed), Some(60), true);
+    let row = chat.row(60).expect("the row is built");
+    assert_eq!(row.origin.y.0, chat.port().origin.y.0);
+    assert_eq!(
+        (chat.near_start.get(), chat.near_end.get()),
+        (0, 0),
+        "a long list held far from both ends"
+    );
 }
 
 #[test]

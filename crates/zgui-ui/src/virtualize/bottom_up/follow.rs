@@ -136,7 +136,7 @@ where
     /// only the reader does. It follows the end again when the port shows the end, every scroll the
     /// measurements asked for has been seen, and the host has no newer rows. A held row that is
     /// away from the top of the port is scrolled to again when it or the heights moved since the
-    /// last scroll to it.
+    /// last scroll to it, unless the port is at the end and the row is below its top.
     pub(crate) fn see(&mut self, sighting: Sighting) -> Step {
         let moved_up = self
             .drift
@@ -167,7 +167,10 @@ where
                 let Some(placed) = sighting.held else {
                     return Step::Stay;
                 };
-                if (placed.row - placed.port).abs() <= MOTION {
+                // A row below the top of a port that cannot go further down is as high as it goes.
+                let reached = (placed.row - placed.port).abs() <= MOTION
+                    || (placed.row > placed.port && sighting.remaining <= MOTION);
+                if reached {
                     self.asked = None;
                     return Step::Stay;
                 }
@@ -352,6 +355,37 @@ mod tests {
         follow.let_go();
         assert_eq!(follow.hold(), &Hold::Free);
         assert_eq!(follow.see(at(700.0)), Step::Stay);
+    }
+
+    #[test]
+    fn a_held_row_below_the_top_of_a_port_at_the_end_is_placed() {
+        let mut follow = Follow::new(4.0);
+        follow.hold_row(7_u32);
+        let short = Sighting {
+            remaining: 0.0,
+            extent: Extent {
+                content: 400.0,
+                port: 400.0,
+            },
+            held: Some(Placed {
+                row: 208.0,
+                port: 0.0,
+            }),
+            ..at(0.0)
+        };
+        assert_eq!(follow.see(short), Step::Stay);
+        assert_eq!(follow.hold(), &Hold::Row(7), "the row is still held");
+
+        // The rows below it grew, so the port can go further down.
+        let grown = Sighting {
+            remaining: 300.0,
+            extent: Extent {
+                content: 700.0,
+                port: 400.0,
+            },
+            ..short
+        };
+        assert_eq!(follow.see(grown), Step::ScrollToRow);
     }
 
     #[test]
