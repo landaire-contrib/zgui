@@ -165,8 +165,22 @@ The values change when the device rotates. They are zero on a desktop.
 .composer { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 ```
 
+## The on-screen keyboard
+
+On a phone, the on-screen keyboard covers part of the window and the window keeps its size. Read
+the area it covers with the keyboard inset variables of the VirtualKeyboard API:
+`env(keyboard-inset-top)`, `-right`, `-bottom`, `-left`, `-width` and `-height`. The top, right,
+bottom and left values are the distances of the keyboard edges from the window edges. All six are
+zero when no keyboard shows, and on a desktop. The values change when the keyboard starts to move,
+and they are the values at the end of the movement.
+
+```css
+root { padding-bottom: max(env(safe-area-inset-bottom), env(keyboard-inset-height)); }
+```
+
 The style engine has no way to set these values, so each reference is parsed as a `var()` of a
-custom property that the framework sets on the root element (`--zgui-safe-top` and its siblings).
+custom property that the framework sets on the root element (`--zgui-safe-top`, `--zgui-kb-top`
+and their siblings).
 
 ## Where the boundary is
 

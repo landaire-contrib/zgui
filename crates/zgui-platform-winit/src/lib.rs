@@ -72,7 +72,7 @@
 #![deny(missing_docs)]
 // This crate is on the unsafe ledger's allowlist. The Wayland clipboard is
 // constructed from a raw display pointer through an unsafe constructor. The AppKit calls of the
-// macOS module, the UIKit view of the iOS module and the font smoothing query of Windows are the
+// macOS module, the UIKit calls of the iOS module and the font smoothing query of Windows are the
 // others. Every unsafe block states what makes it sound.
 #![allow(unsafe_code)]
 

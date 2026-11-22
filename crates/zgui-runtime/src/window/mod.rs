@@ -33,6 +33,7 @@ mod sheets;
 mod surface_focus;
 pub mod text_aa;
 mod value;
+mod virtual_keyboard;
 mod zoom;
 
 use std::cell::{Cell, RefCell};
@@ -42,7 +43,7 @@ use web_time::{Duration, Instant};
 
 use zgui_bits::DamageSet;
 use zgui_dom::Document;
-use zgui_geom::{CssPx, Device, DevicePx, Edges, Scale, Size};
+use zgui_geom::{CssPx, Device, DevicePx, Edges, Rect, Scale, Size};
 use zgui_input::Router;
 use zgui_layout::HitIndex;
 use zgui_layout::tree::store::LayoutStore;
@@ -464,6 +465,8 @@ pub struct Window {
     scheme: zgui_style::ColorScheme,
     /// How far the system interface covers each edge of the surface, in device pixels.
     safe_area: Edges<DevicePx>,
+    /// The part of the surface that an on-screen keyboard covers, in device pixels.
+    virtual_keyboard: Option<Rect<DevicePx, Device>>,
     /// Whether the surface is drawn translucent rather than opaque.
     ///
     /// Stated on every [`RenderTarget`](zgui_render::RenderTarget) this window configures and on
@@ -679,9 +682,11 @@ impl Window {
         let scale = platform_scale * zoom.get();
         let size = surface.size();
         let safe_area = surface.safe_area();
+        let keyboard = surface.virtual_keyboard();
         let viewport = Viewport::new(CssPx(size.width.0 / scale), CssPx(size.height.0 / scale))
             .at_scale(scale)
-            .with_safe_area(safe_area::css_safe_area(safe_area, scale));
+            .with_safe_area(safe_area::css_safe_area(safe_area, scale))
+            .with_virtual_keyboard(virtual_keyboard::css_area(keyboard, scale));
         // A handle outlives a suspend, so the scheme it reports is reset to the new document's
         // before the view reads it.
         handle.set_color_scheme(scheme::to_platform(viewport.scheme));
@@ -841,6 +846,7 @@ impl Window {
             zoom,
             scheme: viewport.scheme,
             safe_area,
+            virtual_keyboard: keyboard,
             translucent: false,
             text_antialiasing: text_aa::TextAntialiasing::default(),
             subpixel_order: None,

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use zgui_bits::Dirty;
 use zgui_dom::dirty::walk;
 use zgui_dom::{Document, NodeIndex, NodeKind, StyleFilter};
-use zgui_geom::{CssPx, Edges};
+use zgui_geom::{Css, CssPx, Edges, Rect};
 use zgui_interned::{ClassName, ElementName};
 use zgui_style::{
     CssDiagnostics, DeviceEpoch, Restyle, SheetHandle, SheetOrigin, SheetSource, StyleEngine,
@@ -28,6 +28,7 @@ pub(crate) const START: Viewport = Viewport {
     scale: 1.0,
     scheme: zgui_style::ColorScheme::Light,
     safe_area: Edges::uniform(CssPx(0.0)),
+    virtual_keyboard: None,
 };
 
 /// A document with a style engine over it.
@@ -210,6 +211,12 @@ impl Harness {
     /// The same, for a change of the safe area.
     pub(crate) fn set_safe_area(&mut self, safe_area: Edges<CssPx>) -> DeviceEpoch {
         let next = self.engine.viewport().with_safe_area(safe_area);
+        self.engine.device_epoch(&mut self.document, next)
+    }
+
+    /// The same, for an on-screen keyboard that shows over `area` or hides.
+    pub(crate) fn set_virtual_keyboard(&mut self, area: Option<Rect<CssPx, Css>>) -> DeviceEpoch {
+        let next = self.engine.viewport().with_virtual_keyboard(area);
         self.engine.device_epoch(&mut self.document, next)
     }
 

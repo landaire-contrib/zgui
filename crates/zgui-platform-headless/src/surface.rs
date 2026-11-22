@@ -68,6 +68,8 @@ pub struct OffscreenSurface {
     scale_factor: Mutex<f64>,
     /// How far the system interface covers each edge, in physical pixels.
     safe_area: Mutex<Edges<DevicePx>>,
+    /// The part an on-screen keyboard covers, in physical pixels.
+    virtual_keyboard: Mutex<Option<Rect<DevicePx, Device>>>,
     /// How fast the output this surface is on refreshes, in thousandths of a hertz.
     ///
     /// Zero means the platform does not say, which is what a backend that knows no rate reports.
@@ -153,6 +155,7 @@ impl OffscreenSurface {
             size: Mutex::new(size),
             scale_factor: Mutex::new(1.0),
             safe_area: Mutex::new(Edges::uniform(DevicePx(0.0))),
+            virtual_keyboard: Mutex::new(None),
             refresh_rate_millihertz: AtomicU32::new(0),
             pending: AtomicU64::new(0),
             requested: AtomicU64::new(0),
@@ -400,6 +403,17 @@ impl OffscreenSurface {
             .expect("the safe area is not poisoned") = safe_area;
     }
 
+    /// Shows an on-screen keyboard over `area` of the surface, or hides it with `None`.
+    ///
+    /// A platform sends a resize with the change, so a test delivers
+    /// [`SurfaceEvent::Resized`](zgui_platform::SurfaceEvent::Resized) after it.
+    pub fn set_virtual_keyboard(&self, area: Option<Rect<DevicePx, Device>>) {
+        *self
+            .virtual_keyboard
+            .lock()
+            .expect("the keyboard area is not poisoned") = area;
+    }
+
     /// Puts the surface on an output that refreshes at `millihertz`, or on one that does not say.
     ///
     /// Dragging a window from a seventy-five hertz panel onto a two-hundred-and-forty hertz one is
@@ -441,6 +455,13 @@ impl Surface for OffscreenSurface {
             .safe_area
             .lock()
             .expect("the safe area is not poisoned")
+    }
+
+    fn virtual_keyboard(&self) -> Option<Rect<DevicePx, Device>> {
+        *self
+            .virtual_keyboard
+            .lock()
+            .expect("the keyboard area is not poisoned")
     }
 
     fn refresh_rate_millihertz(&self) -> Option<u32> {

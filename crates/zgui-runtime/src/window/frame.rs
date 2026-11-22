@@ -1120,8 +1120,8 @@ impl Window {
     /// A configure that **does not move the level** is dropped outright. A drag delivers the same
     /// size more than once — a quarter of them, measured over a drag across a monitor — and every
     /// repeat used to rebuild the swapchain, which stalls until the device is idle, and then
-    /// repaint the whole surface. A configure that moves only the safe area asks for a frame and
-    /// reconfigures nothing.
+    /// repaint the whole surface. A configure that moves only the safe area or the keyboard area
+    /// asks for a frame and reconfigures nothing.
     ///
     /// A configure that **moves the level too soon** is recorded and not answered yet. Its frame
     /// would be built, painted and presented inside the interval in which the last one is still on
@@ -1130,11 +1130,12 @@ impl Window {
     /// obligation in `reconfigure` — is what the deadline discharges, and the frame that discharges
     /// it reads the surface rather than this event.
     pub(super) fn resized(&mut self, size: Size<DevicePx, Device>, platform_scale: f32) -> bool {
-        // Read first, so a rescale below converts the new safe area. A move of the safe area alone
+        // Read first, so a rescale below converts the new areas. A move of an area alone
         // reconfigures nothing, and the frame it asks for restyles the document.
         let safe_area_moved = self.take_safe_area();
+        let keyboard_moved = self.take_virtual_keyboard();
         if !self.resize(size, platform_scale) {
-            return safe_area_moved;
+            return safe_area_moved || keyboard_moved;
         }
         // What the handle reports, from the size that was actually taken. Maximising and leaving
         // full screen usually resize the window, so the state is read here too. A change that

@@ -252,6 +252,14 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
             }
             UserEvent::Surface(window, event) => {
                 if let Some(surface) = self.shared.by_window(window) {
+                    // A resize sent from outside the loop can arrive after a real one. The size is
+                    // read again here, so it is the current size.
+                    let event = match event {
+                        SurfaceEvent::Resized(_) => {
+                            SurfaceEvent::Resized(Surface::size(surface.as_ref()))
+                        }
+                        other => other,
+                    };
                     let cx = WinitCx::new(&self.shared, event_loop);
                     self.handler
                         .surface_event(&cx, Surface::id(surface.as_ref()), event);

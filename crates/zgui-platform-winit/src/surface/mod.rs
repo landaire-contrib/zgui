@@ -57,6 +57,9 @@ pub struct WinitSurface {
     /// UIKit answers only on the main thread, and a surface is read from any thread.
     #[cfg(target_os = "ios")]
     safe_area: Mutex<zgui_geom::Edges<DevicePx>>,
+    /// The part of the view the on-screen keyboard covers, as of the last keyboard notification.
+    #[cfg(target_os = "ios")]
+    virtual_keyboard: Mutex<Option<zgui_geom::Rect<DevicePx, Device>>>,
 }
 
 impl WinitSurface {
@@ -78,6 +81,8 @@ impl WinitSurface {
             decoration_source: Mutex::new(chrome::source(decorations)),
             #[cfg(target_os = "ios")]
             safe_area: Mutex::new(zgui_geom::Edges::uniform(DevicePx(0.0))),
+            #[cfg(target_os = "ios")]
+            virtual_keyboard: Mutex::new(None),
         }
     }
 
@@ -123,6 +128,23 @@ impl WinitSurface {
                 .expect("the safe area is not poisoned") = safe_area;
         }
     }
+
+    /// Records the part of the view the on-screen keyboard covers, and reports a change as a
+    /// resize.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn set_virtual_keyboard(&self, area: Option<zgui_geom::Rect<DevicePx, Device>>) {
+        let previous = core::mem::replace(
+            &mut *self
+                .virtual_keyboard
+                .lock()
+                .expect("the keyboard area is not poisoned"),
+            area,
+        );
+        if previous != area {
+            self.waker
+                .report(self.window.id(), SurfaceEvent::Resized(Surface::size(self)));
+        }
+    }
 }
 
 impl core::fmt::Debug for WinitSurface {
@@ -156,6 +178,14 @@ impl Surface for WinitSurface {
             .safe_area
             .lock()
             .expect("the safe area is not poisoned")
+    }
+
+    #[cfg(target_os = "ios")]
+    fn virtual_keyboard(&self) -> Option<zgui_geom::Rect<DevicePx, Device>> {
+        *self
+            .virtual_keyboard
+            .lock()
+            .expect("the keyboard area is not poisoned")
     }
 
     fn scale_factor(&self) -> f64 {

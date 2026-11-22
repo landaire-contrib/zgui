@@ -76,6 +76,15 @@ pub trait Surface: Send + Sync + 'static {
         Edges::uniform(DevicePx(0.0))
     }
 
+    /// The part of the drawable area that an on-screen keyboard covers, in physical pixels.
+    ///
+    /// `None` when no on-screen keyboard shows. Stylesheets read the area as
+    /// `env(keyboard-inset-*)`. A backend with an on-screen keyboard sends
+    /// [`SurfaceEvent::Resized`] when the area changes, also if the size stays the same.
+    fn virtual_keyboard(&self) -> Option<Rect<DevicePx, Device>> {
+        None
+    }
+
     /// How the colour stripes of the display under this surface are arranged.
     ///
     /// Read once a frame. A backend asks for a redraw when the answer changes.

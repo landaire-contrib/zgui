@@ -11,7 +11,7 @@ mod support;
 use style::values::computed::Display;
 use support::{Harness, color, display, radius, width};
 use zgui_bits::Dirty;
-use zgui_geom::{CssPx, Edges};
+use zgui_geom::{CssPx, Edges, Point, Rect, Size};
 use zgui_style::{DropKind, SheetOrigin};
 
 #[test]
@@ -326,6 +326,37 @@ fn env_reads_the_safe_area_of_the_viewport() {
     );
     assert_eq!(width(&harness, sheet), 44.0);
     assert_eq!(width(&harness, inline), 68.0);
+}
+
+#[test]
+fn env_reads_the_virtual_keyboard_of_the_viewport_and_zero_when_it_hides() {
+    let mut harness = Harness::new();
+    let height = harness.append(harness.root, "box");
+    let top = harness.append(harness.root, "box");
+    harness.edit(|edit| {
+        edit.set_inline_style(top, Some("width: env(keyboard-inset-top, 99px)"));
+    });
+    harness.add_author("box { width: env(keyboard-inset-height) }");
+    harness.frame();
+    assert_eq!(width(&harness, height), 0.0, "no keyboard shows");
+    assert_eq!(width(&harness, top), 0.0);
+    harness.retire_all();
+
+    let keyboard = Rect::new(
+        Point::new(CssPx(0.0), CssPx(500.0)),
+        Size::new(CssPx(1280.0), CssPx(300.0)),
+    );
+    let epoch = harness.set_virtual_keyboard(Some(keyboard));
+    assert!(!epoch.changed, "the keyboard is not part of the device");
+    assert!(harness.frame().traversed);
+    assert_eq!(width(&harness, height), 300.0);
+    assert_eq!(width(&harness, top), 500.0);
+    harness.retire_all();
+
+    harness.set_virtual_keyboard(None);
+    assert!(harness.frame().traversed);
+    assert_eq!(width(&harness, height), 0.0);
+    assert_eq!(width(&harness, top), 0.0);
 }
 
 #[test]

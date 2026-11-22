@@ -7,7 +7,7 @@ use style::invalidation::element::restyle_hints::RestyleHint;
 use zgui_bits::Dirty;
 use zgui_dom::dirty::propagate;
 use zgui_dom::{Document, DocumentStore, NodeFlags, NodeIndex, NodeKey, NodeKind};
-use zgui_geom::{CssPx, Edges};
+use zgui_geom::{Css, CssPx, Edges, Rect};
 
 use crate::device::color_scheme::ColorScheme;
 
@@ -15,7 +15,8 @@ use crate::device::color_scheme::ColorScheme;
 ///
 /// Three quantities make the device, because three different things in a stylesheet read them:
 /// media queries read all of them, viewport units read the size, and device-pixel rounding reads
-/// the ratio. The safe area is not part of the device. A stylesheet reads it with `env()`.
+/// the ratio. The safe area and the on-screen keyboard are not part of the device. A stylesheet
+/// reads them with `env()`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Viewport {
     /// Width of the surface, in CSS pixels.
@@ -28,6 +29,10 @@ pub struct Viewport {
     pub scheme: ColorScheme,
     /// How far the system interface covers each edge of the surface, in CSS pixels.
     pub safe_area: Edges<CssPx>,
+    /// The part of the surface that an on-screen keyboard covers, in CSS pixels.
+    ///
+    /// `None` when no on-screen keyboard shows.
+    pub virtual_keyboard: Option<Rect<CssPx, Css>>,
 }
 
 impl Viewport {
@@ -39,6 +44,7 @@ impl Viewport {
             scale: 1.0,
             scheme: ColorScheme::Light,
             safe_area: Edges::uniform(CssPx(0.0)),
+            virtual_keyboard: None,
         }
     }
 
@@ -60,6 +66,15 @@ impl Viewport {
         Self { safe_area, ..self }
     }
 
+    /// The same surface with an on-screen keyboard over `area` of it, or with none.
+    #[must_use]
+    pub fn with_virtual_keyboard(self, area: Option<Rect<CssPx, Css>>) -> Self {
+        Self {
+            virtual_keyboard: area,
+            ..self
+        }
+    }
+
     /// What changed between `self` and `next`.
     pub(crate) fn changes_to(self, next: Self) -> ViewportChange {
         ViewportChange {
@@ -67,6 +82,18 @@ impl Viewport {
             scale: self.scale != next.scale,
             scheme: self.scheme != next.scheme,
         }
+    }
+
+    /// Whether a value that `env()` reads differs between `self` and `next`.
+    ///
+    /// The right and bottom keyboard insets are measured from the edges of the surface, so a
+    /// resize moves them while a keyboard shows.
+    pub(crate) fn moves_environment_to(self, next: Self) -> bool {
+        let resized = self.width != next.width || self.height != next.height;
+
+        self.safe_area != next.safe_area
+            || self.virtual_keyboard != next.virtual_keyboard
+            || (next.virtual_keyboard.is_some() && resized)
     }
 }
 
