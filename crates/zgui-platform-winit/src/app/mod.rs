@@ -40,6 +40,8 @@ use std::collections::HashMap;
 use winit::application::ApplicationHandler;
 use winit::event::StartCause;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+#[cfg(target_os = "ios")]
+use winit::platform::ios::EventLoopBuilderExtIOS;
 use winit::window::WindowId;
 use zgui_platform::{AppHandler, PlatformError, Surface, SurfaceEvent, WakeReason};
 
@@ -56,9 +58,15 @@ use crate::waker::UserEvent;
 ///
 /// # Errors
 ///
-/// Returns [`PlatformError::Backend`] when there is no windowing system to connect to.
+/// Returns [`PlatformError::Backend`] when there is no windowing system to connect to, which on iOS
+/// includes a system without scenes, before iOS 13.
 pub fn event_loop() -> Result<EventLoop<UserEvent>, PlatformError> {
-    EventLoop::<UserEvent>::with_user_event()
+    let mut builder = EventLoop::<UserEvent>::with_user_event();
+    // UIKit refuses to start an app built with the iOS 27 SDK that has not adopted the scene life
+    // cycle.
+    #[cfg(target_os = "ios")]
+    let builder = builder.with_scene_life_cycle(true);
+    builder
         .build()
         .map_err(|error| PlatformError::Backend(error.to_string()))
 }

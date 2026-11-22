@@ -361,6 +361,8 @@ undocumented_unsafe_blocks = "warn"
 # families and loaded faces from one paragraph to the next (see vendor/README.md for the changes).
 [patch.crates-io]
 fontique = { path = "vendor/fontique" }
+# winit with the UIKit scene-based life cycle, which apps built with the iOS 27 SDK must adopt.
+winit = { git = "https://github.com/landaire-contrib/winit", branch = "v0.30.x-uiscene" }
 
 # A browser build. The module is downloaded before it runs, so its size is part of the start-up
 # time. Optimising for size costs frame time, and a frame has time to spare: measured on the

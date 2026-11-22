@@ -1116,6 +1116,11 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "dpi"
+version = "0.1.1"
+source = "git+https://github.com/landaire-contrib/winit?branch=v0.30.x-uiscene#2a121e2b485c0ac0b34295d8f5df885b8bb0107d"
+
+[[package]]
+name = "dpi"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
@@ -2191,7 +2196,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6744ab645ebe79f9c428455c7cb9dfa4275fa3b50a25408e08f927da8dc618c"
 dependencies = [
  "crossbeam-channel",
- "dpi",
+ "dpi 0.1.2",
  "keyboard-types",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -5221,8 +5226,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "winit"
 version = "0.30.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d"
+source = "git+https://github.com/landaire-contrib/winit?branch=v0.30.x-uiscene#2a121e2b485c0ac0b34295d8f5df885b8bb0107d"
 dependencies = [
  "ahash",
  "android-activity",
@@ -5236,7 +5240,7 @@ dependencies = [
  "core-foundation",
  "core-graphics",
  "cursor-icon",
- "dpi",
+ "dpi 0.1.1",
  "js-sys",
  "libc",
  "memmap2",
