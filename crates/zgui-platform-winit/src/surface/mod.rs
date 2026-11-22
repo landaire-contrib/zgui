@@ -159,7 +159,11 @@ impl Surface for WinitSurface {
         // Windows paints only visible windows, and a surface stays hidden until its first frame
         // presents. Until the window is shown, the loop delivers the request itself. A window that
         // is hidden later waits for the paint that shows it again.
-        if cfg!(windows) && !self.shown.load(Ordering::Relaxed) {
+        //
+        // winit's UIKit backend delivers a frame from `drawRect:` and drops a request made during
+        // that frame, so the window stops drawing (rust-windowing/winit#3406). On iOS the loop
+        // delivers every request.
+        if cfg!(target_os = "ios") || (cfg!(windows) && !self.shown.load(Ordering::Relaxed)) {
             self.waker.redraw(self.window.id());
         } else {
             self.window.request_redraw();

@@ -20,7 +20,8 @@ pub enum UserEvent {
     Wake(WakeReason),
     /// The accessibility adapter has something to say about one window.
     A11y(accesskit_winit::Event),
-    /// A hidden window asks for a frame. Windows sends no paint message to a hidden window, so the
+    /// A window asks for a frame that the platform does not deliver. Windows sends no paint
+    /// message to a hidden window, and winit on iOS drops a request made during a frame, so the
     /// loop delivers the frame request itself.
     Redraw(WindowId),
     /// A window changed in a way winit reports no event for.
