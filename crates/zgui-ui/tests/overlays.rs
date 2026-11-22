@@ -14,7 +14,8 @@ use zgui::reactive::{LocalStorage, RwSignal, UnsyncCallback};
 use zgui::view::{AttrName, ClassName, Dom};
 use zgui::vocab::{
     AnimationEvent, AnimationPhase, DefaultAction, EventKind, FocusCause, FocusEvent, HasPopup,
-    Key, NamedKey, Payload, PointerButton, PointerEvent, SemanticFlags, Toggled, UiState,
+    Key, NamedKey, Payload, PointerButton, PointerEvent, PointerKind, SemanticFlags, Toggled,
+    UiState,
 };
 use zgui::{component, view};
 use zgui_ui::menu::RESET_AFTER;
@@ -1238,6 +1239,55 @@ fn a_pointer_cutting_the_corner_toward_a_submenu_does_not_close_it() {
         find(&harness, "zui-menu--sub").is_none(),
         "and this time it was not"
     );
+}
+
+#[test]
+fn a_finger_lifted_from_a_submenu_trigger_keeps_the_submenu_open() {
+    let harness = Harness::open();
+    harness.mount(|| {
+        view! {
+            DropdownMenu(default_open = true) {
+                DropdownMenuContent {
+                    MenuSub(default_open = true) {
+                        MenuSubTrigger {"Export as"}
+                        MenuSubContent {MenuItem {"PDF"}}
+                    }
+                }
+            }
+        }
+    });
+    let trigger = every(&harness, "zui-menu__item")
+        .into_iter()
+        .find(|node| {
+            harness
+                .window
+                .dom
+                .tree()
+                .text_content(*node)
+                .starts_with("Export as")
+        })
+        .expect("the submenu's trigger");
+    let sub = expect(&harness, "zui-menu--sub");
+    harness.window.place(trigger, 100.0, 100.0, 100.0, 24.0);
+    harness.window.place(sub, 200.0, 100.0, 160.0, 200.0);
+
+    // A mouse that moves and leaves here closes the submenu, as the corridor test shows.
+    let finger = |kind: EventKind, x: f32, y: f32| {
+        let event = PointerEvent {
+            kind: PointerKind::Touch,
+            ..PointerEvent::mouse(Point::new(zgui::geom::CssPx(x), zgui::geom::CssPx(y)))
+        };
+        harness
+            .window
+            .dispatcher()
+            .send_to(trigger, kind, Payload::Pointer(event));
+        harness.window.frame();
+    };
+    finger(EventKind::PointerMove, 150.0, 110.0);
+    finger(EventKind::PointerLeave, 150.0, 500.0);
+    harness.window.advance(Duration::from_millis(500));
+    settle(&harness);
+    assert!(find(&harness, "zui-menu--sub").is_some());
 }
 
 #[test]

@@ -106,6 +106,10 @@ pub fn MenuSubTrigger(
                 defocus(ev);
                 return;
             }
+            // A lifted finger leaves without a direction. The submenu stays open for the next tap.
+            if !(**ev).kind.can_hover() {
+                return;
+            }
             let now = in_device_pixels(ev.position, node.scale());
             // The corridor, not the box: leaving the item is not the question, and closing on it
             // would make the submenu reachable only by a perfect right angle. The surface's box is

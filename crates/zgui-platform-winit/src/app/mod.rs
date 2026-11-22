@@ -324,9 +324,14 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
             if let SurfaceEvent::ColorSchemeChanged(scheme) = translated {
                 self.shared.set_scheme(scheme);
             }
+            let leave = events::leave_after_lift(&translated);
             let cx = WinitCx::new(&self.shared, event_loop);
             self.handler
                 .surface_event(&cx, Surface::id(surface.as_ref()), translated);
+            if let Some(leave) = leave {
+                self.handler
+                    .surface_event(&cx, Surface::id(surface.as_ref()), leave);
+            }
         }
 
         if relayout {

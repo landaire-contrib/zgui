@@ -3,7 +3,7 @@
 use winit::event::WindowEvent;
 use zgui_geom::{Device, DevicePx, Size};
 use zgui_platform::SurfaceEvent;
-use zgui_vocab::{PointerAction, Timestamp};
+use zgui_vocab::{PointerAction, PointerEvent, Timestamp};
 
 use crate::app::window::WindowState;
 use crate::input::{ime, keyboard, pinch, pointer, wheel};
@@ -17,7 +17,8 @@ use crate::theme;
 /// returns the window's extent in device pixels, and is called only for a scale change.
 ///
 /// This function needs no [`WinitSurface`](crate::surface::WinitSurface), so a program that owns
-/// its own winit loop can translate that loop's events with it. Dragged files are gathered in
+/// its own winit loop can translate that loop's events with it. Give each result to
+/// [`leave_after_lift`] and deliver what it returns after the result. Dragged files are gathered in
 /// [`WindowState::drag`]; take them with [`Drag::take`](crate::app::drag::Drag::take) at the end of
 /// the loop's turn, at [`Drag::position`](crate::app::drag::Drag::position). Do not use
 /// [`WindowState::pointer`] for a drag, because it can be outside the window.
@@ -174,6 +175,37 @@ pub fn translate(
     }
 }
 
+/// The leave that follows `translated` when it lifts a contact that cannot hover.
+///
+/// A finger on a touch screen hovers only while it touches the screen. The leave clears the hover
+/// of the element under the contact and forgets the pointer, as a mouse that leaves the window
+/// does. A cancelled contact ends its hover without a leave. A mouse keeps its hover after a
+/// release.
+pub fn leave_after_lift(translated: &SurfaceEvent) -> Option<SurfaceEvent> {
+    let SurfaceEvent::Pointer {
+        action: PointerAction::Released,
+        event,
+        modifiers,
+        timestamp,
+    } = translated
+    else {
+        return None;
+    };
+    if event.kind.can_hover() {
+        return None;
+    }
+
+    Some(SurfaceEvent::Pointer {
+        action: PointerAction::Left,
+        event: PointerEvent {
+            button: None,
+            ..*event
+        },
+        modifiers: *modifiers,
+        timestamp: *timestamp,
+    })
+}
+
 /// Where in a gesture a scroll sits, with the momentum phase AppKit reports.
 #[cfg(target_os = "macos")]
 fn scroll_phase(
@@ -196,14 +228,16 @@ fn scroll_phase(
 
 #[cfg(test)]
 mod tests {
-    use super::translate;
+    use super::{leave_after_lift, translate};
     use crate::app::window::WindowState;
     use winit::dpi::{PhysicalPosition, PhysicalSize};
-    use winit::event::{DeviceId, MouseScrollDelta, TouchPhase, WindowEvent};
+    use winit::event::{
+        DeviceId, ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent,
+    };
     use winit::keyboard::ModifiersState;
     use zgui_geom::{CssPx, Device, DevicePx, Point, Size};
     use zgui_platform::SurfaceEvent;
-    use zgui_vocab::{GesturePhase, Modifiers, PointerAction, ScrollDelta, Timestamp};
+    use zgui_vocab::{GesturePhase, Modifiers, PointerAction, PointerKind, ScrollDelta, Timestamp};
 
     /// Translates `event` for a window at scale two that is never asked for its size.
     fn at_scale_two(state: &mut WindowState, event: WindowEvent) -> Option<SurfaceEvent> {
@@ -366,5 +400,55 @@ mod tests {
         let events = state.drag.take(state.pointer);
         assert_eq!(events.len(), 1);
         assert!(events[0].is_drop());
+    }
+
+    fn finger(phase: TouchPhase) -> WindowEvent {
+        WindowEvent::Touch(Touch {
+            device_id: DeviceId::dummy(),
+            phase,
+            location: PhysicalPosition::new(40.0, 20.0),
+            force: None,
+            id: 0,
+        })
+    }
+
+    #[test]
+    fn a_lifted_finger_leaves_where_it_was_lifted() {
+        let mut state = WindowState::default();
+        let lifted = at_scale_two(&mut state, finger(TouchPhase::Ended))
+            .expect("a lifted finger crosses as a release");
+        match leave_after_lift(&lifted) {
+            Some(SurfaceEvent::Pointer { action, event, .. }) => {
+                assert_eq!(action, PointerAction::Left);
+                assert_eq!(event.kind, PointerKind::Touch);
+                assert_eq!(event.position, Point::new(CssPx(20.0), CssPx(10.0)));
+                assert_eq!(event.button, None);
+            }
+            other => panic!("a lifted finger was followed by {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_finger_on_the_screen_and_a_released_mouse_keep_their_hover() {
+        let mut state = WindowState::default();
+        for phase in [
+            TouchPhase::Started,
+            TouchPhase::Moved,
+            TouchPhase::Cancelled,
+        ] {
+            let touched = at_scale_two(&mut state, finger(phase)).expect("a contact crosses");
+            assert!(leave_after_lift(&touched).is_none(), "{phase:?}");
+        }
+
+        let released = at_scale_two(
+            &mut state,
+            WindowEvent::MouseInput {
+                device_id: DeviceId::dummy(),
+                state: ElementState::Released,
+                button: MouseButton::Left,
+            },
+        )
+        .expect("a mouse release crosses");
+        assert!(leave_after_lift(&released).is_none());
     }
 }
