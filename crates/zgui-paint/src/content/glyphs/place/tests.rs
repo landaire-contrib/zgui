@@ -286,3 +286,57 @@ fn each_variation_instance_is_its_own_rasterisation() {
         "each instance is rasterised once, under its own key"
     );
 }
+
+/// A colour request that a face answers with a coverage mask places a mask, on the first
+/// rasterisation and from the cache. Apple Color Emoji answers so when its bitmaps cannot be read,
+/// and a mask drawn as a colour picture fills its whole tile with opaque black.
+#[test]
+fn a_colour_request_answered_with_a_mask_places_a_mask() {
+    let glyphs = [ShapedGlyph {
+        glyph: 4,
+        x: 0.0,
+        y: 20.0,
+    }];
+    let run = ShapedRun {
+        face: FaceId(1),
+        size: 16.0,
+        instance: zgui_text::VariationInstance::DEFAULT,
+        synthetic_bold: 0.0,
+        synthetic_slant: 0.0,
+        has_color: true,
+        brush: PaintSlot(0),
+        text_start: 0,
+        glyphs: &glyphs,
+    };
+    let raster = Recording::default();
+    let mut cache = GlyphCache::default();
+    let mut vector_masks = VectorMaskCache::default();
+    let mut vector_layers = crate::content::vectors::VectorLayerCache::default();
+    let mut atlas = Atlas::new(AtlasLimits::default());
+    let mut rasterising = Rasterising {
+        glyphs: &mut cache,
+        atlas: &mut atlas,
+        vector_masks: &mut vector_masks,
+        vector_layers: &mut vector_layers,
+        named: Vec::new(),
+    };
+    let mut formats = Vec::new();
+    for _ in 0..2 {
+        let mut out = Vec::new();
+        super::place(
+            &mut rasterising,
+            &raster,
+            &run,
+            RasterStyle::Color,
+            Point::new(DevicePx(0.0), DevicePx(0.0)),
+            &mut out,
+        );
+        formats.extend(out.iter().map(|glyph| glyph.format));
+    }
+    assert_eq!(
+        raster.asked.lock().expect("no panic held the lock").len(),
+        1,
+        "the second placement comes from the cache"
+    );
+    assert_eq!(formats, vec![GlyphFormat::Mono, GlyphFormat::Mono]);
+}

@@ -41,10 +41,10 @@ impl GlyphSource for Recorder {
                 Point::new(DevicePx(0.0), DevicePx(0.0)),
                 Size::new(DevicePx(8.0), DevicePx(16.0)),
             ),
+            format: GlyphFormat::Mono,
         };
         visit(GlyphRun {
             content: zgui_paint::RunContent::Tiles(core::slice::from_ref(&glyph)),
-            format: GlyphFormat::Mono,
             paint: zgui_scene::PaintSlot(0),
             synthetic_bold: 0.0,
             text_start: 0,

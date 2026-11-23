@@ -50,6 +50,11 @@ pub struct PlacedGlyph {
     pub resource: Resource,
     /// Where those pixels land, in absolute device pixels.
     pub bounds: Rect<DevicePx, Device>,
+    /// How the tile's bytes are laid out, which selects the sprite kind the glyph becomes.
+    ///
+    /// This is the format of the tile itself. A colour request against a face that has no colour
+    /// image for the glyph gives a coverage mask, and that mask is drawn as a mask.
+    pub format: GlyphFormat,
 }
 
 /// What a run's glyphs arrived as, which is decided by the path the run takes.
@@ -69,11 +74,6 @@ pub enum RunContent<'a> {
 pub struct GlyphRun<'a> {
     /// The glyphs, in logical order, in whichever form the run takes.
     pub content: RunContent<'a>,
-    /// How the tiles are laid out, which decides which sprite kind the run becomes.
-    ///
-    /// Meaningless for an outline run, which has no tiles: a curve is filled with a brush rather
-    /// than sampled as coverage.
-    pub format: GlyphFormat,
     /// The brush slot the run's colour is read from.
     ///
     /// A slot rather than a colour, because a shaped paragraph outlives the frame that produced it:
@@ -707,7 +707,6 @@ fn collect(
     let mut emitted: Vec<Emitted> = Vec::new();
     glyphs.visit_line(at.paragraph, at.line, request, &mut |run| {
         emitted.push(Emitted {
-            format: run.format,
             slot: run.paint,
             synthetic_bold: run.synthetic_bold,
             text_start: run.text_start,
@@ -745,7 +744,6 @@ fn draw(
                     scene,
                     placement,
                     Tiled {
-                        format: run.format,
                         color,
                         offset: painting.offset,
                         subpixel,
@@ -895,8 +893,6 @@ fn emit_parted(
 
 /// One visited run, held until the source's borrow of the atlas has been given up.
 struct Emitted {
-    /// How the tiles are laid out.
-    format: GlyphFormat,
     /// The run's brush slot.
     slot: PaintSlot,
     /// How much a synthesised bold thickens a stem, in device pixels.
@@ -918,8 +914,6 @@ enum Owned {
 /// Everything one tiled glyph is drawn with.
 #[derive(Clone, Copy, Debug)]
 struct Tiled {
-    /// How the tile's bytes are laid out.
-    format: GlyphFormat,
     /// What the coverage is multiplied by.
     color: Color,
     /// How far this pass is displaced from the text itself.
@@ -933,14 +927,13 @@ struct Tiled {
 /// Draws one glyph's tile, and says whether it landed.
 fn tile(scene: &mut Scene, placement: TextPlacement, drawn: Tiled, glyph: &PlacedGlyph) -> bool {
     let Tiled {
-        format,
         color,
         offset,
         subpixel,
         force_mono,
     } = drawn;
     let bounds = glyph.bounds.translate(offset);
-    let landed = match format {
+    let landed = match glyph.format {
         // A colour glyph is a picture rather than a coverage mask, so it carries its own colour
         // and is not tinted — and a shadow of one has no silhouette to draw, because the alpha it
         // would be cut from is the picture's own rather than the glyph's.
@@ -1274,10 +1267,10 @@ mod tests {
                     Point::new(DevicePx(0.0), DevicePx(0.0)),
                     Size::new(DevicePx(8.0), DevicePx(8.0)),
                 ),
+                format: self.0,
             };
             visit(super::GlyphRun {
                 content: super::RunContent::Tiles(core::slice::from_ref(&glyph)),
-                format: self.0,
                 paint: zgui_scene::PaintSlot(0),
                 synthetic_bold: 0.0,
                 text_start: 0,
@@ -1449,7 +1442,6 @@ mod tests {
             crate::content::glyphs::curve::place(&self.0, &run, request.origin, &mut placed);
             visit(super::GlyphRun {
                 content: super::RunContent::Outlines(&placed),
-                format: zgui_text::GlyphFormat::Mono,
                 paint: zgui_scene::PaintSlot(0),
                 synthetic_bold: 0.0,
                 text_start: 0,

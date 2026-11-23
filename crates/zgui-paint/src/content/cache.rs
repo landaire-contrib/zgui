@@ -683,9 +683,6 @@ impl GlyphSource for FrameContent<'_> {
                 if !outlined.is_empty() {
                     visit(GlyphRun {
                         content: RunContent::Outlines(&outlined),
-                        // A run drawn as curves has no tiles; the format is what a tile's bytes
-                        // mean, and there are none.
-                        format: crate::content::glyphs::format_of(run.raster_style(false)),
                         paint: run.brush,
                         synthetic_bold: run.synthetic_bold * run.size,
                         text_start: run.text_start,
@@ -714,7 +711,6 @@ impl GlyphSource for FrameContent<'_> {
             }
             visit(GlyphRun {
                 content: RunContent::Tiles(&placed),
-                format: crate::content::glyphs::format_of(style),
                 paint: run.brush,
                 synthetic_bold: 0.0,
                 text_start: run.text_start,

@@ -39,6 +39,7 @@ pub(crate) fn place(
         out.push(PlacedGlyph {
             resource: rasterised.tile.into(),
             bounds: position.bounds(origin.y.0 + glyph.y, rasterised.placement, rasterised.size),
+            format: rasterised.format,
         });
     }
 }

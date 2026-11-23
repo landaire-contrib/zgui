@@ -46,14 +46,3 @@ pub(crate) use crate::content::glyphs::cache::{GlyphCache, Rasterising};
 pub use crate::content::glyphs::curve::OutlineGlyph;
 pub(crate) use crate::content::glyphs::place::place;
 pub use crate::content::glyphs::prefetch::GlyphPrediction;
-
-use zgui_text::GlyphFormat;
-
-/// Which of the display list's sprite kinds a rasterisation style becomes.
-pub(crate) fn format_of(style: zgui_text::RasterStyle) -> GlyphFormat {
-    match style {
-        zgui_text::RasterStyle::Grayscale => GlyphFormat::Mono,
-        zgui_text::RasterStyle::Subpixel => GlyphFormat::Subpixel,
-        zgui_text::RasterStyle::Color => GlyphFormat::Color,
-    }
-}

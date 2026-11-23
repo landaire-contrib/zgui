@@ -246,11 +246,10 @@ impl ScenePainter<'_> {
             .place_run(run, style, absolute, &mut placed);
 
         let color = self.faded(color);
-        let format = crate::content::glyphs::format_of(style);
         let transform = self.transform.index();
         let sprites: Vec<GlyphSprite> = placed
             .iter()
-            .map(|glyph| match format {
+            .map(|glyph| match glyph.format {
                 // A colour glyph is a picture rather than a coverage mask, so it carries its own
                 // colours and is not tinted.
                 GlyphFormat::Color => {
@@ -374,6 +373,8 @@ mod tests {
     struct FixedTiles {
         /// How many tiles to answer with.
         tiles: usize,
+        /// Whether every tile is a coverage mask, as a face with no colour image answers.
+        masks_only: bool,
         /// The style and the origin each call carried.
         asked: RefCell<Vec<(RasterStyle, Point<DevicePx, Device>)>>,
     }
@@ -387,6 +388,12 @@ mod tests {
             out: &mut Vec<PlacedGlyph>,
         ) {
             self.asked.borrow_mut().push((style, origin));
+            let format = match style {
+                _ if self.masks_only => zgui_text::GlyphFormat::Mono,
+                RasterStyle::Grayscale => zgui_text::GlyphFormat::Mono,
+                RasterStyle::Subpixel => zgui_text::GlyphFormat::Subpixel,
+                RasterStyle::Color => zgui_text::GlyphFormat::Color,
+            };
             for index in 0..self.tiles {
                 out.push(PlacedGlyph {
                     resource: zgui_atlas::AtlasTile {
@@ -399,6 +406,7 @@ mod tests {
                         Point::new(DevicePx(index as f32 * 8.0), DevicePx(0.0)),
                         Size::new(DevicePx(6.0), DevicePx(9.0)),
                     ),
+                    format,
                 });
             }
         }
@@ -566,6 +574,26 @@ mod tests {
             // The picture keeps its own colours and is drawn at the folded alpha.
             assert!((scene.primitives.color_sprites[0].opacity - 0.5).abs() < 1.0e-6);
         }
+    }
+
+    #[test]
+    fn a_colour_face_answered_with_masks_is_drawn_as_tinted_masks() {
+        let mut scene = Scene::new();
+        let placements = FixedTiles {
+            tiles: 1,
+            masks_only: true,
+            ..FixedTiles::default()
+        };
+        let mut painter = painter(&mut scene, &placements, false, 1.0);
+        painter.glyphs(
+            &run(true),
+            Point::new(DevicePx(0.0), DevicePx(0.0)),
+            Color::srgb(1.0, 0.0, 0.0, 1.0),
+        );
+
+        assert_eq!(placements.asked.borrow()[0].0, RasterStyle::Color);
+        assert!(scene.primitives.color_sprites.is_empty());
+        assert_eq!(scene.primitives.mono_sprites.len(), 1);
     }
 
     #[test]

@@ -32,7 +32,7 @@ use rustc_hash::FxHashMap;
 use zgui_atlas::{Atlas, AtlasKey, AtlasTile};
 use zgui_geom::{Device, DevicePx, Point, Size};
 use zgui_profile::{Counter, counter};
-use zgui_text::{AtlasGlyph, GlyphImage, GlyphKey, GlyphRaster};
+use zgui_text::{AtlasGlyph, GlyphFormat, GlyphImage, GlyphKey, GlyphRaster};
 
 use crate::content::vectors::{VectorLayerCache, VectorMaskCache};
 
@@ -53,6 +53,8 @@ pub(crate) struct Rasterised {
     pub(crate) placement: Point<DevicePx, Device>,
     /// How many pixels there are.
     pub(crate) size: Size<u32, Device>,
+    /// How the pixels are laid out, which is what the rasteriser answered with.
+    pub(crate) format: GlyphFormat,
 }
 
 /// What a lookup answered.
@@ -78,6 +80,8 @@ struct Remembered {
     placement: Point<DevicePx, Device>,
     /// How many pixels there are.
     size: Size<u32, Device>,
+    /// How the pixels are laid out.
+    format: GlyphFormat,
 }
 
 /// Everything one window knows about the glyphs it has rasterised.
@@ -237,6 +241,7 @@ impl GlyphCache {
                     key: atlas_key,
                     placement: remembered.placement,
                     size: remembered.size,
+                    format: remembered.format,
                 });
             }
             // The tile was evicted; the pixels have to be made again, and the entry replaced with
@@ -270,6 +275,7 @@ impl GlyphCache {
                     tile: None,
                     placement: image.placement,
                     size: image.size,
+                    format: image.format,
                 },
             );
             self.blank_order.push_back(*key);
@@ -289,6 +295,7 @@ impl GlyphCache {
                 tile: Some(prepared.key),
                 placement: image.placement,
                 size: image.size,
+                format: image.format,
             },
         ) && let Some(previous) = previous.tile
         {
@@ -301,6 +308,7 @@ impl GlyphCache {
             key: prepared.key,
             placement: image.placement,
             size: image.size,
+            format: image.format,
         })
     }
 

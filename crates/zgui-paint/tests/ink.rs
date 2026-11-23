@@ -258,7 +258,6 @@ fn a_text_shadow_is_drawn_as_a_second_pass_over_the_same_glyphs_at_its_own_offse
             let glyphs = core::slice::from_ref(&self.0);
             visit(GlyphRun {
                 content: zgui_paint::RunContent::Tiles(glyphs),
-                format: GlyphFormat::Mono,
                 paint: zgui_scene::PaintSlot(0),
                 synthetic_bold: 0.0,
                 text_start: 0,
@@ -280,6 +279,7 @@ fn a_text_shadow_is_drawn_as_a_second_pass_over_the_same_glyphs_at_its_own_offse
             Point::new(DevicePx(10.0), DevicePx(10.0)),
             Size::new(DevicePx(8.0), DevicePx(16.0)),
         ),
+        format: GlyphFormat::Mono,
     };
     let mut style = zgui_paint::lower(&StyleDraft::initial().build(), 1.0);
     style.text_shadows.push(ShadowSpec {
