@@ -136,6 +136,9 @@ pub use crate::menubar::{
     MenubarSeparator, MenubarSeparatorProps, MenubarShortcut, MenubarShortcutProps, MenubarTrigger,
     MenubarTriggerProps,
 };
+pub use crate::nav_stack::{
+    NavLeading, NavPage, NavPageProps, NavPath, NavStack, NavStackProps, NavTrailing, PopError,
+};
 pub use crate::navigation_menu::{
     NavigationMenu, NavigationMenuContent, NavigationMenuContentProps, NavigationMenuContext,
     NavigationMenuIndicator, NavigationMenuIndicatorProps, NavigationMenuItem,

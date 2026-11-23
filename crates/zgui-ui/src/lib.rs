@@ -178,6 +178,7 @@ pub mod listbox;
 pub mod menu;
 pub mod menubar;
 pub mod native_select;
+pub mod nav_stack;
 pub mod navigation_menu;
 pub mod overlay;
 pub mod pagination;
@@ -331,6 +332,10 @@ pub use crate::menubar::{
     MenubarMenuContext, MenubarMenuProps, MenubarProps, MenubarRadioGroup, MenubarRadioGroupProps,
     MenubarRadioItem, MenubarRadioItemProps, MenubarSeparator, MenubarSeparatorProps,
     MenubarShortcut, MenubarShortcutProps, MenubarStyle, MenubarTrigger, MenubarTriggerProps,
+};
+pub use crate::nav_stack::{
+    NavLeading, NavPage, NavPageProps, NavPath, NavStack, NavStackProps, NavStackStyle,
+    NavTrailing, PageId, PopError,
 };
 pub use crate::navigation_menu::{
     NavigationMenu, NavigationMenuContent, NavigationMenuContentProps, NavigationMenuContext,

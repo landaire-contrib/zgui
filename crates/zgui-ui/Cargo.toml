@@ -22,6 +22,7 @@ zgui = { path = "../zgui", version = "0.1.0" }
 zgui-ui-icons = { path = "../zgui-ui-icons", version = "0.1.0" }
 zgui-ui-primitives = { path = "../zgui-ui-primitives", version = "0.1.0" }
 zgui-ui-tokens = { path = "../zgui-ui-tokens", version = "0.1.0" }
+thiserror.workspace = true
 
 [dev-dependencies]
 # Encoding the fixture pictures the scrolled-images fixture feeds through the real loader; the
