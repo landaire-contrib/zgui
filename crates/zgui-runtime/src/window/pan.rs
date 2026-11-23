@@ -7,7 +7,8 @@
 //!   [`EventKind::VerticalPan`]) gets the pan when it is the element under the start point or one
 //!   of its ancestors, and no scroll container between the two can scroll in the direction the
 //!   contact moves. The window then dispatches the pan to the element under the start point, and
-//!   the event bubbles to the listener.
+//!   the event bubbles to the listener. When the element under the start point leaves the
+//!   listener during the pan, the window dispatches the rest of the pan to the listener.
 //! * Each other pan scrolls.
 //!
 //! The decision holds until the contact lifts. A row that listens for horizontal pans inside a
@@ -29,6 +30,9 @@ pub(crate) struct ElementPan {
     pointer: PointerId,
     /// The element under the point where the contact went down. The events go to it.
     target: NodeKey,
+    /// The element that listens for the pan. The events go to it when `target` leaves it or the
+    /// document.
+    listener: NodeKey,
     /// Which pan event the listener asked for.
     kind: EventKind,
     /// Where the contact went down.
@@ -85,9 +89,9 @@ impl Window {
             Axis::Horizontal => at.x.0 - from.x.0,
             Axis::Vertical => at.y.0 - from.y.0,
         };
-        if !self.listener_before_scroller(target, axis, travel) {
+        let Some(listener) = self.listener_before_scroller(target, axis, travel) else {
             return false;
-        }
+        };
 
         // One element pan at a time, as for scrolling: a second contact takes over.
         if let Some(previous) = self.element_pan.take() {
@@ -101,6 +105,7 @@ impl Window {
         let pan = ElementPan {
             pointer,
             target,
+            listener,
             kind: axis.event(),
             origin: from,
             position: at,
@@ -168,16 +173,15 @@ impl Window {
         self.send_pan(pan, GesturePhase::Cancelled, Velocity::default(), timestamp);
     }
 
-    /// Whether `from` or one of its ancestors listens for pans along `axis` and no scroll container
-    /// below that listener can scroll for a contact that moved `travel` CSS pixels along it.
-    fn listener_before_scroller(&self, from: NodeKey, axis: Axis, travel: f32) -> bool {
+    /// The element, `from` or one of its ancestors, that listens for pans along `axis` with no
+    /// scroll container below it that can scroll for a contact that moved `travel` CSS pixels
+    /// along it.
+    fn listener_before_scroller(&self, from: NodeKey, axis: Axis, travel: f32) -> Option<NodeKey> {
         let containers = self.scroll_chain(from);
         let event = axis.event();
         let document = self.document.borrow();
         let store = document.store();
-        let Some(mut index) = store.index_of(from) else {
-            return false;
-        };
+        let mut index = store.index_of(from)?;
 
         loop {
             let node = store.core(index).key();
@@ -187,15 +191,12 @@ impl Window {
                 .get(node)
                 .is_some_and(|set| set.listens_for(event));
             if listens {
-                return true;
+                return Some(node);
             }
             if containers.contains(&node) && self.can_scroll(node, axis, travel) {
-                return false;
+                return None;
             }
-            match store.core(index).parent() {
-                Some(parent) => index = parent,
-                None => return false,
-            }
+            index = store.core(index).parent()?;
         }
     }
 
@@ -227,7 +228,8 @@ impl Window {
         }
     }
 
-    /// Dispatches one event of `pan` to its target.
+    /// Dispatches one event of `pan` to its target, or to its listener when the target no longer
+    /// hangs from the document below the listener.
     fn send_pan(
         &mut self,
         pan: ElementPan,
@@ -242,7 +244,45 @@ impl Window {
             velocity,
             kind: PointerKind::Touch,
         };
-        self.dispatch_synthetic(pan.target, pan.kind, Payload::Pan(event), timestamp);
+        let receiver = {
+            let document = self.document.borrow();
+            if hangs_below(
+                document.store(),
+                document.document_index(),
+                pan.target,
+                pan.listener,
+            ) {
+                pan.target
+            } else {
+                pan.listener
+            }
+        };
+        self.dispatch_synthetic(receiver, pan.kind, Payload::Pan(event), timestamp);
+    }
+}
+
+/// Whether `key` is `ancestor` or one of its descendants, and hangs from the document node
+/// `document`.
+fn hangs_below(
+    store: &zgui_dom::DocumentStore,
+    document: zgui_dom::NodeIndex,
+    key: NodeKey,
+    ancestor: NodeKey,
+) -> bool {
+    let Some(mut index) = store.index_of(key) else {
+        return false;
+    };
+    let mut passed = false;
+
+    loop {
+        if index == document {
+            return passed;
+        }
+        passed |= store.core(index).key() == ancestor;
+        match store.core(index).parent() {
+            Some(parent) => index = parent,
+            None => return false,
+        }
     }
 }
 

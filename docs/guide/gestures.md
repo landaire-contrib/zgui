@@ -33,7 +33,7 @@ The decision stays until the contact lifts. Thus a row in a vertical list gets t
 
 ## The pan events
 
-The window sends each event of a pan to the element under the start point, and the event bubbles to your listener. A `PanEvent` holds:
+The window sends each event of a pan to the element under the start point, and the event bubbles to your listener. If that element moves out of your listener or out of the document during the pan, the window sends the remaining events directly to your listener. A `PanEvent` holds:
 
 - `phase`: `Started`, `Moved`, `Ended` or `Cancelled`. A pan ends with `Cancelled` when the platform cancels the contact or an element captures the pointer.
 - `origin`: where the contact went down.

@@ -8,6 +8,8 @@ use std::rc::Rc;
 use zgui_geom::{Css, CssPx, Point, Size};
 use zgui_platform::SurfaceEvent;
 use zgui_platform_headless::Harness;
+use zgui_reactive::RwSignal;
+use zgui_reactive::prelude::*;
 use zgui_runtime::Runtime;
 use zgui_view::{IntoView, View};
 use zgui_vocab::{
@@ -279,5 +281,53 @@ fn a_cancelled_contact_cancels_the_pan() {
             GesturePhase::Moved,
             GesturePhase::Cancelled
         ]
+    );
+}
+
+#[test]
+fn a_pan_whose_start_element_leaves_goes_on_to_the_listener() {
+    zgui_reactive::install().ok();
+    let shown = RwSignal::new(true);
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let row_heard = Rc::clone(&heard);
+    let mut harness = support::app_with_text(CSS, move |cx: &mut zgui_view::BuildCx<'_>| {
+        let row_heard = Rc::clone(&row_heard);
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(
+                    zgui_elements::column()
+                        .class("row")
+                        .on(zgui_view::events::HORIZONTAL_PAN, move |ev| {
+                            row_heard.borrow_mut().push(**ev);
+                        })
+                        .child(zgui_view::Show::new(
+                            move || shown.get(),
+                            || zgui_view::AnyView::new(zgui_elements::column().class("row")),
+                        )),
+                )
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+
+    touch(&mut harness, PointerAction::Pressed, at(100.0, 20.0), 0);
+    touch(&mut harness, PointerAction::Moved, at(130.0, 20.0), 16);
+    shown.set(false);
+    harness.pump();
+    touch(&mut harness, PointerAction::Moved, at(160.0, 20.0), 32);
+    touch(&mut harness, PointerAction::Released, at(160.0, 20.0), 48);
+    harness.pump();
+
+    assert_eq!(
+        phases(&heard.borrow()),
+        [
+            GesturePhase::Started,
+            GesturePhase::Moved,
+            GesturePhase::Moved,
+            GesturePhase::Ended,
+        ],
+        "the row lost the pan when the element under its start left"
     );
 }
