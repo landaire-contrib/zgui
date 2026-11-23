@@ -321,3 +321,40 @@ fn a_padding_reaches_the_engine() {
     let (_, _, _, height) = support::find::rect(&store, &fixture, "target");
     assert_eq!(height, 18.0);
 }
+
+/// A proof spares no engine style that names a `calc()` expression, because the expressions go
+/// with the lowering of the slot the box lets go. Here a box removed in the same frame frees one
+/// more expression before the resize lays out the recoloured box.
+#[test]
+fn a_colour_keeps_the_calc_lengths_of_a_positioned_box() {
+    let _guard = exclusive();
+    let mut fixture = Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("a").classes(&["target"]),
+            Element::new("b").classes(&["toast"]),
+        ]),
+        "root { display: block; position: relative; height: 300px }
+         .target { position: absolute; top: calc(10% + 5px); left: calc(20% + 3px);
+                   max-height: calc(50% - 2px); width: 50px; height: 400px;
+                   background-color: #246 }
+         .to { background-color: #642 }
+         .toast { position: absolute; top: calc(30% + 1px); width: 10px; height: 10px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    let _frame = lay_out(&mut store, &mut content, 400.0, 300.0);
+    let target = support::find::with_class(&fixture, "target");
+    let toast = support::find::with_class(&fixture, "toast");
+    let toast = store.boxes_of(fixture.document.store().key_of(toast))[0];
+
+    fixture.edit_restyle_and_patch(&mut store, |edit| {
+        edit.set_classes(target, &["target".into(), "to".into()]);
+    });
+    zgui_layout::boxtree::patch::detach(&mut store, toast);
+    let _frame = lay_out(&mut store, &mut content, 500.0, 300.0);
+
+    assert_eq!(
+        support::find::rect(&store, &fixture, "target"),
+        (103.0, 35.0, 50.0, 148.0)
+    );
+}

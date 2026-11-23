@@ -374,15 +374,21 @@ impl LayoutStore {
         let slot = self.styles.intern(style);
         let none = Some(CustomProperties::NONE);
         let proven = only_colours && declared == none && self.styles.declared(slot, style) == none;
-        if let Some(held) = self.style_slots.replace(key, Some(slot)) {
+        let held = self.style_slots.replace(key, Some(slot));
+        // A proven box keeps its rosters. Its engine style stands only while it names no `calc()`
+        // expression, because those leave with the lowering of the slot the box lets go.
+        let engine_stands =
+            proven && held.is_some_and(|held| !self.styles.lowering_holds_calc(held));
+        if let Some(held) = held {
             self.styles.release(held);
         }
-        // A proven box keeps its rosters and its lowering, so its engine style stands.
         if proven {
             self.recoloured.insert(key);
         } else {
             self.restyled_unproven = true;
             self.classify(key, style);
+        }
+        if !engine_stands {
             self.engine_pending.push(key);
         }
         true

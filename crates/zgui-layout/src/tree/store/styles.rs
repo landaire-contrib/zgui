@@ -265,6 +265,25 @@ impl StyleTable {
             .expect("a pass lowers every style before reading any")
     }
 
+    /// Whether the lowering a slot holds names a `calc()` expression.
+    ///
+    /// True for a slot not lowered yet, because nothing proves that its lowering names none.
+    ///
+    /// # Panics
+    ///
+    /// If the slot holds no entry.
+    pub(crate) fn lowering_holds_calc(&self, slot: StyleSlot) -> bool {
+        let entry = self.entries[slot.0 as usize]
+            .as_ref()
+            .expect("a live style slot");
+        if entry.lowered.is_none() {
+            return true;
+        }
+        self.by_layout
+            .get(&entry.key)
+            .is_none_or(|lowering| !lowering.calc_ids.is_empty())
+    }
+
     /// How many `calc()` expressions the lowerings hold.
     /// What one `calc()` identifier evaluates to at `basis`, in device pixels.
     pub(crate) fn resolve_calc_id(&self, id: cephal::style::CalcId, basis: f32) -> f32 {
