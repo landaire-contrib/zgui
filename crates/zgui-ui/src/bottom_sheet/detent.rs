@@ -1,5 +1,8 @@
 //! The heights a bottom sheet rests at, and where a released drag goes.
 
+/// How stiffly the sheet resists a drag past a limit. The value a scroll view on iOS uses.
+const RESISTANCE: f32 = 0.55;
+
 /// A height a [`BottomSheet`](crate::bottom_sheet::BottomSheet) rests at.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Detent {
@@ -48,6 +51,17 @@ impl Geometry {
         self.panel
     }
 
+    /// Where the top of the sheet is in the window at its large detent.
+    ///
+    /// A sheet is pinned to the bottom of the window, and a form sheet is in the middle of it.
+    pub(crate) fn top(self) -> f32 {
+        if self.form {
+            (self.window - self.panel) * 0.5
+        } else {
+            self.window - self.panel
+        }
+    }
+
     /// Where the sheet is drawn for a drag at `offset`.
     ///
     /// Above the large detent, and below `floor` when there is one, the sheet resists the finger.
@@ -58,6 +72,17 @@ impl Geometry {
         match floor {
             Some(floor) if offset > floor => floor + resist(offset - floor, self.window),
             _ => offset,
+        }
+    }
+
+    /// The drag offset that draws the sheet at `drawn`. The inverse of [`Geometry::resisted`].
+    pub(crate) fn unresisted(self, drawn: f32, floor: Option<f32>) -> f32 {
+        if drawn < 0.0 {
+            return -unresist(-drawn, self.window);
+        }
+        match floor {
+            Some(floor) if drawn > floor => floor + unresist(drawn - floor, self.window),
+            _ => drawn,
         }
     }
 }
@@ -110,16 +135,47 @@ pub(crate) fn release(
     }
 }
 
+/// The next detent above `current`, or `current` when none is above it.
+pub(crate) fn larger(detents: &[Detent], current: Detent) -> Detent {
+    detents
+        .iter()
+        .copied()
+        .find(|detent| *detent > current)
+        .unwrap_or(current)
+}
+
+/// The next detent below `current`, or `None` when the sheet is at its smallest detent.
+pub(crate) fn smaller(detents: &[Detent], current: Detent) -> Option<Detent> {
+    detents
+        .iter()
+        .copied()
+        .rev()
+        .find(|detent| *detent < current)
+}
+
 /// How far a finger that travelled `distance` past a limit moves the sheet, as a scroll view
 /// stretches past an end.
+///
+/// Each pixel of travel moves the sheet less than the pixel before it, and the sheet never moves
+/// as far as `dimension`.
 fn resist(distance: f32, dimension: f32) -> f32 {
-    const COEFFICIENT: f32 = 0.55;
-
     if dimension <= 0.0 {
         return 0.0;
     }
 
-    (1.0 - 1.0 / (distance * COEFFICIENT / dimension + 1.0)) * dimension
+    (1.0 - 1.0 / (distance * RESISTANCE / dimension + 1.0)) * dimension
+}
+
+/// How far a finger travelled past a limit to move the sheet `distance`. The inverse of `resist`.
+fn unresist(distance: f32, dimension: f32) -> f32 {
+    if dimension <= 0.0 {
+        return 0.0;
+    }
+
+    // `resist` stays below `dimension`, so a larger distance has no finite answer.
+    let distance = distance.min(dimension - 1.0);
+
+    dimension / RESISTANCE * distance / (dimension - distance)
 }
 
 #[cfg(test)]
@@ -201,6 +257,8 @@ mod tests {
             form: true,
         };
         assert_eq!(form.offset(Detent::Medium), 0.0);
+        assert_eq!(form.top(), 107.0);
+        assert_eq!(PHONE.top(), 84.0);
     }
 
     #[test]
@@ -213,5 +271,39 @@ mod tests {
         let floor = PHONE.offset(Detent::Medium);
         let below = PHONE.resisted(floor + 200.0, Some(floor));
         assert!(below > floor && below < floor + 200.0, "{below}");
+    }
+
+    #[test]
+    fn each_pixel_past_the_large_detent_moves_the_sheet_less() {
+        let mut drawn = 0.0;
+        let mut step = f32::INFINITY;
+        for travel in (1..=40).map(|n| n as f32 * 25.0) {
+            let next = -PHONE.resisted(-travel, None);
+            assert!(next - drawn < step, "{travel}: {next} after {drawn}");
+            step = next - drawn;
+            drawn = next;
+        }
+
+        // A finger that travels far moves the sheet less than the height of the window.
+        assert!(-PHONE.resisted(-100_000.0, None) < PHONE.window);
+    }
+
+    #[test]
+    fn the_offset_of_a_drawn_sheet_is_the_drag_that_draws_it() {
+        let floor = Some(PHONE.offset(Detent::Medium));
+        for offset in [-300.0, -40.0, 0.0, 120.0, 353.0, 420.0, 700.0] {
+            let drawn = PHONE.resisted(offset, floor);
+            let back = PHONE.unresisted(drawn, floor);
+            assert!((back - offset).abs() < 0.01, "{offset}: {back}");
+        }
+    }
+
+    #[test]
+    fn the_grabber_steps_between_detents() {
+        assert_eq!(larger(BOTH, Detent::Medium), Detent::Large);
+        assert_eq!(larger(BOTH, Detent::Large), Detent::Large);
+        assert_eq!(smaller(BOTH, Detent::Large), Some(Detent::Medium));
+        assert_eq!(smaller(BOTH, Detent::Medium), None);
+        assert_eq!(smaller(&[Detent::Large], Detent::Large), None);
     }
 }

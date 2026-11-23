@@ -4,13 +4,14 @@ use zgui::style;
 
 style! { pub BottomSheetStyle =>
     // Pinned to the bottom of the window at its large height. A detent below large moves the sheet
-    // down with `translate`, so the enter and exit animations keep `transform` to themselves.
+    // down with `translate`, so the enter and exit animations keep `transform` to themselves. A drag
+    // above the large detent stretches the sheet up, so that it still covers the bottom of the window.
     ":scope {
         position: fixed;
         left: 0;
         right: 0;
         bottom: 0;
-        top: calc(env(safe-area-inset-top, 0px) + 10px);
+        top: calc(env(safe-area-inset-top, 0px) + 10px - var(--zui-bottom-sheet-stretch, 0px));
         display: flex;
         flex-direction: column;
         padding: 0;
@@ -42,10 +43,11 @@ style! { pub BottomSheetStyle =>
     ":scope {
         translate: 0px max(0px, calc(var(--zui-bottom-sheet-offset, 0px)
             - env(keyboard-inset-height, 0px) * 1000));
-        transition: translate 500ms var(--zui-bottom-sheet-ease, var(--zui-bottom-sheet-spring));
+        transition: translate 500ms var(--zui-bottom-sheet-ease, var(--zui-bottom-sheet-spring)),
+            top 500ms var(--zui-bottom-sheet-ease, var(--zui-bottom-sheet-spring));
     }"
     ":scope[data-dragging] {
-        translate: 0px var(--zui-bottom-sheet-offset, 0px);
+        translate: 0px max(0px, var(--zui-bottom-sheet-offset, 0px));
         transition: none;
     }"
 
@@ -56,13 +58,24 @@ style! { pub BottomSheetStyle =>
         flex: 1;
         min-height: 0;
     }"
+    // A target larger than the bar it draws, so a finger and a pointer can take it.
     ".zui-bottom-sheet__grabber {
         flex-shrink: 0;
+        align-self: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 64px;
+        height: 20px;
+        border-radius: 10px;
+    }"
+    ".zui-bottom-sheet__grabber:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--zui-color-ring) 50%, transparent);
+    }"
+    ".zui-bottom-sheet__grabber-bar {
         width: 36px;
         height: 5px;
-        margin-top: 5px;
-        margin-left: auto;
-        margin-right: auto;
         border-radius: 2.5px;
         background-color: var(--zui-color-muted-foreground);
         opacity: 0.5;

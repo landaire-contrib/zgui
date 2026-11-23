@@ -1,6 +1,7 @@
 //! A sheet that rises from the bottom of the window and rests at detents, as on iOS.
 
 mod detent;
+mod grabber;
 mod style;
 
 pub use crate::bottom_sheet::detent::Detent;
@@ -17,7 +18,9 @@ use zgui::view;
 use zgui::view::AttrName;
 use zgui::view::ClassName;
 use zgui::view::CustomPropertyName;
+use zgui::view::Ident;
 use zgui::vocab::GesturePhase;
+use zgui::vocab::ListenerOptions;
 use zgui::vocab::PanEvent;
 use zgui_ui_primitives::Binding;
 use zgui_ui_primitives::Controllable;
@@ -25,9 +28,11 @@ use zgui_ui_primitives::Controllable;
 use crate::bottom_sheet::detent::Geometry;
 use crate::bottom_sheet::detent::Release;
 use crate::bottom_sheet::detent::release;
+use crate::bottom_sheet::grabber::GrabberProps;
 use crate::overlay::ModalSurfaceProps;
 use crate::overlay::OverlayState;
 use crate::overlay::SurfaceLabels;
+use crate::support::fling::fling_ease;
 
 /// What the bottom sheet's rules are installed under.
 const SHEET_NAME: &str = "zui-bottom-sheet";
@@ -35,9 +40,10 @@ const SHEET_NAME: &str = "zui-bottom-sheet";
 /// A modal sheet that rises from the bottom of the window and rests at one of its detents.
 ///
 /// The person drags the sheet by any part of it to move it between its detents, or down to close
-/// it. A drag down that starts in a scroll container at its top moves the sheet. A press on the
-/// dimmed window and <kbd>Escape</kbd> close it. Focus stays in the sheet while it is open, and
-/// goes back to where it was when it closes.
+/// it. A drag starts where the sheet is on the window, also while it moves. A drag down that starts
+/// in a scroll container at its top moves the sheet. A press on the dimmed window and
+/// <kbd>Escape</kbd> close it. Focus stays in the sheet while it is open, and goes back to where it
+/// was when it closes.
 ///
 /// When a field in the sheet shows the keyboard, the sheet rises to its large detent. In a window
 /// at least 700 pixels wide and tall, as on an iPad, the sheet is a form sheet in the middle of the
@@ -68,7 +74,10 @@ const SHEET_NAME: &str = "zui-bottom-sheet";
 ///
 /// # Keyboard
 ///
-/// <kbd>Escape</kbd> closes it and <kbd>Tab</kbd> is confined to it, as in a dialog.
+/// <kbd>Escape</kbd> closes it and <kbd>Tab</kbd> is confined to it, as in a dialog. With more than
+/// one detent, the sheet has a grabber at its top. <kbd>Enter</kbd> and <kbd>Space</kbd> on the
+/// grabber move the sheet to its other detent, <kbd>Arrow Up</kbd> expands it and
+/// <kbd>Arrow Down</kbd> collapses it.
 #[component]
 pub fn BottomSheet(
     /// Whether it is open, when the caller holds it.
@@ -91,8 +100,9 @@ pub fn BottomSheet(
     detent: Option<RwSignal<Detent, LocalStorage>>,
     /// Whether the person cannot close it, for example while it holds unsaved edits.
     ///
-    /// While it is true, a drag down, a press on the dimmed window and <kbd>Escape</kbd> leave it
-    /// open and tell `on_dismiss_attempt`. The caller can still close it through `open`.
+    /// While it is true, a drag down, a press on the dimmed window, <kbd>Escape</kbd> and a collapse
+    /// of the grabber at the smallest detent leave it open and tell `on_dismiss_attempt`. The caller
+    /// can still close it through `open`.
     #[prop(into, default = Signal::stored_local(false))]
     dismiss_blocked: Signal<bool, LocalStorage>,
     /// Told when the person tried to close it while `dismiss_blocked` was true.
@@ -134,6 +144,11 @@ pub fn BottomSheet(
     let held = detent.is_some();
     let current = detent.unwrap_or_else(|| RwSignal::new_local(smallest));
     let drag = Drag::new();
+    let floor = move |geometry: Geometry| {
+        dismiss_blocked
+            .get_untracked()
+            .then(|| geometry.offset(smallest))
+    };
 
     // Each time it opens, it starts at rest, at the smallest detent unless the caller holds it.
     let opening = RenderEffect::new(move |was: Option<bool>| {
@@ -151,28 +166,27 @@ pub fn BottomSheet(
     let surface = state.content();
     let on_pan = move |pan: PanEvent| match pan.phase {
         GesturePhase::Started => {
-            let Some(geometry) = measure(surface) else {
+            let Some(seen) = measure(surface) else {
                 return;
             };
-            let from = drag
-                .offset
-                .get_untracked()
-                .unwrap_or_else(|| geometry.offset(current.get_untracked()));
+            // A stretched sheet is taller than at its large detent until the stretch settles.
+            let geometry = drag.stretched.get_value().unwrap_or(seen.geometry);
+            // The drag starts where the sheet is drawn, which differs from its detent while it
+            // settles and while the keyboard holds it at its large detent.
+            let drawn = seen.top - geometry.top();
+            let from = geometry.unresisted(drawn, floor(geometry));
             drag.grab.set_value(Some(Grab { from, geometry }));
             drag.active.set(true);
-            drag.offset.set(Some(from));
+            drag.offset.set(Some(drawn));
         }
         GesturePhase::Moved => {
             let Some(grab) = drag.grab.get_value() else {
                 return;
             };
-            let floor = dismiss_blocked
-                .get_untracked()
-                .then(|| grab.geometry.offset(smallest));
-            drag.offset.set(Some(
-                grab.geometry
-                    .resisted(grab.from + pan.translation().height.0, floor),
-            ));
+            drag.offset.set(Some(grab.geometry.resisted(
+                grab.from + pan.translation().height.0,
+                floor(grab.geometry),
+            )));
         }
         GesturePhase::Ended => {
             drag.framed.set_value(false);
@@ -204,13 +218,18 @@ pub fn BottomSheet(
                 }
             }
         }
+        // A cancelled drag goes back to the detent it rests at.
         _ => {
             drag.framed.set_value(false);
+            let grab = drag.grab.get_value();
             drag.grab.set_value(None);
-            drag.active.set(false);
-            drag.offset.set(None);
+            if let (Some(grab), Some(at)) = (grab, drag.offset.get_untracked()) {
+                drag.settle(current, current.get_untracked(), at, 0.0, grab.geometry);
+            }
         }
     };
+    let rest = UnsyncCallback::new(move |detent: Detent| drag.rest(current, detent));
+    let dismiss = UnsyncCallback::new(move |()| state.close());
 
     let mut semantics = A11yBinding::unspecified()
         .labelled_by(labels.title())
@@ -237,8 +256,35 @@ pub fn BottomSheet(
             },
         )
         .custom_property(
+            CustomPropertyName::new("zui-bottom-sheet-stretch"),
+            move || {
+                drag.offset
+                    .get()
+                    .filter(|offset| *offset < 0.0)
+                    .map(|offset| format!("{}px", -offset))
+            },
+        )
+        .custom_property(
             CustomPropertyName::new("zui-bottom-sheet-ease"),
             move || drag.ease.get(),
+        )
+        .listener(
+            events::TRANSITION_END,
+            ListenerOptions::DEFAULT,
+            move |ev: &mut EventCx<'_, events::TransitionEnd>| {
+                if ev.target == ev.current {
+                    drag.settled(ev.property);
+                }
+            },
+        )
+        .listener(
+            events::TRANSITION_CANCEL,
+            ListenerOptions::DEFAULT,
+            move |ev: &mut EventCx<'_, events::TransitionCancel>| {
+                if ev.target == ev.current {
+                    drag.settled(ev.property);
+                }
+            },
         )
         .a11y_from(semantics);
 
@@ -263,7 +309,10 @@ pub fn BottomSheet(
                     let pan: PanEvent = **ev;
                     if pan.phase == GesturePhase::Started {
                         let upward = pan.translation().height.0 < 0.0;
-                        if !upward || current.get_untracked() == largest {
+                        let grown = current.get_untracked() == largest
+                            || measure(surface)
+                                .is_some_and(|seen| seen.top <= seen.geometry.top());
+                        if !upward || grown {
                             ev.prevent_default();
                             return;
                         }
@@ -285,7 +334,12 @@ pub fn BottomSheet(
                     }
                 ) {
                     if move || grabber {
-                        box(class = "zui-bottom-sheet__grabber", a11y:hidden = true)
+                        Grabber(
+                            current = current,
+                            detents = detents,
+                            on_rest = rest,
+                            on_dismiss = dismiss
+                        )
                     } else {}
                     column(class = "zui-bottom-sheet__content") {
                         {children.with_value(ChildrenFn::view)}
@@ -299,10 +353,19 @@ pub fn BottomSheet(
 /// Where a drag started, and what it is measured against.
 #[derive(Copy, Clone)]
 struct Grab {
-    /// The offset of the sheet when the finger took it.
+    /// The offset of the finger when it took the sheet, before resistance.
     from: f32,
     /// The sizes of the sheet and the window.
     geometry: Geometry,
+}
+
+/// The sheet as the last frame drew it.
+#[derive(Copy, Clone)]
+struct Sighting {
+    /// The sizes of the sheet and the window.
+    geometry: Geometry,
+    /// Where the top of the sheet is in the window.
+    top: f32,
 }
 
 /// The state of a drag on the sheet.
@@ -318,6 +381,9 @@ struct Drag {
     offset: RwSignal<Option<f32>, LocalStorage>,
     /// The curve of the settle after a release, which carries the speed of the finger.
     ease: RwSignal<Option<String>, LocalStorage>,
+    /// The sizes measured at the start of a drag that stretched the sheet, until the stretch
+    /// settles.
+    stretched: StoredValue<Option<Geometry>, LocalStorage>,
 }
 
 impl Drag {
@@ -328,6 +394,7 @@ impl Drag {
             active: RwSignal::new_local(false),
             offset: RwSignal::new_local(None),
             ease: RwSignal::new_local(None),
+            stretched: StoredValue::new_local(None),
         }
     }
 
@@ -337,6 +404,7 @@ impl Drag {
         self.active.set(false);
         self.offset.set(None);
         self.ease.set(None);
+        self.stretched.set_value(None);
     }
 
     /// Lets go of the sheet at `at`, moving at `velocity`, so it settles at `detent`.
@@ -348,11 +416,38 @@ impl Drag {
         velocity: f32,
         geometry: Geometry,
     ) {
+        // The settle takes the 500 ms of the sheet's transition.
         let distance = geometry.offset(detent) - at;
-        self.ease.set(Some(release_ease(distance, velocity)));
+        self.ease.set(fling_ease(distance, velocity, 0.5));
+        if at < 0.0 {
+            self.stretched.set_value(Some(geometry));
+        }
         current.set(detent);
         self.offset.set(None);
         self.active.set(false);
+    }
+
+    /// Moves the sheet to `detent` on the sheet spring.
+    fn rest(self, current: RwSignal<Detent, LocalStorage>, detent: Detent) {
+        self.ease.set(None);
+        current.set(detent);
+    }
+
+    /// Ends the settle when the transition of `property` on the sheet stops.
+    fn settled(self, property: Ident) {
+        if self.active.get_untracked() {
+            return;
+        }
+
+        match property.as_str() {
+            "translate" => self.ease.set(None),
+            "top" => {
+                self.ease.set(None);
+                self.stretched.set_value(None);
+            }
+            // Another property of the sheet, such as the opacity of its entrance.
+            _ => {}
+        }
     }
 }
 
@@ -375,38 +470,24 @@ fn rest_offset(detent: Detent) -> &'static str {
     }
 }
 
-/// The sizes of the sheet and its window, in CSS pixels, from the last frame.
-fn measure(surface: NodeRef) -> Option<Geometry> {
+/// The sheet as the last frame drew it, in CSS pixels.
+fn measure(surface: NodeRef) -> Option<Sighting> {
     let scale = surface.scale();
     // The width and height at which the style sheet shows a form sheet.
     const FORM: f32 = 700.0;
 
-    let panel = surface.bounds()?.size.height.0 / scale;
+    let drawn = surface.window_bounds()?;
+    let panel = drawn.size.height.0 / scale;
     let root = surface.window_root()?.bounds()?.size;
     let window = root.height.0 / scale;
     let form = root.width.0 / scale >= FORM && window >= FORM;
 
-    Some(Geometry {
-        panel,
-        window,
-        form,
+    Some(Sighting {
+        geometry: Geometry {
+            panel,
+            window,
+            form,
+        },
+        top: drawn.origin.y.0 / scale,
     })
-}
-
-/// A curve for the settle that starts at the speed of the finger.
-///
-/// The settle covers `distance` CSS pixels in 500 ms. A `cubic-bezier()` starts at the slope of
-/// its first control point, so that point is set to match `velocity`.
-fn release_ease(distance: f32, velocity: f32) -> String {
-    const DURATION: f32 = 0.5;
-    const FIRST_X: f32 = 0.25;
-
-    if distance.abs() < 1.0 || velocity * distance <= 0.0 {
-        return "var(--zui-bottom-sheet-spring)".to_owned();
-    }
-
-    let slope = velocity.abs() * DURATION / distance.abs();
-    let first_y = (slope * FIRST_X).min(1.5);
-
-    format!("cubic-bezier({FIRST_X}, {first_y:.3}, 0.25, 1)")
 }
