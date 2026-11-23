@@ -364,6 +364,12 @@ impl Window {
                         continue;
                     }
                     self.router.forget_press(*pointer);
+                    // A finger that pans is not pressing what it went down on.
+                    {
+                        let filter = self.engine.filter();
+                        let document = self.document.borrow();
+                        self.router.cancel_touch_press(*pointer, &document, &filter);
+                    }
                     if self.claim_pan(*pointer, *from, *at, timestamp) {
                         continue;
                     }
@@ -558,7 +564,47 @@ impl Window {
     /// every frame in between draws the same pixels. This is the moment the recogniser actually
     /// owes an answer at, and it is the only wake a held contact is worth.
     pub(crate) fn gesture_deadline(&self) -> Option<web_time::Instant> {
-        self.long_press_due
+        match (self.long_press_due, self.press_due_at) {
+            (Some(long_press), Some(press)) => Some(long_press.min(press)),
+            (long_press, press) => long_press.or(press),
+        }
+    }
+
+    /// Shows the press of a finger held for long enough, and ends the brief press of a quick tap.
+    ///
+    /// The router keeps the stage and the window keeps the clock. A stage is timed from the first
+    /// frame that sees it.
+    pub(crate) fn advance_press(&mut self, wall: web_time::Instant, now: zgui_vocab::Timestamp) {
+        let Some(stage) = self.router.touch_press() else {
+            self.press_due = None;
+            self.press_due_at = None;
+            return;
+        };
+        let due = match self.press_due {
+            Some((timed, due)) if timed == stage => due,
+            _ => {
+                let due = zgui_vocab::Timestamp::from_origin(now.since_origin() + stage.duration());
+                self.press_due = Some((stage, due));
+                due
+            }
+        };
+        if now < due {
+            self.press_due_at = Some(wall + due.saturating_since(now));
+            return;
+        }
+
+        self.press_due = None;
+        self.press_due_at = None;
+        let filter = self.engine.filter();
+        let document = self.document.borrow();
+        match stage {
+            zgui_input::TouchPressStage::Waiting => {
+                self.router.reveal_touch_press(&document, &filter);
+            }
+            zgui_input::TouchPressStage::Flashing => {
+                self.router.end_touch_flash(&document, &filter);
+            }
+        }
     }
 
     /// The innermost element under a point, in CSS pixels from the window's corner.

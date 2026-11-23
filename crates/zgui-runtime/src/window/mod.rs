@@ -372,6 +372,10 @@ pub struct Window {
     /// because the recogniser measures from event timestamps and the park is expressed in the
     /// platform's instants; the two are reconciled once, in the frame that has both.
     long_press_due: Option<Instant>,
+    /// The touch press stage that waits for the clock, and the moment it ends on the frame clock.
+    press_due: Option<(zgui_input::TouchPressStage, zgui_vocab::Timestamp)>,
+    /// The same moment on the loop's own clock.
+    press_due_at: Option<Instant>,
     /// The editing model of every editable element that has been typed into.
     editors: crate::editing::Editors,
     /// The caret's phase, and what this frame draws for it.
@@ -839,6 +843,8 @@ impl Window {
             owed_scrolls: Vec::new(),
             carried_scrolls: Vec::new(),
             long_press_due: None,
+            press_due: None,
+            press_due_at: None,
             editors: crate::editing::Editors::new(),
             carets: crate::caret::Carets::new(),
             focus_modality: zgui_input::FocusSource::Keyboard,

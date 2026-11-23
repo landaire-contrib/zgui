@@ -870,6 +870,18 @@ fn a_finger_held_still_opens_a_context_menu_and_the_loop_comes_back_for_it() {
     });
     harness.settle(4);
     assert_eq!(opened.get(), 0, "a press is not a long press");
+    // The first wake shows the press, which waits 100 ms so that a scroll does not light the row.
+    let shown = harness
+        .parked_deadline()
+        .expect("a held touch never came back to show its press")
+        .saturating_duration_since(harness.now());
+    assert!(
+        (std::time::Duration::from_millis(80)..=std::time::Duration::from_millis(120))
+            .contains(&shown),
+        "the press shows {shown:?} after the touch"
+    );
+    harness.advance(shown);
+    harness.settle(4);
     let parked = harness
         .parked_deadline()
         .expect(
@@ -880,8 +892,8 @@ fn a_finger_held_still_opens_a_context_menu_and_the_loop_comes_back_for_it() {
     // The moment the press means something else, not the next refresh interval. Parking on a tick
     // is the difference between one wake and thirty, and both spellings pass the assertion above.
     assert!(
-        parked > std::time::Duration::from_millis(400),
-        "the loop parked {parked:?} out on a contact that cannot mean anything for half a second, \
+        parked > std::time::Duration::from_millis(300),
+        "the loop parked {parked:?} out on a contact that cannot mean anything for 400 ms, \
          so it will wake, draw the same pixels and park again for every frame of the hold"
     );
 

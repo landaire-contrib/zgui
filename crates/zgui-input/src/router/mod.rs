@@ -9,6 +9,7 @@
 //! every listener has had the chance to say that it should not be.
 
 mod bars;
+mod touch_press;
 mod world;
 
 use smallvec::SmallVec;
@@ -26,6 +27,7 @@ use crate::state::Interaction;
 use crate::state::focus::FocusSource;
 use crate::state::within::Moved;
 
+pub use crate::router::touch_press::{TOUCH_FLASH, TOUCH_PRESS_DELAY, TouchPressStage};
 pub use crate::router::world::World;
 
 /// What one event turned out to mean.
@@ -77,6 +79,8 @@ pub struct Router {
     bars: Bars,
     /// Which element the pinch in progress is aimed at, until its last stage.
     pinch: Option<zgui_dom::NodeKey>,
+    /// The touch press whose `:active` state waits for the clock, if one does.
+    touch: Option<crate::router::touch_press::TouchPress>,
 }
 
 impl Router {
@@ -367,6 +371,7 @@ impl Router {
         filter: &dyn zgui_dom::StyleFilter,
     ) -> Moved {
         let moved = self.interaction.active.release(document, filter);
+        self.touch = None;
         self.capture.clear();
         self.pressed.clear();
         self.bars.clear();
@@ -514,6 +519,7 @@ impl Router {
                 _ => Moved::default(),
             };
         }
+        let touch = event.kind == zgui_vocab::PointerKind::Touch;
         match action {
             PointerAction::Pressed => {
                 if let Some(target) = chain.target() {
@@ -522,12 +528,19 @@ impl Router {
                         None => self.pressed.push((event.id, target)),
                     }
                 }
+                if touch {
+                    return self.wait_touch_press(event.id, chain, world.document, world.filter);
+                }
                 self.interaction
                     .active
                     .press(world.document, world.filter, chain)
             }
             PointerAction::Released | PointerAction::Cancelled => {
                 self.pressed.retain(|(id, _)| *id != event.id);
+                if touch {
+                    let lifted = action == PointerAction::Released;
+                    return self.lift_touch_press(event.id, lifted, world.document, world.filter);
+                }
                 self.interaction
                     .active
                     .release(world.document, world.filter)

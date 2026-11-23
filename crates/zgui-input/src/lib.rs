@@ -99,5 +99,5 @@ pub use crate::gesture::{Gesture, Gestures};
 pub use crate::hit::{Hit, HitChain};
 pub use crate::ime::{Ime, Preedit};
 pub use crate::normalize::{HeldModifiers, InputEvent, ScrollUnits};
-pub use crate::router::{Routed, Router, World};
+pub use crate::router::{Routed, Router, TOUCH_FLASH, TOUCH_PRESS_DELAY, TouchPressStage, World};
 pub use crate::state::within::{Moved, move_bit};

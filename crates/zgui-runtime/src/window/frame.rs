@@ -387,6 +387,7 @@ impl Window {
         // in. A held contact is not an animation and must not be parked on as one.
         mark("f.gestures");
         self.advance_gestures(now, timestamp);
+        self.advance_press(now, timestamp);
         // The surface first and the device second: what the cascade matches against is derived
         // from the surface this frame will actually present to.
         mark("f.reconfigure");
