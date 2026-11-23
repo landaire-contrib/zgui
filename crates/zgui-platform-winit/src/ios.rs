@@ -1,6 +1,7 @@
 //! The UIKit values winit does not expose.
 
 pub(crate) mod pointer;
+pub(crate) mod preferences;
 pub(crate) mod text_view;
 
 use core::ptr::NonNull;
@@ -12,14 +13,17 @@ use block2::RcBlock;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2_foundation::{NSNotification, NSNotificationCenter, NSObjectProtocol, NSValue};
+use objc2_foundation::{
+    NSNotification, NSNotificationCenter, NSNumber, NSObjectProtocol, NSString, NSValue,
+};
 use objc2_ui_kit::{
-    NSValueUIGeometryExtensions, UIKeyboardFrameEndUserInfoKey,
+    NSValueUIGeometryExtensions, UIKeyboardAnimationCurveUserInfoKey,
+    UIKeyboardAnimationDurationUserInfoKey, UIKeyboardFrameEndUserInfoKey,
     UIKeyboardWillChangeFrameNotification, UIKeyboardWillHideNotification, UIView,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use zgui_geom::{Device, DevicePx, Edges, Point, Rect, Size};
-use zgui_platform::{Surface, SurfaceId};
+use zgui_platform::{KeyboardMotion, Surface, SurfaceId};
 
 use crate::surface::WinitSurface;
 
@@ -94,7 +98,7 @@ pub(crate) fn forget_keyboard(surface: SurfaceId) {
     }
 }
 
-/// A block that gives `surface` the keyboard area a notification states.
+/// A block that gives `surface` the keyboard area and motion a notification states.
 ///
 /// A block made with `hides` gives no area.
 fn keyboard_block(
@@ -105,19 +109,36 @@ fn keyboard_block(
         let Some(surface) = surface.upgrade() else {
             return;
         };
-
+        // SAFETY: the center hands the block a live notification for the length of the call.
+        let notification = unsafe { notification.as_ref() };
+        surface.set_virtual_keyboard_motion(keyboard_motion(notification));
         let area = if hides {
             None
         } else {
-            // SAFETY: the center hands the block a live notification for the length of the call.
-            keyboard_area(
-                surface.window(),
-                unsafe { notification.as_ref() },
-                surface.scale(),
-            )
+            keyboard_area(surface.window(), notification, surface.scale())
         };
         surface.set_virtual_keyboard(area);
     })
+}
+
+/// How the keyboard moves, as `notification` states.
+///
+/// `None` when the notification states no duration or curve, or a curve UIKit does not document.
+fn keyboard_motion(notification: &NSNotification) -> Option<KeyboardMotion> {
+    let info = notification.userInfo()?;
+    let number = |key: &NSString| {
+        info.objectForKey(AsRef::<AnyObject>::as_ref(key))?
+            .downcast::<NSNumber>()
+            .ok()
+    };
+    // SAFETY: the keys are UIKit's own constants.
+    let (duration, curve) = unsafe {
+        (
+            number(UIKeyboardAnimationDurationUserInfoKey)?,
+            number(UIKeyboardAnimationCurveUserInfoKey)?,
+        )
+    };
+    crate::uikit::keyboard_motion(duration.doubleValue(), curve.integerValue())
 }
 
 /// The part of the view winit draws `window` into that the keyboard frame of `notification`

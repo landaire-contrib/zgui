@@ -83,6 +83,8 @@ pub mod cx;
 pub mod input;
 #[cfg(target_os = "ios")]
 mod ios;
+#[cfg(any(target_os = "ios", test))]
+mod lifecycle;
 #[cfg(target_os = "macos")]
 mod macos;
 pub mod monitor;
@@ -90,6 +92,8 @@ pub mod park;
 mod subpixel;
 pub mod surface;
 pub mod theme;
+#[cfg(any(target_os = "ios", test))]
+mod uikit;
 pub mod waker;
 
 pub use crate::app::{WinitApp, event_loop, run};

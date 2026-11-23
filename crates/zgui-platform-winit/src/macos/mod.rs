@@ -1,6 +1,7 @@
 //! The AppKit objects winit does not expose: the application menu and its key equivalents, the
 //! status item, the Dock icon, the reopen request, the title-bar buttons, the title-bar
-//! double-click preference, the momentum phase of a scroll and the zoomed state of a window.
+//! double-click preference, the momentum phase of a scroll, the zoomed state of a window and the
+//! Reduce Motion setting.
 //!
 //! Every function here runs on the main thread, inside a callback of the event loop.
 
@@ -10,6 +11,7 @@ mod double_click;
 mod fullscreen;
 mod keys;
 mod menu;
+mod preferences;
 mod reopen;
 mod scroll;
 mod status_item;
@@ -25,6 +27,7 @@ pub(crate) use crate::macos::fullscreen::{
 };
 pub(crate) use crate::macos::keys::install as answer_key_equivalents;
 pub(crate) use crate::macos::menu::{Menus, install as install_menu, listen as listen_to_menus};
+pub(crate) use crate::macos::preferences::{motion_preference, observe as observe_preferences};
 pub(crate) use crate::macos::reopen::install as install_reopen;
 pub(crate) use crate::macos::scroll::{install as read_scroll_phases, phase as scroll_phase};
 pub(crate) use crate::macos::status_item::{StatusItems, install as install_status_item};

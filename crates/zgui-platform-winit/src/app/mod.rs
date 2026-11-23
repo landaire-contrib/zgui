@@ -43,10 +43,14 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 #[cfg(target_os = "ios")]
 use winit::platform::ios::EventLoopBuilderExtIOS;
 use winit::window::WindowId;
-use zgui_platform::{AppHandler, PlatformError, Surface, SurfaceEvent, WakeReason};
+use zgui_platform::{
+    AppEvent, AppHandler, Lifecycle, PlatformError, Surface, SurfaceEvent, WakeReason,
+};
 
 use crate::app::window::WindowState;
 use crate::cx::{Shared, WinitCx};
+#[cfg(target_os = "ios")]
+use crate::lifecycle::Visibility;
 use crate::park::{Park, Parked};
 use crate::surface::a11y;
 use crate::waker::UserEvent;
@@ -105,6 +109,11 @@ pub struct WinitApp<A: AppHandler> {
     windows: HashMap<WindowId, WindowState>,
     /// Whether the one-time attachment has happened.
     attached: bool,
+    /// Whether the application has been told its surfaces are available.
+    launched: bool,
+    /// Which windows the system hid, from which the background moves are derived.
+    #[cfg(target_os = "ios")]
+    visibility: Visibility<WindowId>,
     /// How many turns of the loop have started.
     turns: u64,
 }
@@ -118,6 +127,9 @@ impl<A: AppHandler> WinitApp<A> {
             park: Park::new(),
             windows: HashMap::new(),
             attached: false,
+            launched: false,
+            #[cfg(target_os = "ios")]
+            visibility: Visibility::new(),
             turns: 0,
         }
     }
@@ -191,6 +203,13 @@ impl<A: AppHandler> WinitApp<A> {
             }
         }
     }
+
+    /// Tells the application it moved to another state of its lifecycle.
+    fn lifecycle(&mut self, event_loop: &ActiveEventLoop, event: Lifecycle) {
+        let cx = WinitCx::new(&self.shared, event_loop);
+        self.handler
+            .wake(&cx, WakeReason::App(AppEvent::Lifecycle(event)));
+    }
 }
 
 impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
@@ -235,15 +254,19 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.launched {
+            self.lifecycle(event_loop, Lifecycle::DidBecomeActive);
+            return;
+        }
+        self.launched = true;
         let cx = WinitCx::new(&self.shared, event_loop);
         self.handler.surfaces_available(&cx);
     }
 
+    /// The windows and their surfaces stay, and the application draws what it changed in answer
+    /// before this returns.
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
-        let cx = WinitCx::new(&self.shared, event_loop);
-        self.handler.surfaces_lost(&cx);
-        self.shared.forget_all();
-        self.windows.clear();
+        self.lifecycle(event_loop, Lifecycle::WillResignActive);
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
@@ -321,6 +344,12 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
         let Some(surface) = self.shared.by_window(window_id) else {
             return;
         };
+        #[cfg(target_os = "ios")]
+        if matches!(event, winit::event::WindowEvent::RedrawRequested)
+            && !self.visibility.admits_redraw(window_id)
+        {
+            return;
+        }
         // Shown to the accessibility adapter before anything else touches it: the adapter learns
         // where the window is and whether it has focus only from the events it is shown, and one
         // withheld leaves a screen reader's highlight in the place the window used to be.
@@ -336,6 +365,22 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
 
         let destroyed = matches!(event, winit::event::WindowEvent::Destroyed);
         let relayout = relays_out_title_bar(&event);
+        #[cfg(target_os = "ios")]
+        let shown = matches!(event, winit::event::WindowEvent::Occluded(false));
+        #[cfg(target_os = "ios")]
+        let moved = match event {
+            winit::event::WindowEvent::Occluded(occluded) => {
+                self.visibility
+                    .occluded(window_id, occluded, self.shared.windows())
+            }
+            _ => None,
+        };
+        // Before the window shows, so the first frame it draws can show what the application
+        // changed in answer.
+        #[cfg(target_os = "ios")]
+        if moved == Some(Lifecycle::WillEnterForeground) {
+            self.lifecycle(event_loop, Lifecycle::WillEnterForeground);
+        }
         let timestamp = self.shared.clock().timestamp();
         let state = self.windows.entry(window_id).or_insert_with(|| {
             // A window may get no resize before its first pointer motion.
@@ -367,6 +412,21 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
             }
         }
 
+        // After the window is hidden, so nothing the application changes in answer is drawn.
+        #[cfg(target_os = "ios")]
+        if moved == Some(Lifecycle::DidEnterBackground) {
+            self.lifecycle(event_loop, Lifecycle::DidEnterBackground);
+        }
+        // The redraw the background withheld, now the window shows.
+        #[cfg(target_os = "ios")]
+        if shown && self.visibility.take_withheld(window_id) {
+            self.window_event(
+                event_loop,
+                window_id,
+                winit::event::WindowEvent::RedrawRequested,
+            );
+        }
+
         if relayout {
             surface.place_title_buttons();
         }
@@ -374,6 +434,8 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
         if destroyed {
             self.shared.forget(window_id);
             self.windows.remove(&window_id);
+            #[cfg(target_os = "ios")]
+            self.visibility.forget(window_id);
         }
         zgui_profile::latency::mark("evt.out");
     }
@@ -392,6 +454,8 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
         if !event_loop.exiting() {
             for window in self.shared.retire() {
                 self.windows.remove(&window);
+                #[cfg(target_os = "ios")]
+                self.visibility.forget(window);
             }
         }
 

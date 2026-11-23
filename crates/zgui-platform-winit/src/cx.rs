@@ -85,7 +85,10 @@ impl Shared {
         {
             crate::macos::install_reopen(self.waker());
             crate::macos::listen_to_menus(self.waker());
+            crate::macos::observe_preferences(self.waker());
         }
+        #[cfg(target_os = "ios")]
+        crate::ios::preferences::observe(self.waker());
     }
 
     /// The clock, as the contract's view of it.
@@ -114,6 +117,16 @@ impl Shared {
             .iter()
             .find(|surface| surface.window().id() == id)
             .map(Arc::clone)
+    }
+
+    /// The windows that exist.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn windows(&self) -> Vec<WindowId> {
+        self.surfaces
+            .borrow()
+            .iter()
+            .map(|surface| surface.window().id())
+            .collect()
     }
 
     /// Lets go of the surface `id` names, and reports the window that was behind it.
@@ -181,19 +194,6 @@ impl Shared {
             }
             kept
         });
-    }
-
-    /// Forgets every window, for the platform lifecycle that takes them all away at once.
-    pub(crate) fn forget_all(&self) {
-        for surface in self.surfaces.borrow_mut().drain(..) {
-            a11y::release(surface.id());
-            #[cfg(target_os = "ios")]
-            {
-                crate::ios::forget_keyboard(surface.id());
-                crate::ios::text_view::forget(surface.id());
-                crate::ios::pointer::detach(surface.id());
-            }
-        }
     }
 
     /// Records the desktop's light or dark preference.
@@ -325,6 +325,22 @@ impl PlatformCx for WinitCx<'_> {
 
     fn clipboard(&self) -> &dyn Clipboard {
         &self.shared.clipboard
+    }
+
+    #[cfg(target_os = "ios")]
+    fn text_scale(&self) -> zgui_platform::TextScale {
+        let main = objc2::MainThreadMarker::new().expect("the event loop runs on the main thread");
+        crate::ios::preferences::text_scale(main)
+    }
+
+    #[cfg(target_os = "ios")]
+    fn motion_preference(&self) -> zgui_platform::MotionPreference {
+        crate::ios::preferences::motion_preference()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn motion_preference(&self) -> zgui_platform::MotionPreference {
+        crate::macos::motion_preference()
     }
 
     fn capabilities(&self) -> &PlatformCapabilities {

@@ -60,6 +60,9 @@ pub struct WinitSurface {
     /// The part of the view the on-screen keyboard covers, as of the last keyboard notification.
     #[cfg(target_os = "ios")]
     virtual_keyboard: Mutex<Option<zgui_geom::Rect<DevicePx, Device>>>,
+    /// How the on-screen keyboard moved, as of the last keyboard notification.
+    #[cfg(target_os = "ios")]
+    virtual_keyboard_motion: Mutex<Option<zgui_platform::KeyboardMotion>>,
     /// The element under the hovering pointer, which the pointer interaction answers from.
     #[cfg(target_os = "ios")]
     pointer_target: Mutex<Option<zgui_platform::PointerTarget>>,
@@ -86,6 +89,8 @@ impl WinitSurface {
             safe_area: Mutex::new(zgui_geom::Edges::uniform(DevicePx(0.0))),
             #[cfg(target_os = "ios")]
             virtual_keyboard: Mutex::new(None),
+            #[cfg(target_os = "ios")]
+            virtual_keyboard_motion: Mutex::new(None),
             #[cfg(target_os = "ios")]
             pointer_target: Mutex::new(None),
         }
@@ -151,6 +156,19 @@ impl WinitSurface {
         }
     }
 
+    /// Records how the on-screen keyboard moves to the area the next
+    /// [`WinitSurface::set_virtual_keyboard`] records.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn set_virtual_keyboard_motion(
+        &self,
+        motion: Option<zgui_platform::KeyboardMotion>,
+    ) {
+        *self
+            .virtual_keyboard_motion
+            .lock()
+            .expect("the keyboard motion is not poisoned") = motion;
+    }
+
     /// Gives the window an edit the iOS text view made.
     #[cfg(target_os = "ios")]
     pub(crate) fn report_typed(&self, event: SurfaceEvent) {
@@ -206,6 +224,14 @@ impl Surface for WinitSurface {
             .virtual_keyboard
             .lock()
             .expect("the keyboard area is not poisoned")
+    }
+
+    #[cfg(target_os = "ios")]
+    fn virtual_keyboard_motion(&self) -> Option<zgui_platform::KeyboardMotion> {
+        *self
+            .virtual_keyboard_motion
+            .lock()
+            .expect("the keyboard motion is not poisoned")
     }
 
     fn scale_factor(&self) -> f64 {

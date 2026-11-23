@@ -161,13 +161,13 @@ block2 = "0.6.2"
 # distance. winit does not expose them.
 windows-sys = { version = "0.61.2", features = ["Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSUserDefaults", "NSGeometry", "NSObject", "NSNotification", "NSOperation", "NSDictionary", "NSValue", "block2"] }
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSResponder", "NSButton", "NSControl", "NSGraphics", "NSRunningApplication", "NSEvent", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSMenu", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSCell", "NSScreen", "objc2-core-foundation", "block2"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSResponder", "NSButton", "NSControl", "NSGraphics", "NSRunningApplication", "NSEvent", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSMenu", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSCell", "NSScreen", "NSWorkspace", "NSAccessibility", "objc2-core-foundation", "block2"] }
 # The height of the main display, which winit measures window positions from on macOS.
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGDirectDisplay"] }
-# The safe area of the view winit draws into on iOS, the frame of the on-screen keyboard, which
-# winit does not report, the text input protocols the iOS text view conforms to, and the pointer
-# interaction of the view.
-objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "UIResponder", "UIView", "UIWindow", "UIGeometry", "UITextInput", "UITextInputTraits", "UITextInteraction", "UIInteraction", "UIPasteboard", "NSText", "UIPointerInteraction", "UIPointerRegion", "UIPointerStyle", "UIHoverStyle", "UITargetedPreview", "UIPreviewParameters", "UIBezierPath", "UIColor", "objc2-core-foundation"] }
+# The safe area of the view winit draws into on iOS, the frame and the motion of the on-screen
+# keyboard, which winit does not report, the text input protocols the iOS text view conforms to,
+# the pointer interaction of the view, and the Dynamic Type and Reduce Motion settings.
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "UIResponder", "UIView", "UIWindow", "UIGeometry", "UITextInput", "UITextInputTraits", "UITextInteraction", "UIInteraction", "UIPasteboard", "NSText", "UIPointerInteraction", "UIPointerRegion", "UIPointerStyle", "UIHoverStyle", "UITargetedPreview", "UIPreviewParameters", "UIBezierPath", "UIColor", "UIApplication", "UIContentSizeCategory", "UIAccessibility", "objc2-core-foundation"] }
 # The rectangles UIKit measures views in.
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
 zbus = "5.18"
