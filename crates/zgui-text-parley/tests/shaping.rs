@@ -412,6 +412,78 @@ fn a_banded_request_gives_each_line_its_own_width() {
     );
 }
 
+/// A line reports where it starts before alignment: its indent, and the space a float takes on
+/// its start side.
+#[test]
+fn a_line_reports_its_inset_before_alignment() {
+    use zgui_text::{LineBand, LineBands};
+    use zgui_text_style::{LengthPercent, TextAlign, TextIndent};
+
+    let _guard = counting();
+    let (_fonts, mut shaper) = support::shaper(Controls::Mark);
+    let indent = |each_line, hanging| TextIndent {
+        length: LengthPercent {
+            length: CssPx(10.0),
+            percent: 0.0,
+        },
+        hanging,
+        each_line,
+    };
+    let insets = |shaper: &mut zgui_text_parley::Shaper,
+                  fixture: &Fixture,
+                  bands: &[LineBand]|
+     -> Vec<f32> {
+        let content = fixture.content();
+        let mut shaped = shaper.shape(&content);
+        let request = BreakRequest::new(&content, Some(CssPx(200.0))).banded(LineBands::new(bands));
+        let broken = shaper.break_lines(&mut shaped, &request);
+        broken
+            .geometry
+            .lines
+            .iter()
+            .map(|line| line.inset.0)
+            .collect()
+    };
+
+    for align in [TextAlign::Start, TextAlign::Center, TextAlign::End] {
+        let mut fixture = Fixture::new("short", Direction::LeftToRight);
+        fixture.paragraph.align = align;
+        fixture.paragraph.indent = indent(false, false);
+        assert_eq!(insets(&mut shaper, &fixture, &[]), [10.0], "{align:?}");
+    }
+
+    // A float 80 wide on the left of a left-to-right line, and 50 wide on the right of a
+    // right-to-left line.
+    let left = LineBand {
+        offset: CssPx(80.0),
+        max_advance: CssPx(120.0),
+    };
+    let fixture = Fixture::new("short", Direction::LeftToRight);
+    assert_eq!(insets(&mut shaper, &fixture, &[left]), [80.0]);
+    let right = LineBand {
+        offset: CssPx(0.0),
+        max_advance: CssPx(150.0),
+    };
+    let fixture = Fixture::new(support::RTL_ONLY, Direction::RightToLeft);
+    assert_eq!(insets(&mut shaper, &fixture, &[right]), [50.0]);
+
+    // `each-line` indents the line after a forced break, and `hanging` indents the other lines.
+    let mut fixture = Fixture::new("one\ntwo", Direction::LeftToRight);
+    for (each_line, hanging, expected) in [
+        (false, false, [10.0, 0.0]),
+        (true, false, [10.0, 10.0]),
+        (false, true, [0.0, 10.0]),
+        (true, true, [0.0, 0.0]),
+    ] {
+        fixture.paragraph.indent = indent(each_line, hanging);
+        assert_eq!(
+            insets(&mut shaper, &fixture, &[]),
+            expected,
+            "each-line {each_line}, hanging {hanging}"
+        );
+    }
+}
+
 /// The engine's byte estimate grows with the lines a break makes, and equal paragraphs broken at
 /// equal widths report equal bytes.
 #[test]

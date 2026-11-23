@@ -30,6 +30,12 @@ pub struct LineGeometry {
     /// How far the line's content is inset from the paragraph's start edge, after alignment and
     /// any indent.
     pub offset: CssPx,
+    /// How far the line's start is inset from the paragraph's start edge before alignment: the
+    /// indent, and the space a float takes on that side.
+    ///
+    /// This is measured in the paragraph's own direction. `inset + width` is the width the
+    /// paragraph needs to hold the line.
+    pub inset: CssPx,
 }
 
 impl LineGeometry {

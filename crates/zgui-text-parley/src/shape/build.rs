@@ -46,7 +46,12 @@ pub(crate) fn shape(
     layout.break_all_lines(None);
     let has_boxes = !content.boxes.is_empty();
     let wraps = wraps(content.runs);
-    let last = crate::shape::lines::read(&layout, has_boxes, prefix);
+    let last = crate::shape::lines::read(
+        &layout,
+        has_boxes,
+        prefix,
+        crate::shape::lines::Starts::default(),
+    );
     let frozen = if freeze && !wraps && !has_boxes {
         crate::shape::frozen::freeze(&layout, prefix, content.scale)
     } else {

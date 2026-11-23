@@ -44,6 +44,7 @@ fn slot(block: &BlockContext<'_>, y: f32) -> (f32, f32) {
 ///
 /// `top` and `left` are where the content the lines fill begins, measured from the box's own
 /// border edges, and `width` is the width that content would have with nothing floated beside it.
+/// `slack` is how far a line may reach past its band and still fit, which `width` includes.
 /// A line meets every float its own height overlaps, so each line is asked about twice — at its top
 /// edge and just above its bottom edge — and takes whichever answer is narrower.
 pub fn bands(
@@ -51,6 +52,7 @@ pub fn bands(
     top: f32,
     left: f32,
     width: f32,
+    slack: f32,
     lines: &[LineBox],
 ) -> Vec<LineBand> {
     let mut out = Vec::with_capacity(lines.len().max(1));
@@ -58,7 +60,7 @@ pub fn bands(
         let head = slot(block, top + line.top);
         let foot = slot(block, top + line.top + (line.height() - 1.0).max(0.0));
         let offset = head.0.max(foot.0);
-        let available = head.1.min(foot.1).min(width);
+        let available = (head.1.min(foot.1) + slack).min(width);
         out.push(LineBand {
             offset: CssPx((offset - left).max(0.0)),
             max_advance: CssPx(available.max(0.0)),

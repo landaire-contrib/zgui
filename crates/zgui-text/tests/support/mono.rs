@@ -307,6 +307,7 @@ fn assemble(shaped: &ShapedParagraph<MonoLayout>, request: &BreakRequest<'_>) ->
             width: CssPx(width),
             trailing: CssPx(trailing),
             offset: CssPx(offset),
+            inset: CssPx(indent),
         });
         top = CssPx(top.0 + ascent.0 + descent.0);
     }

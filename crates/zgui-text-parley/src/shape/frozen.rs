@@ -336,17 +336,21 @@ impl Frozen {
             offsets.push(offset);
         }
 
-        let kept = width.to_bits() == geometry.size.width.0.to_bits()
-            && offsets
-                .iter()
-                .zip(&geometry.lines)
-                .all(|(offset, line)| (offset + INLINE_MIN).to_bits() == line.offset.0.to_bits());
+        let kept =
+            width.to_bits() == geometry.size.width.0.to_bits()
+                && offsets.iter().zip(&geometry.lines).enumerate().all(
+                    |(index, (offset, line))| {
+                        (offset + INLINE_MIN).to_bits() == line.offset.0.to_bits()
+                            && (indent_of(index) + INLINE_MIN).to_bits() == line.inset.0.to_bits()
+                    },
+                );
         let broken = if kept {
             last.clone()
         } else {
             let mut lines = geometry.lines.clone();
-            for (line, offset) in lines.iter_mut().zip(&offsets) {
+            for (index, (line, offset)) in lines.iter_mut().zip(&offsets).enumerate() {
                 line.offset = CssPx(offset + INLINE_MIN);
+                line.inset = CssPx(indent_of(index) + INLINE_MIN);
             }
             BrokenParagraph {
                 geometry: Arc::new(TextGeometry {

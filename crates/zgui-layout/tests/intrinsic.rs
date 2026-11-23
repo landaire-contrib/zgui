@@ -120,3 +120,34 @@ fn a_max_content_box_holding_an_inline_block_asks_it_how_wide_it_wants_to_be() {
     let widths = widths(&store);
     assert_eq!(widths[1], 88.0, "the whole sentence, not its longest word");
 }
+
+#[test]
+fn a_shrink_to_fit_box_is_as_wide_as_its_text_whatever_its_alignment() {
+    // Alignment places a line inside the width the box already has, so it adds nothing to the
+    // width the box shrinks to.
+    let cases = [
+        "position: absolute; left: calc(var(--x) + 10px); text-align: center",
+        "position: absolute; left: calc(var(--x) + 10px); text-align: right",
+        "position: absolute; left: calc(var(--x) + 10px); text-align: end",
+        "position: absolute; text-align: center",
+        "display: inline-block; text-align: center",
+        "float: left; text-align: center",
+    ];
+    for case in cases {
+        let fixture = Fixture::new(
+            Element::new("root").children(vec![
+                Element::new("pin").classes(&["pin"]).text("hello there"),
+            ]),
+            &format!(
+                "root {{ display: block; position: relative; width: 400px; --x: 20px }}
+                 pin {{ display: block; {case} }}"
+            ),
+        );
+        let mut store = fixture.box_tree();
+        let mut content = measurer();
+        lay_out(&mut store, &mut content, 400.0, 300.0);
+
+        let (_, _, width, _) = support::find::rect(&store, &fixture, "pin");
+        assert_eq!(width, 88.0, "`{case}` is as wide as its text");
+    }
+}

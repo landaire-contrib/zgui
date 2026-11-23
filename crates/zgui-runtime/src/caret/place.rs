@@ -127,6 +127,7 @@ impl Located {
                 width: CssPx(line.width),
                 trailing: CssPx(line.hanging),
                 offset: CssPx(line.offset),
+                inset: CssPx(line.inset),
             })
             .collect();
         let key = resolution.key;

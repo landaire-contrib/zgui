@@ -33,6 +33,40 @@ fn a_fragment_sits_where_the_whole_ancestor_chain_puts_it() {
 }
 
 #[test]
+fn an_inset_with_a_variable_in_calc_places_the_box() {
+    // `--x` is 20px. A `var()` with no value makes the declaration invalid at computed-value time,
+    // and the inset is then `auto`: the box stays at its static position.
+    let cases = [
+        ("left: calc(var(--x) + 10px)", (30.0, 0.0)),
+        ("left: calc(20px + 10px)", (30.0, 0.0)),
+        ("left: var(--x)", (20.0, 0.0)),
+        ("right: calc(var(--x) + 10px)", (320.0, 0.0)),
+        ("top: calc(var(--x) + 10px)", (0.0, 30.0)),
+        ("inset-inline-start: calc(var(--x) + 10px)", (30.0, 0.0)),
+        ("left: calc(var(--missing) + 10px)", (0.0, 0.0)),
+    ];
+    for (inset, (x, y)) in cases {
+        let fixture = Fixture::new(
+            Element::new("root").children(vec![Element::new("pin")]),
+            &format!(
+                "root {{ display: block; position: relative; width: 400px; height: 300px; --x: 20px }}
+                 pin {{ display: block; position: absolute; width: 50px; height: 30px; {inset} }}"
+            ),
+        );
+        let mut store = fixture.box_tree();
+        let mut content = measurer();
+        let frame = lay_out(&mut store, &mut content, 400.0, 300.0);
+
+        let pin = device_box(&store, &frame, box_named(&store, &fixture, "pin"));
+        assert_eq!(
+            (pin.origin, pin.size.width),
+            (Point::new(DevicePx(x), DevicePx(y)), DevicePx(50.0)),
+            "`{inset}`"
+        );
+    }
+}
+
+#[test]
 fn a_scroll_container_clips_its_descendants_and_nothing_above_it() {
     let fixture = Fixture::new(
         Element::new("root").children(vec![

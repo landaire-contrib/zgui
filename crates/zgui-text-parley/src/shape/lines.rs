@@ -1,10 +1,68 @@
 //! Reading the line boxes out of a broken layout.
 
+use parley::{BreakReason, IndentOptions};
 use smallvec::SmallVec;
 use zgui_geom::{CssPx, Point, Size};
 use zgui_text::{BrokenParagraph, InlineBoxPlacement, LineGeometry, TextGeometry};
 
 use crate::shape::brush::SlotBrush;
+
+/// What places the start of each line before alignment.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Starts {
+    /// The text indent.
+    pub(crate) indent: f32,
+    /// Which lines take the indent.
+    pub(crate) options: IndentOptions,
+    /// The width the paragraph was broken into, if it has one.
+    pub(crate) max_advance: Option<f32>,
+}
+
+impl Starts {
+    /// The inset of each line of `layout` before alignment, in line order. See
+    /// [`LineGeometry::inset`].
+    ///
+    /// A float on the start side of a right-to-left line moves the end of the line's band, which
+    /// is the engine's maximum inline coordinate.
+    fn insets(self, layout: &parley::Layout<SlotBrush>) -> impl Iterator<Item = f32> + '_ {
+        let is_rtl = layout.is_rtl();
+        let mut previous = None;
+        layout.lines().enumerate().map(move |(index, line)| {
+            let indent = line_indent(index, previous, self.indent, self.options);
+            previous = Some(line.break_reason());
+            let metrics = line.metrics();
+            let band = if is_rtl {
+                self.max_advance
+                    .map_or(0.0, |width| (width - metrics.inline_max_coord).max(0.0))
+            } else {
+                metrics.inline_min_coord
+            };
+            band + indent
+        })
+    }
+}
+
+/// The indent the engine gives the line at `index`, after a line that ended for `previous`.
+///
+/// The first line takes the indent. With `each_line`, each line after a forced break takes it too.
+/// `hanging` gives it to the other lines.
+pub(crate) fn line_indent(
+    index: usize,
+    previous: Option<BreakReason>,
+    indent: f32,
+    options: IndentOptions,
+) -> f32 {
+    let scope = if options.each_line {
+        index == 0 || previous == Some(BreakReason::Explicit)
+    } else {
+        index == 0
+    };
+    if scope != options.hanging {
+        indent
+    } else {
+        0.0
+    }
+}
 
 /// Where a line starts, with a negative leading kept.
 ///
@@ -48,11 +106,12 @@ pub(crate) fn read(
     layout: &parley::Layout<SlotBrush>,
     has_boxes: bool,
     prefix: usize,
+    starts: Starts,
 ) -> BrokenParagraph {
     let mut lines = Vec::with_capacity(layout.len());
     let mut boxes: SmallVec<[InlineBoxPlacement; 2]> = SmallVec::new();
-    for (index, line) in layout.lines().enumerate() {
-        lines.push(line_box(&line, prefix));
+    for ((index, line), inset) in layout.lines().enumerate().zip(starts.insets(layout)) {
+        lines.push(line_box(&line, prefix, inset));
         if has_boxes {
             collect_boxes(&line, index, &mut boxes);
         }
@@ -68,7 +127,7 @@ pub(crate) fn read(
 }
 
 /// One line's box, in the caller's string.
-fn line_box(line: &parley::Line<'_, SlotBrush>, prefix: usize) -> LineGeometry {
+fn line_box(line: &parley::Line<'_, SlotBrush>, prefix: usize, inset: f32) -> LineGeometry {
     let metrics = line.metrics();
     LineGeometry {
         text: without_prefix(line.text_range(), prefix),
@@ -78,6 +137,7 @@ fn line_box(line: &parley::Line<'_, SlotBrush>, prefix: usize) -> LineGeometry {
         width: CssPx(metrics.advance),
         trailing: CssPx(metrics.trailing_whitespace),
         offset: CssPx(metrics.offset + metrics.inline_min_coord),
+        inset: CssPx(inset),
     }
 }
 
@@ -111,6 +171,7 @@ pub(crate) fn unchanged(
     items: &[u32],
     has_boxes: bool,
     prefix: usize,
+    starts: Starts,
 ) -> bool {
     let geometry = &last.geometry;
     if geometry.lines.len() != layout.len()
@@ -124,10 +185,11 @@ pub(crate) fn unchanged(
     }
     layout
         .lines()
+        .zip(starts.insets(layout))
         .zip(&geometry.lines)
         .zip(items)
-        .all(|((line, kept), &count)| {
-            same_line(&line_box(&line, prefix), kept)
+        .all(|(((line, inset), kept), &count)| {
+            same_line(&line_box(&line, prefix, inset), kept)
                 && u32::try_from(line.len()).ok() == Some(count)
         })
 }
@@ -140,6 +202,7 @@ fn same_line(a: &LineGeometry, b: &LineGeometry) -> bool {
         && same_bits(a.height, b.height)
         && same_bits(a.width, b.width)
         && same_bits(a.offset, b.offset)
+        && same_bits(a.inset, b.inset)
 }
 
 /// Whether two lengths are equal bit for bit, which tells `0.0` from `-0.0`.

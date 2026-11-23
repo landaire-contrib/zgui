@@ -42,6 +42,9 @@ pub struct LineBox {
     pub hanging: f32,
     /// How far in from the context's start edge the content begins.
     pub offset: f32,
+    /// How far in from the context's start edge the line begins before alignment, in the
+    /// context's own direction.
+    pub inset: f32,
     /// Where the line is cut off, when it reaches past its box and the box marks the cut.
     ///
     /// Absent for every line that fits, which is nearly all of them, and absent for a box whose
@@ -106,6 +109,7 @@ pub fn compute(
                 0.0
             },
             offset: line.offset.0,
+            inset: line.inset.0,
             ellipsis: None,
         });
         top += extents.height();
@@ -146,17 +150,14 @@ pub fn height(lines: &[LineBox]) -> f32 {
     lines.iter().map(LineBox::height).sum()
 }
 
-/// The width the lines together occupy, measured from the context's left edge.
+/// The width the lines together need, measured from the context's start edge.
 ///
-/// The white space that hangs at the end of a line is left out. In a right-to-left paragraph it
-/// hangs past the left edge, so the right ends of its lines include all of their content.
-pub fn width(lines: &[LineBox], is_rtl: bool) -> f32 {
+/// Alignment is left out: it only places a line inside the width the context already has. The
+/// white space that hangs at the end of a line is left out too.
+pub fn width(lines: &[LineBox]) -> f32 {
     lines
         .iter()
-        .map(|line| {
-            let hanging = if is_rtl { 0.0 } else { line.hanging };
-            line.offset + line.width - hanging
-        })
+        .map(|line| line.inset + line.width - line.hanging)
         .fold(0.0_f32, f32::max)
 }
 
@@ -201,6 +202,7 @@ mod tests {
                         width: CssPx(40.0),
                         trailing: CssPx(0.0),
                         offset: CssPx(0.0),
+                        inset: CssPx(0.0),
                     },
                     LineGeometry {
                         text: 5..9,
@@ -210,6 +212,7 @@ mod tests {
                         width: CssPx(30.0),
                         trailing: CssPx(0.0),
                         offset: CssPx(0.0),
+                        inset: CssPx(0.0),
                     },
                 ],
                 size: Size::<CssPx, Css>::new(CssPx(40.0), CssPx(20.0)),
@@ -263,23 +266,29 @@ mod tests {
 
         let wrapping = compute(&broken, &[run(WrapMode::Wrap)], &[], &strut(), &[], &[]);
         assert_eq!(wrapping[0].hanging, 8.0);
-        assert_eq!(
-            width(&wrapping, false),
-            32.0,
-            "the space hangs past the right edge"
-        );
-        assert_eq!(
-            width(&wrapping, true),
-            40.0,
-            "a right-to-left line hangs its space past the left edge"
-        );
+        assert_eq!(width(&wrapping), 32.0, "the space hangs past the end edge");
 
         let preformatted = compute(&broken, &[run(WrapMode::NoWrap)], &[], &strut(), &[], &[]);
         assert_eq!(
-            width(&preformatted, false),
+            width(&preformatted),
             40.0,
             "the spaces of a line that may not wrap take up room"
         );
+    }
+
+    #[test]
+    fn alignment_adds_nothing_to_the_width_and_an_indent_does() {
+        use std::sync::Arc;
+
+        let mut broken = broken();
+        let geometry = Arc::make_mut(&mut broken.geometry);
+        // Both lines centered in 100 px, the first one indented by 6 px.
+        geometry.lines[0].offset = CssPx(33.0);
+        geometry.lines[0].inset = CssPx(6.0);
+        geometry.lines[1].offset = CssPx(35.0);
+
+        let lines = compute(&broken, &[], &[], &strut(), &[], &[]);
+        assert_eq!(width(&lines), 46.0);
     }
 
     #[test]

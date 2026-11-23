@@ -103,16 +103,21 @@ pub(crate) fn break_lines(
     // the glyphs again here, so painting reads the new break. The reported lines and box
     // placements are kept when they are equal bit for bit, which saves the walk over every glyph
     // that placing the boxes costs.
+    let starts = lines::Starts {
+        indent: indent.0,
+        options,
+        max_advance,
+    };
     let kept = !banded
         && !justified
         && !boxes_moved
         && !live.items.is_empty()
-        && lines::unchanged(layout, &engine.last, &live.items, has_boxes, prefix);
+        && lines::unchanged(layout, &engine.last, &live.items, has_boxes, prefix, starts);
     let broken = if kept {
         counter::bump(Counter::TextLinesKept);
         engine.last.clone()
     } else {
-        let broken = lines::read(layout, has_boxes, prefix);
+        let broken = lines::read(layout, has_boxes, prefix, starts);
         engine.last = broken.clone();
         broken
     };

@@ -46,6 +46,7 @@ mod tests {
                 width: 40.0,
                 hanging: 0.0,
                 offset: 0.0,
+                inset: 0.0,
                 ellipsis: None,
             },
             LineBox {
@@ -62,6 +63,7 @@ mod tests {
                 width: 30.0,
                 hanging: 0.0,
                 offset: 0.0,
+                inset: 0.0,
                 ellipsis: None,
             },
         ]

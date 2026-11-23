@@ -418,13 +418,15 @@ fn held(
             .last()
             .map_or(cluster, |run| run.cluster_range().end);
         let on_line = line.len() - line.runs().count();
-        // The engine's own choice of the lines that take the indent.
-        let scope = if terms.each_line {
-            index == 0 || previous == Some(BreakReason::Explicit)
-        } else {
-            index == 0
-        };
-        let line_indent = if scope != terms.hanging { indent } else { 0.0 };
+        let line_indent = crate::shape::lines::line_indent(
+            index,
+            previous,
+            indent,
+            IndentOptions {
+                each_line: terms.each_line,
+                hanging: terms.hanging,
+            },
+        );
         let limit = width - line_indent;
         let reason = line.break_reason();
 

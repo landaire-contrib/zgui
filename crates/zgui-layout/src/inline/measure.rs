@@ -299,7 +299,7 @@ pub(crate) fn compute<C: MeasureContent>(
         );
         let measured = Measured {
             size: Size {
-                width: lines::width(&computed, broken.geometry.is_rtl),
+                width: lines_width(&computed, broken.geometry.is_rtl, ask.constraint()),
                 height: lines::height(&computed),
             },
             first_baseline: computed.first().map(LineBox::baseline),
@@ -378,8 +378,12 @@ pub(crate) fn compute<C: MeasureContent>(
             break;
         }
         let (top, left) = content_origin(tree, key);
-        let width = available.0;
-        let next = floats::bands(block, top, left, width, &computed);
+        // A banded line fits with the same tolerance as a line without a band.
+        let slack = match ask.constraint() {
+            Constraint::Definite(_) => BREAK_TOLERANCE,
+            Constraint::MinContent | Constraint::MaxContent => 0.0,
+        };
+        let next = floats::bands(block, top, left, available.0, slack, &computed);
         if !floats::differ(&bands, &next) {
             break;
         }
@@ -451,7 +455,7 @@ pub(crate) fn compute<C: MeasureContent>(
     };
     let measured = Measured {
         size: Size {
-            width: lines::width(&resolution.lines, resolution.is_rtl),
+            width: lines_width(&resolution.lines, resolution.is_rtl, ask.constraint()),
             height: lines::height(&resolution.lines),
         },
         first_baseline: resolution.first_baseline(),
@@ -465,6 +469,18 @@ pub(crate) fn compute<C: MeasureContent>(
         tree.set_inline_resolution(key, resolution);
     }
     measured
+}
+
+/// The width `lines` give their box.
+///
+/// A right-to-left line that overflows the width it was broken into reaches past the left edge,
+/// so the lines reach no further right than that width.
+fn lines_width(lines: &[LineBox], is_rtl: bool, constraint: Constraint) -> f32 {
+    let width = lines::width(lines);
+    match constraint {
+        Constraint::Definite(limit) if is_rtl => width.min(limit),
+        Constraint::Definite(_) | Constraint::MinContent | Constraint::MaxContent => width,
+    }
 }
 
 /// Shapes the paragraph of the context `key`, or finds it shaped.

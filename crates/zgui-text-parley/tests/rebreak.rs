@@ -378,13 +378,17 @@ fn bands(width: f32) -> [LineBand; 2] {
     ]
 }
 
-/// Reads the line boxes and box placements out of the engine's laid-out form.
+/// Reads the line boxes and box placements out of the engine's laid-out form, broken for
+/// `request`.
 ///
 /// Written here against the engine's public reading interface, so it shares nothing with the
 /// reading the shaper does and may keep.
-fn read(engine: &ShapedLayout, has_boxes: bool) -> BrokenParagraph {
+fn read(engine: &ShapedLayout, has_boxes: bool, request: &BreakRequest<'_>) -> BrokenParagraph {
     let layout = engine.layout().expect("a live form");
     let prefix = engine.prefix;
+    let indent = request.indent().0;
+    let options = request.paragraph.indent;
+    let mut previous = None;
     let mut lines = Vec::new();
     let mut boxes: SmallVec<[InlineBoxPlacement; 2]> = SmallVec::new();
     for (index, line) in layout.lines().enumerate() {
@@ -393,6 +397,23 @@ fn read(engine: &ShapedLayout, has_boxes: bool) -> BrokenParagraph {
         let descent = metrics.descent.round();
         let above = ((metrics.line_height - (ascent + descent)) * 0.5).floor();
         let range = line.text_range();
+        // The engine indents the first line and, with `each-line`, each line after a forced
+        // break. `hanging` indents the other lines.
+        let indented =
+            index == 0 || (options.each_line && previous == Some(parley::BreakReason::Explicit));
+        let line_indent = if indented != options.hanging {
+            indent
+        } else {
+            0.0
+        };
+        previous = Some(line.break_reason());
+        let band = if layout.is_rtl() {
+            request
+                .max_advance
+                .map_or(0.0, |width| (width.0 - metrics.inline_max_coord).max(0.0))
+        } else {
+            metrics.inline_min_coord
+        };
         lines.push(LineGeometry {
             text: range.start.saturating_sub(prefix)..range.end.saturating_sub(prefix),
             top: CssPx(metrics.baseline - ascent - above),
@@ -401,6 +422,7 @@ fn read(engine: &ShapedLayout, has_boxes: bool) -> BrokenParagraph {
             width: CssPx(metrics.advance),
             trailing: CssPx(metrics.trailing_whitespace),
             offset: CssPx(metrics.offset + metrics.inline_min_coord),
+            inset: CssPx(band + line_indent),
         });
         if has_boxes {
             for item in line.items() {
@@ -487,7 +509,7 @@ fn check(case: &Case) -> Result<(), TestCaseError> {
         if moved {
             prop_assert_eq!(
                 print(&answer),
-                print(&read(&shaped.engine, has_boxes)),
+                print(&read(&shaped.engine, has_boxes, &request)),
                 "the answer differs from a reading of the new break (kept: {})",
                 kept
             );
@@ -500,7 +522,7 @@ fn check(case: &Case) -> Result<(), TestCaseError> {
         cold.break_lines(&mut fresh, &request);
         prop_assert_eq!(
             print(&answer),
-            print(&read(&fresh.engine, has_boxes)),
+            print(&read(&fresh.engine, has_boxes, &request)),
             "the answer differs from a fresh break (kept: {})",
             kept
         );
@@ -708,7 +730,7 @@ fn check_edges(case: &Case) -> Result<(), TestCaseError> {
         cold.break_lines(&mut fresh, &request);
         prop_assert_eq!(
             print(&answer),
-            print(&read(&fresh.engine, has_boxes)),
+            print(&read(&fresh.engine, has_boxes, &request)),
             "the answer at {} differs from a fresh break",
             width
         );
