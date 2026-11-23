@@ -85,6 +85,56 @@ impl<T: Valued> Element<T> {
     pub fn placeholder<M>(self, text: impl IntoReactiveValue<Option<String>, M>) -> Self {
         self.attribute(AttrName::new("placeholder"), text)
     }
+
+    /// What the return key of an on-screen keyboard says, as HTML's `enterkeyhint`: `enter`,
+    /// `done`, `go`, `next`, `previous`, `search` or `send`.
+    ///
+    /// ```
+    /// zgui_elements::field().enter_key_hint("go");
+    /// ```
+    #[must_use]
+    pub fn enter_key_hint<M>(self, hint: impl IntoReactiveValue<Option<String>, M>) -> Self {
+        self.attribute(AttrName::new("enterkeyhint"), hint)
+    }
+
+    /// Whether an on-screen keyboard corrects and predicts words. Sets the attribute
+    /// `autocorrect` to `on` or `off`. A secure field gets no correction whatever this says.
+    ///
+    /// ```
+    /// zgui_elements::field().autocorrect(false);
+    /// ```
+    #[must_use]
+    pub fn autocorrect<M>(self, on: impl IntoReactiveValue<bool, M>) -> Self {
+        let value = |on: bool| Some(if on { "on" } else { "off" }.to_owned());
+        let value = match on.into_reactive_value() {
+            ReactiveValue::Constant(on) => ReactiveValue::Constant(value(on)),
+            ReactiveValue::Dynamic(on) => ReactiveValue::derive(move || value(on())),
+        };
+        self.attribute(AttrName::new("autocorrect"), value)
+    }
+
+    /// Which letters an on-screen keyboard capitalizes by itself, as HTML's `autocapitalize`:
+    /// `none`, `sentences`, `words` or `characters`. A secure field gets none whatever this says.
+    ///
+    /// ```
+    /// zgui_elements::field().autocapitalize("none");
+    /// ```
+    #[must_use]
+    pub fn autocapitalize<M>(self, letters: impl IntoReactiveValue<Option<String>, M>) -> Self {
+        self.attribute(AttrName::new("autocapitalize"), letters)
+    }
+
+    /// What the value is, so the platform can offer to fill it in, as HTML's `autocomplete`:
+    /// `username`, `current-password`, `new-password`, `one-time-code`, `email`, `name`, `tel`
+    /// or `url`.
+    ///
+    /// ```
+    /// zgui_elements::field().secure(true).autocomplete("current-password");
+    /// ```
+    #[must_use]
+    pub fn autocomplete<M>(self, content: impl IntoReactiveValue<Option<String>, M>) -> Self {
+        self.attribute(AttrName::new("autocomplete"), content)
+    }
 }
 
 impl<T: Operable> Element<T> {

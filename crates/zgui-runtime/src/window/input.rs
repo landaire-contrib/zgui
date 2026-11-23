@@ -687,29 +687,39 @@ impl Window {
     ///
     /// The area is in the platform's CSS pixels, which do not include the zoom.
     fn caret_area(&self, node: zgui_dom::NodeKey) -> Option<zgui_platform::TextInput> {
+        let (secure, hints) = {
+            let document = self.document.borrow();
+            (
+                self.editors.is_secure(node)
+                    || crate::editing::Editors::is_secure_element(&document, node),
+                crate::editing::Editors::hints(&document, node),
+            )
+        };
         // A secure field asks the input method for a password purpose: no prediction, no learning.
-        let purpose = if self.editors.is_secure(node) {
+        let purpose = if secure {
             zgui_platform::TextInputPurpose::Password
         } else {
             zgui_platform::TextInputPurpose::Normal
         };
         if let Some(caret) = self.caret_rect() {
-            return Some(zgui_input::ime::caret_area(
+            let area = zgui_input::ime::caret_area(
                 caret.origin,
                 caret.size.height,
                 zgui_geom::Scale::new(self.platform_scale),
                 purpose,
-            ));
+            );
+            return Some(area.with_hints(hints));
         }
         let layout = self.layout.borrow();
         let first = *layout.boxes_of(node).first()?;
         let box_ = layout.layout_of(first)?.border_box();
-        Some(zgui_input::ime::caret_area(
+        let area = zgui_input::ime::caret_area(
             box_.origin,
             box_.size.height,
             zgui_geom::Scale::new(self.platform_scale),
             purpose,
-        ))
+        );
+        Some(area.with_hints(hints))
     }
 
     /// Tells the surface whether text is being typed, and where.

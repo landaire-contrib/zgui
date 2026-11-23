@@ -231,6 +231,34 @@ impl Editors {
             && zgui_dom::Node::new(record).attr(SECURE).is_some()
     }
 
+    /// How an element's keyboard behaves, from the attributes it declares.
+    ///
+    /// `enterkeyhint`, `autocorrect`, `autocapitalize` and `autocomplete` take the values HTML
+    /// gives them. A value that names nothing leaves that part to the platform.
+    pub(crate) fn hints(document: &Document, node: NodeKey) -> zgui_platform::TextInputHints {
+        let multi_line = Self::takes_line_breaks(document, node);
+        let Some(index) = document.store().index_of(node) else {
+            return zgui_platform::TextInputHints::default();
+        };
+        let element = zgui_dom::Node::new(document.store().core(index));
+        let attribute = |name: &str| element.attr(name).map(|value| value.as_str());
+
+        zgui_platform::TextInputHints {
+            multi_line,
+            enter_key: attribute("enterkeyhint").and_then(zgui_platform::EnterKeyHint::parse),
+            autocorrect: attribute("autocorrect").and_then(|value| {
+                match value.trim().to_ascii_lowercase().as_str() {
+                    "" | "on" => Some(true),
+                    "off" => Some(false),
+                    _ => None,
+                }
+            }),
+            autocapitalize: attribute("autocapitalize")
+                .and_then(zgui_platform::Autocapitalize::parse),
+            content_type: attribute("autocomplete").and_then(zgui_platform::TextContentType::parse),
+        }
+    }
+
     /// Whether an element's model shows its value masked.
     pub fn is_secure(&self, node: NodeKey) -> bool {
         self.attached

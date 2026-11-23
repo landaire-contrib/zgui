@@ -17,11 +17,11 @@ pub fn caret_area(
     purpose: TextInputPurpose,
 ) -> TextInput {
     let factor = scale.get().max(f32::MIN_POSITIVE);
-    TextInput {
-        caret_origin: Point::new(CssPx(origin.x.0 / factor), CssPx(origin.y.0 / factor)),
-        caret_size: Size::<CssPx, Css>::new(CARET_WIDTH, CssPx(height.0 / factor)),
-        purpose,
-    }
+    TextInput::new(
+        Point::new(CssPx(origin.x.0 / factor), CssPx(origin.y.0 / factor)),
+        Size::<CssPx, Css>::new(CARET_WIDTH, CssPx(height.0 / factor)),
+    )
+    .with_purpose(purpose)
 }
 
 /// How wide the caret is reported as being.
