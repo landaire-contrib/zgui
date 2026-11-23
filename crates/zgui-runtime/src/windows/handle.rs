@@ -652,6 +652,11 @@ impl WindowHandle {
         self.act(|surface| surface.set_cursor(cursor));
     }
 
+    /// Tells the window which element under the pointer the platform pointer takes its shape from.
+    pub(crate) fn set_pointer_target(&self, target: Option<zgui_platform::PointerTarget>) {
+        self.act(|surface| surface.set_pointer_target(target));
+    }
+
     /// Asks for the keyboard.
     ///
     /// A desktop is free to refuse: taking focus from what somebody is typing into is what

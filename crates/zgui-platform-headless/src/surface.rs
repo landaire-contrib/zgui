@@ -8,8 +8,8 @@ use accesskit::TreeUpdate;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Edges, Rect, Size};
 use zgui_platform::{
     CursorStyle, DecorationSource, Decorations, FullscreenMode, InputSerial, LayerPatch,
-    LayerPlacement, PopupPlacement, Surface, SurfaceAttributes, SurfaceId, SurfaceRole, TextInput,
-    TextSnapshot, Unsupported,
+    LayerPlacement, PointerTarget, PopupPlacement, Surface, SurfaceAttributes, SurfaceId,
+    SurfaceRole, TextInput, TextSnapshot, Unsupported,
 };
 
 /// How many accessibility nodes the surface keeps across the updates it retains.
@@ -118,6 +118,8 @@ pub struct OffscreenSurface {
     /// cannot read what was said cannot tell a window that honours `cursor` from one that ignores
     /// it.
     cursor_log: Mutex<Vec<CursorStyle>>,
+    /// Every pointer target the surface was given, in order.
+    pointer_target_log: Mutex<Vec<Option<PointerTarget>>>,
     /// Every change of shell placement the surface accepted, in order.
     layer_log: Mutex<Vec<LayerPatch>>,
     /// Every input region the surface was given, in order.
@@ -170,6 +172,7 @@ impl OffscreenSurface {
             text_snapshot_listener: AtomicBool::new(false),
             text_snapshot: Mutex::new(None),
             cursor_log: Mutex::new(Vec::new()),
+            pointer_target_log: Mutex::new(Vec::new()),
             layer_log: Mutex::new(Vec::new()),
             input_region_log: Mutex::new(Vec::new()),
             opaque_region_log: Mutex::new(Vec::new()),
@@ -352,6 +355,24 @@ impl OffscreenSurface {
             .expect("the log is not poisoned")
             .last()
             .copied()
+    }
+
+    /// Every pointer target the surface was given, in the order it was given.
+    pub fn pointer_target_log(&self) -> Vec<Option<PointerTarget>> {
+        self.pointer_target_log
+            .lock()
+            .expect("the log is not poisoned")
+            .clone()
+    }
+
+    /// The pointer target the surface was last given. `None` when it was given none, or no target.
+    pub fn last_pointer_target(&self) -> Option<PointerTarget> {
+        self.pointer_target_log
+            .lock()
+            .expect("the log is not poisoned")
+            .last()
+            .copied()
+            .flatten()
     }
 
     /// Every change of shell placement the surface accepted, in the order it was asked for.
@@ -569,6 +590,17 @@ impl Surface for OffscreenSurface {
             .lock()
             .expect("the log is not poisoned")
             .push(cursor);
+    }
+
+    fn takes_pointer_target(&self) -> bool {
+        true
+    }
+
+    fn set_pointer_target(&self, target: Option<PointerTarget>) {
+        self.pointer_target_log
+            .lock()
+            .expect("the log is not poisoned")
+            .push(target);
     }
 
     fn set_layer_placement(&self, patch: &LayerPatch) -> Result<(), Unsupported> {

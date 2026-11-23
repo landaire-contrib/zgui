@@ -616,6 +616,10 @@ impl Window {
             self.painter.renote_chunks(&mut self.scene);
         }
 
+        // After the renderer, because the area is where the element was drawn, and a hovered
+        // element that layout moved under a still pointer moves the area.
+        self.update_pointer_target();
+
         // After the renderer, and before the arenas are recycled. After, because what a screen
         // reader is told about where a control is has to be where it was drawn rather than where
         // it was about to be; before, because a removal's parent is re-projected out of records

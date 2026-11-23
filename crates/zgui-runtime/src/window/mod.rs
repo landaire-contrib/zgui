@@ -18,6 +18,7 @@ pub mod frame;
 pub mod input;
 pub mod observe;
 mod pan;
+mod pointer_target;
 pub mod pointer_text;
 pub mod present;
 pub mod probe;
@@ -604,6 +605,8 @@ pub struct Window {
     /// for nothing. The pointer sits still over one element for most of a session, so the answer is
     /// the same on nearly every frame.
     cursor: zgui_platform::CursorStyle,
+    /// The pointer target the surface was last given, held for the same reason as `cursor`.
+    pointer_target: Option<zgui_platform::PointerTarget>,
     /// The document revision the last completed frame serviced.
     ///
     /// The reactive flush is thread-wide, so a frame in *another* window runs effects that write
@@ -886,6 +889,7 @@ impl Window {
             serviced_revision: Cell::new(0),
             handle,
             cursor: zgui_platform::CursorStyle::Default,
+            pointer_target: None,
         }
     }
 

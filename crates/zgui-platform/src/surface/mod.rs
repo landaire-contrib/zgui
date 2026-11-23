@@ -7,6 +7,7 @@ mod event;
 mod gpu;
 mod icon;
 mod id;
+mod pointer_target;
 mod role;
 mod serial;
 mod subpixel;
@@ -23,6 +24,7 @@ pub use crate::surface::event::{CloseReason, SurfaceEvent};
 pub use crate::surface::gpu::GpuSurface;
 pub use crate::surface::icon::{BadIcon, WindowIcon};
 pub use crate::surface::id::SurfaceId;
+pub use crate::surface::pointer_target::{PointerShape, PointerTarget, PointerTargetId};
 pub use crate::surface::role::{
     Anchor, Constrain, ExclusiveZone, KeyboardInteractivity, Layer, LayerPatch, LayerPlacement,
     PopupPlacement, SurfaceRole,
@@ -334,6 +336,23 @@ pub trait Surface: Send + Sync + 'static {
 
     /// Sets what the pointer looks like over this surface.
     fn set_cursor(&self, cursor: CursorStyle);
+
+    /// Whether the platform pointer changes its shape to fit the element under it.
+    ///
+    /// A surface that answers `true` takes [`Surface::set_pointer_target`]. The default answers
+    /// `false`, and the caller then finds no target.
+    fn takes_pointer_target(&self) -> bool {
+        false
+    }
+
+    /// Tells the platform which element is under the hovering pointer, for a platform pointer that
+    /// changes its shape to fit the element.
+    ///
+    /// `None` when the pointer is over no element that changes the pointer. The default ignores
+    /// the target, which is correct for a platform whose pointer keeps its shape.
+    fn set_pointer_target(&self, target: Option<PointerTarget>) {
+        let _ = target;
+    }
 
     /// Changes where a shell layer sits and what it claims, for a surface that is one.
     ///

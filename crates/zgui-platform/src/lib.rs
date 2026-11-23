@@ -103,10 +103,10 @@ pub use crate::surface::{
     Anchor, Autocapitalize, BadIcon, CaretStop, CloseReason, ComposeAhead, Constrain, CursorStyle,
     DecorationSource, Decorations, DragEvent, EnterKeyHint, ExclusiveZone, FullscreenMode,
     GpuSurface, InputSerial, KeyboardInteractivity, Layer, LayerPatch, LayerPlacement,
-    PopupPlacement, PresentPacing, PresentationTiming, ResizeEdge, SubpixelLayout, Surface,
-    SurfaceAttributes, SurfaceEvent, SurfaceId, SurfaceRole, TextContentType, TextInput,
-    TextInputHints, TextInputPurpose, TextSelection, TextSnapshot, TitleButtons, Watchdog,
-    WindowIcon, WindowLevel,
+    PointerShape, PointerTarget, PointerTargetId, PopupPlacement, PresentPacing,
+    PresentationTiming, ResizeEdge, SubpixelLayout, Surface, SurfaceAttributes, SurfaceEvent,
+    SurfaceId, SurfaceRole, TextContentType, TextInput, TextInputHints, TextInputPurpose,
+    TextSelection, TextSnapshot, TitleButtons, Watchdog, WindowIcon, WindowLevel,
 };
 pub use crate::theme::ColorScheme;
 pub use crate::waker::Waker;
