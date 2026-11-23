@@ -1,4 +1,9 @@
 //! One contact, from touch-down to lift, and the speed it left with.
+//!
+//! The speed follows UIScrollView, which carries on at a speed lower than its pan recogniser
+//! reports, because a finger slows down as it lifts. The weights of the last three steps are the
+//! ones Flutter measured to match it (`IOSScrollViewFlingVelocityTracker`): the oldest of the
+//! three counts most and the newest least.
 
 use core::time::Duration;
 
@@ -19,11 +24,31 @@ pub struct Movement {
     pub began_panning: bool,
 }
 
-/// The window over which a lift's speed is measured.
+/// How much each of the last three steps counts in a speed, newest first.
+const WEIGHTS: [f32; 3] = [0.05, 0.35, 0.6];
+
+/// A contact that has not moved for longer than this has stopped.
 ///
-/// Short enough that it reads the end of the gesture rather than its average — a finger that
-/// dragged slowly and then flicked has flicked — and long enough to survive one stray sample.
-const VELOCITY_WINDOW: Duration = Duration::from_millis(100);
+/// A finger that stops and then lifts has no speed left, whatever it moved at before it stopped.
+const AT_REST: Duration = Duration::from_millis(40);
+
+/// How many recent positions a contact keeps: one more than the steps in a speed.
+const SAMPLES: usize = WEIGHTS.len() + 1;
+
+/// Two positions closer together in time than this are one position.
+///
+/// A platform that delivers a batch of moves at once stamps them nearly together, and a step over
+/// no time reads as a speed of thousands of pixels per second.
+const TOGETHER: Duration = Duration::from_millis(1);
+
+/// Where a contact was, and when.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Sample {
+    /// The position.
+    at: Point<CssPx, Css>,
+    /// When it was there.
+    when: Timestamp,
+}
 
 /// One contact that is down.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,8 +59,8 @@ pub struct Track {
     at: Point<CssPx, Css>,
     /// When it went down.
     started: Timestamp,
-    /// Where it was at the start of the velocity window, and when that was.
-    reference: (Point<CssPx, Css>, Timestamp),
+    /// Its most recent positions, newest first.
+    samples: [Option<Sample>; SAMPLES],
     /// Whether it has travelled past the slop.
     panning: bool,
     /// Whether it has already produced something that rules a tap out.
@@ -47,11 +72,13 @@ pub struct Track {
 impl Track {
     /// A contact that has just gone down at `at`.
     pub fn started(at: Point<CssPx, Css>, when: Timestamp) -> Self {
+        let mut samples = [None; SAMPLES];
+        samples[0] = Some(Sample { at, when });
         Self {
             origin: at,
             at,
             started: when,
-            reference: (at, when),
+            samples,
             panning: false,
             spent: false,
             claimed: false,
@@ -92,12 +119,8 @@ impl Track {
     pub fn moved(&mut self, to: Point<CssPx, Css>, when: Timestamp) -> Movement {
         let by = Size::new(CssPx(to.x.0 - self.at.x.0), CssPx(to.y.0 - self.at.y.0));
         self.at = to;
-        // Measured before the window moves on, or the move that starts a new window reads as a
-        // contact at rest.
+        self.passed(to, when);
         let velocity = self.velocity(when);
-        if when.saturating_since(self.reference.1) > VELOCITY_WINDOW {
-            self.reference = (to, when);
-        }
         let began_panning = !self.panning && !self.claimed && travelled(self.origin, to);
         if began_panning {
             self.panning = true;
@@ -107,6 +130,28 @@ impl Track {
             by,
             velocity,
             began_panning,
+        }
+    }
+
+    /// Records that it passed through `at` on its way to its next move, which counts towards its
+    /// speed only.
+    ///
+    /// A queue that folds several moves into one keeps the positions of the folded ones, and each
+    /// is a step of the speed.
+    pub fn passed(&mut self, at: Point<CssPx, Css>, when: Timestamp) {
+        // A position that arrives together with the newest sample takes its place and keeps its
+        // stamp, so a fast run of moves still steps on at least once a millisecond.
+        match self.samples[0] {
+            Some(newest) if when.saturating_since(newest.when) < TOGETHER => {
+                self.samples[0] = Some(Sample {
+                    at,
+                    when: newest.when,
+                });
+            }
+            _ => {
+                self.samples.rotate_right(1);
+                self.samples[0] = Some(Sample { at, when });
+            }
         }
     }
 
@@ -128,16 +173,36 @@ impl Track {
             .then(|| LONG_PRESS.saturating_sub(now.saturating_since(self.started)))
     }
 
-    /// How fast it is travelling, measured over the window ending now.
+    /// How fast it is travelling at `now`, from its last three steps.
+    ///
+    /// A step that is missing, or that took no time, counts as no speed. A step that took longer
+    /// than 40 ms spans a stop, and it and the steps before it count as no speed.
     pub fn velocity(self, now: Timestamp) -> Velocity {
-        let elapsed = now.saturating_since(self.reference.1).as_secs_f32();
-        if elapsed <= 0.0 {
+        let Some(newest) = self.samples[0] else {
+            return Velocity::default();
+        };
+        if now.saturating_since(newest.when) > AT_REST {
             return Velocity::default();
         }
-        Velocity {
-            x: (self.at.x.0 - self.reference.0.x.0) / elapsed,
-            y: (self.at.y.0 - self.reference.0.y.0) / elapsed,
+
+        let mut velocity = Velocity::default();
+        for (step, weight) in WEIGHTS.iter().enumerate() {
+            let (Some(end), Some(start)) = (self.samples[step], self.samples[step + 1]) else {
+                break;
+            };
+            let took = end.when.saturating_since(start.when);
+            if took > AT_REST {
+                break;
+            }
+            let seconds = took.as_secs_f32();
+            if seconds <= 0.0 {
+                continue;
+            }
+            velocity.x += weight * (end.at.x.0 - start.at.x.0) / seconds;
+            velocity.y += weight * (end.at.y.0 - start.at.y.0) / seconds;
         }
+
+        velocity
     }
 }
 
@@ -196,15 +261,50 @@ mod tests {
     }
 
     #[test]
-    fn a_move_that_starts_a_new_window_still_reports_the_speed() {
+    fn a_steady_finger_reads_its_speed() {
         let mut track = Track::started(at(0.0, 0.0), stamp(0));
-        track.moved(at(30.0, 0.0), stamp(60));
-        // Past the window, so this move becomes the new reference.
-        let moved = track.moved(at(60.0, 0.0), stamp(120));
+        let mut moved = track.moved(at(8.0, 0.0), stamp(16));
+        for step in 2..=6 {
+            moved = track.moved(at(step as f32 * 8.0, 0.0), stamp(step * 16));
+        }
         assert!(
             (moved.velocity.x - 500.0).abs() < 0.01 && moved.velocity.y == 0.0,
             "a finger travelling steadily read {:?}",
             moved.velocity
+        );
+    }
+
+    #[test]
+    fn moves_stamped_together_are_one_position() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        for step in 1..=3 {
+            track.moved(at(0.0, step as f32 * 10.0), stamp(step * 10));
+        }
+        // A batch of two moves in the same millisecond.
+        let micros = |micros: u64| Timestamp::from_origin(Duration::from_micros(micros));
+        track.moved(at(0.0, 35.0), micros(40_100));
+        track.moved(at(0.0, 40.0), micros(40_200));
+        let velocity = track.velocity(stamp(41));
+        assert!(
+            (velocity.y - 1000.0).abs() < 5.0,
+            "a finger at 1000 px/s read {} px/s",
+            velocity.y
+        );
+    }
+
+    #[test]
+    fn the_oldest_of_the_last_three_steps_counts_most() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        // Steps at 3000, 2000, 1000 and then 500 pixels per second.
+        track.moved(at(0.0, 30.0), stamp(10));
+        track.moved(at(0.0, 50.0), stamp(20));
+        track.moved(at(0.0, 60.0), stamp(30));
+        track.moved(at(0.0, 65.0), stamp(40));
+        let velocity = track.velocity(stamp(40));
+        let expected = 0.05 * 500.0 + 0.35 * 1000.0 + 0.6 * 2000.0;
+        assert!(
+            (velocity.y - expected).abs() < 0.01,
+            "read {velocity:?}, expected {expected}"
         );
     }
 
@@ -215,16 +315,45 @@ mod tests {
         for step in 1..=10 {
             track.moved(at(0.0, step as f32 * 5.0), stamp(step * 50));
         }
-        // Then 60 pixels in 30 milliseconds.
-        track.moved(at(0.0, 110.0), stamp(530));
-        let velocity = track.velocity(stamp(530));
-        let whole_gesture = 110.0 / 0.53;
+        // Then four steps of 20 pixels in 10 milliseconds each.
+        for step in 1..=4 {
+            track.moved(at(0.0, 50.0 + step as f32 * 20.0), stamp(500 + step * 10));
+        }
+        let velocity = track.velocity(stamp(540));
         assert!(
-            velocity.y > whole_gesture * 3.0,
-            "the average over the whole gesture is {whole_gesture} px/s and the flick read {}; a \
-             reading that averages the whole gesture cannot tell a flick from a slow drag that \
-             ended in one",
+            (velocity.y - 2000.0).abs() < 0.01,
+            "the flick read {} px/s; the slow drag before it counted",
             velocity.y
+        );
+    }
+
+    #[test]
+    fn a_finger_that_stops_and_twitches_before_it_lifts_has_no_speed() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        for step in 1..=3 {
+            track.moved(at(0.0, step as f32 * 20.0), stamp(step * 10));
+        }
+        // Held for 300 ms, then one pixel as it lifts.
+        track.moved(at(0.0, 61.0), stamp(330));
+        let velocity = track.velocity(stamp(330));
+        assert!(
+            velocity.y.abs() < 1.0,
+            "a finger that stopped read {} px/s",
+            velocity.y
+        );
+    }
+
+    #[test]
+    fn a_finger_that_stops_before_it_lifts_has_no_speed() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        for step in 1..=4 {
+            track.moved(at(0.0, step as f32 * 20.0), stamp(step * 10));
+        }
+        assert!(track.velocity(stamp(70)).y > 0.0, "held for 30 ms");
+        assert_eq!(
+            track.velocity(stamp(90)),
+            Velocity::default(),
+            "held for 50 ms"
         );
     }
 

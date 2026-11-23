@@ -29,7 +29,9 @@ use core::time::Duration;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use zgui_geom::{Css, CssPx, Point, Size};
-use zgui_vocab::{PointerAction, PointerEvent, PointerId, PointerKind, Timestamp, Velocity};
+use zgui_vocab::{
+    PointerAction, PointerEvent, PointerId, PointerKind, PointerSample, Timestamp, Velocity,
+};
 
 pub use crate::gesture::longpress::LONG_PRESS;
 pub use crate::gesture::pan::Track;
@@ -149,6 +151,19 @@ impl Gestures {
         self.contacts
             .values()
             .any(|track| track.may_become_long_press())
+    }
+
+    /// Records the positions a contact passed through before its next move, oldest first.
+    ///
+    /// A queue that folds several moves of one contact into one keeps the folded positions as
+    /// samples. They count towards the speed of the contact and produce no reading.
+    pub fn passed(&mut self, pointer: PointerId, samples: &[PointerSample]) {
+        let Some(track) = self.contacts.get_mut(&pointer) else {
+            return;
+        };
+        for sample in samples {
+            track.passed(sample.position, sample.timestamp);
+        }
     }
 
     /// Reads one pointer event, returning whatever it completed.
@@ -275,7 +290,9 @@ impl Gestures {
 #[cfg(test)]
 mod tests {
     use zgui_geom::{Css, CssPx, Point};
-    use zgui_vocab::{PointerAction, PointerEvent, PointerId, PointerKind, Timestamp};
+    use zgui_vocab::{
+        PointerAction, PointerEvent, PointerId, PointerKind, PointerSample, Timestamp,
+    };
 
     use super::{Gesture, Gestures};
 
@@ -310,6 +327,32 @@ mod tests {
         assert!(
             matches!(ended.as_slice(), [Gesture::PanEnd { .. }]),
             "a scroll that ends over a row must not also activate it: {ended:?}"
+        );
+    }
+
+    #[test]
+    fn the_positions_a_folded_move_stands_for_count_towards_the_speed_of_the_lift() {
+        let mut gestures = Gestures::new();
+        gestures.pointer(PointerAction::Pressed, &finger(1, 0.0, 0.0), stamp(0));
+        // Three moves of 20 pixels each 16 ms, folded into the fourth.
+        let folded: Vec<PointerSample> = (1..=3_u16)
+            .map(|step| PointerSample {
+                position: Point::new(CssPx(0.0), CssPx(f32::from(step) * 20.0)),
+                pressure: None,
+                timestamp: stamp(u64::from(step) * 16),
+            })
+            .collect();
+        gestures.passed(PointerId::new(1), &folded);
+        gestures.pointer(PointerAction::Moved, &finger(1, 0.0, 80.0), stamp(64));
+
+        let ended = gestures.pointer(PointerAction::Released, &finger(1, 0.0, 80.0), stamp(64));
+        let [Gesture::PanEnd { velocity, .. }] = ended.as_slice() else {
+            panic!("the lift ended no pan: {ended:?}");
+        };
+        assert!(
+            (velocity.y - 1250.0).abs() < 0.01,
+            "a finger at 1250 px/s lifted at {} px/s",
+            velocity.y
         );
     }
 
