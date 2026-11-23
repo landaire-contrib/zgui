@@ -1,5 +1,6 @@
 //! A stack of pages with a nav bar, which pushes and pops as iOS does.
 
+mod bar;
 mod error;
 mod page;
 mod path;
@@ -25,14 +26,12 @@ use zgui::reactive::RenderEffect;
 use zgui::reactive::StoredValue;
 use zgui::reactive::UnsyncCallback;
 use zgui::view;
-use zgui::view::AttrName;
 use zgui::view::CustomPropertyName;
 use zgui::view::For;
 use zgui::view::TimeoutHandle;
 use zgui::view::Timers;
-use zgui_ui_icons::prelude::*;
-use zgui_ui_icons::set::chevron::CHEVRON_LEFT;
 
+use crate::nav_stack::bar::NavBarRowProps;
 use crate::nav_stack::page::PageBar;
 use crate::nav_stack::page::PageCx;
 use crate::nav_stack::path::Entry;
@@ -54,6 +53,12 @@ pub(crate) const NAV_NAME: &str = "zui-nav-stack";
 /// A push slides the new page in from the trailing edge. The page below moves 30 percent of the
 /// width the other way and dims. A pop does the reverse. The bar titles cross-fade. With Reduce
 /// Motion, the pages cross-fade in place.
+///
+/// The title stays centered on the bar while it fits there. The back button shows the title of the
+/// page below while that fits beside the centered title, then `back_label`, then the chevron only.
+/// The title moves off center before the back button loses `back_label`, and truncates last. The
+/// leading and trailing controls keep their widths. A screen reader always reads the back button
+/// as the title of the page below.
 ///
 /// A drag toward the trailing edge goes back, as on iOS. It starts at the leading edge, or anywhere
 /// on the page where no scroll container can scroll sideways. The top page follows the finger, and
@@ -103,6 +108,10 @@ pub fn NavStack<P, V, F>(
     path: NavPath<P>,
     /// Builds the view of one route.
     page: F,
+    /// What the back button says when the title of the page below does not fit beside the title.
+    /// Give the translation of "Back" here.
+    #[prop(into, default = Signal::stored_local(String::from("Back")))]
+    back_label: Signal<String, LocalStorage>,
     /// Classes merged after the stack's own.
     #[prop(into, optional)]
     class: Classes,
@@ -150,7 +159,9 @@ where
         move || core.bars(),
         |(id, _): &(PageId, PageBar)| *id,
         move |(id, bar): (PageId, PageBar)| {
-            AnyView::new(view! { NavBarRow(core = core, id = id, bar = bar, back = back) })
+            AnyView::new(
+                view! { NavBarRow(core = core, id = id, bar = bar, back = back, back_label = back_label) },
+            )
         },
     );
 
@@ -272,74 +283,6 @@ where
         ) {
             {children.into_view_once()}
             box(class = "zui-nav-page__dim", a11y:hidden = true)
-        }
-    }
-}
-
-/// The bar of one page: back button or leading controls, title, trailing controls.
-#[component]
-fn NavBarRow(
-    /// The stack.
-    core: NavCore,
-    /// Which page.
-    id: PageId,
-    /// What the page declared.
-    bar: PageBar,
-    /// Goes back.
-    back: UnsyncCallback<()>,
-) -> impl IntoView {
-    let place = Signal::derive_local(move || core.place(id));
-    let own = Attrs::new()
-        .attribute(zgui::view::AttrName::new("data-place"), move || {
-            Some(place.get().name().to_owned())
-        })
-        .attribute(zgui::view::AttrName::new("inert"), move || {
-            (!place.get().is_active()).then(String::new)
-        })
-        .a11y_from(A11yBinding::unspecified().hidden(move || !place.get().is_active()));
-
-    let back_title = move || core.bar_below(id).map(PageBar::title).unwrap_or_default();
-    let back_button = move || {
-        if !core.has_page_below(id) || bar.is_back_blocked() {
-            return None;
-        }
-
-        Some(view! {
-            control(
-                class = "zui-nav-back",
-                tabindex = {Focus::Sequential},
-                on:click = move |_| back.run(()),
-                {..Attrs::new().a11y_from(A11yBinding::new(Role::Button).label("Back"))}
-            ) {
-                Icon(icon = CHEVRON_LEFT)
-                text(class = "zui-nav-back__title") {{back_title}}
-            }
-        })
-    };
-    let leading = move || bar.leading().map(|leading| leading.view());
-    let trailing = move || bar.trailing().map(|trailing| trailing.view());
-
-    view! {
-        row(class = "zui-nav-bar__row", {..own}) {
-            box(class = "zui-nav-bar__leading") {
-                {back_button}
-                {leading}
-            }
-            text(
-                class = "zui-nav-bar__title",
-                {..Attrs::new()
-                    .attribute(AttrName::new("data-hidden"), move || {
-                        (!bar.shows_title()).then(String::new)
-                    })
-                    .a11y_from(
-                        A11yBinding::new(Role::Heading)
-                            .level(1_usize)
-                            .hidden(move || !bar.shows_title())
-                    )}
-            ) {
-                {move || bar.title()}
-            }
-            box(class = "zui-nav-bar__trailing") {{trailing}}
         }
     }
 }

@@ -113,9 +113,9 @@ pub struct NavTrailing {
 /// One page of a [`NavStack`](crate::nav_stack::NavStack): its title, its bar controls and its
 /// content.
 ///
-/// The stack draws the bar. The bar shows a back button labelled with the title of the page below,
-/// the title of this page, and the controls of [`NavLeading`] and [`NavTrailing`]. Outside a stack,
-/// a page shows only its content.
+/// The stack draws the bar. The bar shows a back button, the title of this page, and the controls
+/// of [`NavLeading`] and [`NavTrailing`]. The back button shows the title of the page below, or a
+/// shorter label when that title does not fit. Outside a stack, a page shows only its content.
 ///
 /// With `large_title`, the content is a scroll container that starts with the title in large type.
 /// The bar shows the title when the large title scrolls under the bar. Put the content of such a

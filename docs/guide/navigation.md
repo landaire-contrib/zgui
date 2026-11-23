@@ -55,6 +55,21 @@ view! {
 
 The page owns its scroll container. The stack gives the page the height below the bar.
 
+## Fit the bar
+
+The bar shares its width as a `UINavigationBar` does:
+
+- The leading and trailing controls keep their widths.
+- The title stays centered on the bar while it fits there.
+- The back button shows the title of the page below while that fits beside the centered title. Then it shows "Back", and then the chevron only.
+- The title moves off center before the back button loses "Back". It truncates only when the chevron alone leaves too little space.
+
+A screen reader always reads the back button as the title of the page below. Give `back_label` to `NavStack` to translate "Back":
+
+```rust
+view! { NavStack(path = path, back_label = "Retour", page = page) }
+```
+
 ## Large titles
 
 Set `large_title = true` to start the page with its title in large type, as the top page of an iOS app does. The content of the page is then the scroll container, and the large title scrolls with it. When the large title goes under the bar, the bar shows the title. When the content scrolls back to the top, the bar title goes again. Put the rows directly in such a page, without a scroll container of their own.

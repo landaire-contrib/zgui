@@ -27,53 +27,75 @@ style! { pub NavStackStyle =>
     ".zui-nav-bar__row {
         position: absolute;
         inset: 0;
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
+        display: flex;
         align-items: center;
-        gap: var(--zui-space-sm);
+        justify-content: space-between;
         padding-left: var(--zui-space-sm);
         padding-right: var(--zui-space-sm);
     }"
     ".zui-nav-bar__leading {
         display: flex;
         align-items: center;
-        justify-self: start;
-        gap: var(--zui-space-sm);
-        min-width: 0;
+        flex: none;
     }"
+    ".zui-nav-bar__extra {
+        display: flex;
+        align-items: center;
+        gap: var(--zui-space-sm);
+    }"
+    ".zui-nav-back + .zui-nav-bar__extra { margin-left: var(--zui-space-sm); }"
     ".zui-nav-bar__trailing {
         display: flex;
         align-items: center;
-        justify-self: end;
+        flex: none;
         gap: var(--zui-space-sm);
-        min-width: 0;
     }"
+    // The row places the title from what its probe measured. Until then, the title is centered
+    // across the row.
     ".zui-nav-bar__title {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: var(--zui-nav-title-left, var(--zui-space-sm));
+        right: var(--zui-nav-title-right, var(--zui-space-sm));
+        line-height: 44px;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
         font-size: 17px;
         font-weight: 600;
         color: var(--zui-color-foreground);
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
+        pointer-events: none;
         transition: opacity 150ms ease;
     }"
     ".zui-nav-bar__title[data-hidden] { opacity: 0; }"
     ".zui-nav-back {
         display: flex;
         align-items: center;
+        flex: none;
         gap: 2px;
         min-height: 44px;
         min-width: 44px;
         color: var(--zui-color-primary);
         font-size: 17px;
     }"
-    ".zui-nav-back__title {
-        max-width: 140px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    ".zui-nav-back__title { white-space: nowrap; }"
+    // Measures the back button with each label and the title, never drawn. It holds elements with
+    // the classes of the drawn ones, laid out at their natural widths.
+    ".zui-nav-bar__probe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: max-content;
+        align-items: flex-start;
+        visibility: hidden;
+        pointer-events: none;
     }"
+    ".zui-nav-bar__probe > .zui-nav-bar__title { position: static; flex: none; }"
+    // An empty box reports no size, so the gap probe has a height.
+    ".zui-nav-bar__probe-gap { flex: none; width: var(--zui-space-sm); height: 1px; }"
 
     // A bar row cross-fades with its page, and its title moves a short way.
     ".zui-nav-bar__row[data-place=\"covered\"] { visibility: hidden; }"
@@ -87,16 +109,16 @@ style! { pub NavStackStyle =>
         animation: zui-nav-fade-out var(--zui-nav-duration) var(--zui-nav-ease) both;
         pointer-events: none;
     }"
-    ".zui-nav-bar__row[data-place=\"push-in\"] .zui-nav-bar__title {
+    ".zui-nav-bar__row[data-place=\"push-in\"] > .zui-nav-bar__title {
         animation: zui-nav-title-from-trailing var(--zui-nav-duration) var(--zui-nav-ease) both;
     }"
-    ".zui-nav-bar__row[data-place=\"push-out\"] .zui-nav-bar__title {
+    ".zui-nav-bar__row[data-place=\"push-out\"] > .zui-nav-bar__title {
         animation: zui-nav-title-to-leading var(--zui-nav-duration) var(--zui-nav-ease) both;
     }"
-    ".zui-nav-bar__row[data-place=\"pop-out\"] .zui-nav-bar__title {
+    ".zui-nav-bar__row[data-place=\"pop-out\"] > .zui-nav-bar__title {
         animation: zui-nav-title-to-trailing var(--zui-nav-duration) var(--zui-nav-ease) both;
     }"
-    ".zui-nav-bar__row[data-place=\"pop-in\"] .zui-nav-bar__title {
+    ".zui-nav-bar__row[data-place=\"pop-in\"] > .zui-nav-bar__title {
         animation: zui-nav-title-from-leading var(--zui-nav-duration) var(--zui-nav-ease) both;
     }"
     ".zui-nav-bar__row[data-place^=\"swipe-\"] {
@@ -271,10 +293,10 @@ style! { pub NavStackStyle =>
         .zui-nav-page[data-place=\"pop-in\"],
         .zui-nav-page[data-place=\"push-out\"] > .zui-nav-page__dim,
         .zui-nav-page[data-place=\"pop-in\"] > .zui-nav-page__dim,
-        .zui-nav-bar__row[data-place=\"push-in\"] .zui-nav-bar__title,
-        .zui-nav-bar__row[data-place=\"push-out\"] .zui-nav-bar__title,
-        .zui-nav-bar__row[data-place=\"pop-in\"] .zui-nav-bar__title,
-        .zui-nav-bar__row[data-place=\"pop-out\"] .zui-nav-bar__title {
+        .zui-nav-bar__row[data-place=\"push-in\"] > .zui-nav-bar__title,
+        .zui-nav-bar__row[data-place=\"push-out\"] > .zui-nav-bar__title,
+        .zui-nav-bar__row[data-place=\"pop-in\"] > .zui-nav-bar__title,
+        .zui-nav-bar__row[data-place=\"pop-out\"] > .zui-nav-bar__title {
             animation: none;
         }
         .zui-nav-bar__row[data-place=\"push-in\"],

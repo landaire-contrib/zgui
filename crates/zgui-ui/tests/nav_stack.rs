@@ -14,6 +14,7 @@ use zgui::prelude::*;
 use zgui::reactive::LocalStorage;
 use zgui::reactive::RwSignal;
 use zgui::view;
+use zgui::view::ClassName;
 use zgui::view::CustomPropertyName;
 use zgui::vocab::AnimationEvent;
 use zgui::vocab::AnimationPhase;
@@ -95,6 +96,14 @@ fn places(harness: &Harness, class: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether the parent of `node` carries `class`. The bar's probe holds elements with the classes
+/// of the drawn ones, and its parent tells them apart.
+fn parent_carries(harness: &Harness, node: NodeId, class: &str) -> bool {
+    let tree = harness.window.dom.tree();
+    tree.parent(node)
+        .is_some_and(|parent| tree.classes(parent).contains(&ClassName::new(class)))
+}
+
 fn back_button(harness: &Harness) -> Option<NodeId> {
     harness.find_all("zui-nav-back").into_iter().find(|node| {
         let row = harness
@@ -103,8 +112,20 @@ fn back_button(harness: &Harness) -> Option<NodeId> {
             .tree()
             .parent(*node)
             .and_then(|leading| harness.window.dom.tree().parent(leading));
-        row.is_some_and(|row| harness.attribute(row, "data-place").as_deref() == Some("current"))
+        parent_carries(harness, *node, "zui-nav-bar__leading")
+            && row.is_some_and(|row| {
+                harness.attribute(row, "data-place").as_deref() == Some("current")
+            })
     })
+}
+
+/// The drawn title of each bar row, bottom first.
+fn bar_titles(harness: &Harness) -> Vec<NodeId> {
+    harness
+        .find_all("zui-nav-bar__title")
+        .into_iter()
+        .filter(|node| parent_carries(harness, *node, "zui-nav-bar__row"))
+        .collect()
 }
 
 /// Runs the frames past the deadline of a motion that no animation ends.
@@ -206,8 +227,7 @@ fn the_back_button_names_the_page_below() {
     let back = back_button(&harness).expect("the group page offers back");
     assert_eq!(harness.window.dom.tree().text_content(back), "Passwords");
 
-    let titles: Vec<String> = harness
-        .find_all("zui-nav-bar__title")
+    let titles: Vec<String> = bar_titles(&harness)
         .into_iter()
         .map(|node| harness.window.dom.tree().text_content(node))
         .collect();
@@ -428,7 +448,7 @@ fn a_large_title_moves_into_the_bar_once_it_scrolls_under_it() {
             })
         }
     });
-    let title = harness.find("zui-nav-bar__title");
+    let title = bar_titles(&harness)[0];
     let content = harness.find("zui-nav-content");
     assert_eq!(harness.find_all("zui-nav-large-title").len(), 1);
     assert_eq!(harness.attribute(title, "data-hidden").as_deref(), Some(""));
