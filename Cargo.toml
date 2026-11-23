@@ -364,6 +364,9 @@ undocumented_unsafe_blocks = "warn"
 # families and loaded faces from one paragraph to the next (see vendor/README.md for the changes).
 [patch.crates-io]
 fontique = { path = "vendor/fontique" }
+# The layout engine, vendored so that a flex item takes the size its ratio gives from its clamped
+# width or height (see vendor/README.md).
+cephal = { path = "vendor/cephal" }
 # winit with the UIKit scene-based life cycle, which apps built with the iOS 27 SDK must adopt.
 winit = { git = "https://github.com/landaire-contrib/winit", branch = "v0.30.x-uiscene" }
 

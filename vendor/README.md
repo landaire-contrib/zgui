@@ -69,3 +69,23 @@ with the cache off, on a miss and on a hit, and pins the invalidation on install
 The sample table builds each `Script` with `Script::from_bytes`. Upstream calls
 `from_str_unchecked`, which parlance 0.1.1 deprecates, and every build that compiles this copy as a
 path dependency printed 161 warnings.
+
+## cephal 0.2.0 (crates.io)
+
+The layout engine under `zgui-layout`, patched in through `[patch.crates-io]`. Without
+`Cargo.toml.orig` and `Cargo.lock`. Every local change is marked `ZGUI-PATCH:` in the source. An
+application that depends on zgui uses this copy with the same patch:
+
+```toml
+[patch.crates-io]
+cephal = { git = "https://github.com/landaire-contrib/zgui", branch = "main" }
+```
+
+### Aspect ratio after min and max sizes (`compute/flex/mod.rs`)
+
+Upstream gives a flex item the size of its ratio-dependent axis from the other axis before
+`min-*` and `max-*` clamp that axis. A `width: 300px; max-width: 100%; aspect-ratio: 3 / 2` item
+in a 200px column gets a flex base size of 200px: the item is 133px high, and the column is 200px
+high. This copy clamps the other axis first, which gives the flex base size that CSS Flexbox 1
+(section 9.2, step 3.B) specifies: the size from the item's used cross size and its ratio.
+`crates/zgui-layout/tests/ratio_max_size.rs` pins the column height.

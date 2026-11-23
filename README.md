@@ -442,6 +442,15 @@ patched copy, add this to your application's `Cargo.toml`:
 fontique = { git = "https://github.com/zortax/zgui", tag = "v0.1.0" }
 ```
 
+It also patches cephal, the layout engine, so that a flex item with an `aspect-ratio` takes its
+height from its width after `max-width` clamps it. A crates.io build uses the released cephal, which
+can lay out such an item in a column with too much space below it. To use the patched copy, add
+this line to the same section:
+
+```toml
+cephal = { git = "https://github.com/landaire-contrib/zgui", branch = "main" }
+```
+
 To run the examples, clone the repository. Some examples to try:
 
 ```console
