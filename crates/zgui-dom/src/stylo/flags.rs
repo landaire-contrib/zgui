@@ -1,28 +1,28 @@
-//! The engine's bookkeeping bits, and the descent flag that is a view rather than a bit.
+//! The engine's bookkeeping bits, and the two records of style work below an element.
 //!
-//! # Why "something below me needs restyling" is not stored
+//! # Work below an element
 //!
-//! The engine raises a flag saying an element has work below it, descends only where the flag is
-//! set, and clears it on a schedule of its own. The document already stores exactly that fact, as
-//! the subtree half of every node's invalidation word — so storing the engine's flag as well would
-//! give one obligation two storages retired at two different times.
+//! The engine descends into an element's children when work is below the element. Two writers
+//! record that work, and each has its own storage and its own retirement:
 //!
-//! That is not merely redundant, it loses marks. Marking a node returns early the moment the node's
-//! *own* bits already contain what is being asked for, before any ancestor is touched, so a second
-//! mark of a node whose own bits have not yet been retired restores no ancestor flag at all. A flag
-//! retired on the engine's schedule, while the invalidation word is retired on the document's,
-//! therefore goes missing after the first mark — silently, with no panic and no counter to see it
-//! by. The rule that follows holds for every descent flag, not just this one:
+//! * A mark records an obligation in the subtree half of every ancestor's invalidation word, and
+//!   in every ancestor's dirty-child record. The document's walk after the restyle follows those
+//!   records and retires the word.
+//! * The engine raises its descent flag on the path to an element that an invalidation reached,
+//!   for example an element that a selector about an ancestor's attribute matches. The flag is a
+//!   bit of the bookkeeping word. The traversal clears it when it visits the element, in the same
+//!   restyle that raised it.
 //!
-//! > A descent flag may only be consumed by the traversal that retires the bits it was raised for.
+//! [`Node::has_style_work_below`] reads both.
 //!
-//! So the question is answered from the invalidation word, raising the flag is a subtree mark, and
-//! clearing it is a deliberate no-op: the union is retired exactly once, by the walk that also
-//! retires the own bits.
+//! The flag must stay out of the invalidation word. No mark leads to the path the engine flags, so
+//! no dirty-child record names that path and the document's walk never reaches it. A union raised
+//! there stays raised. A mark stops at the first ancestor whose union already holds its bits, so a
+//! later mark below the path stops on it: the ancestors above never learn of the mark, and no
+//! traversal reaches the marked element again.
 //!
-//! The animation-only flag is different and *is* stored, because the engine both raises and clears
-//! it inside a single traversal of its own — one storage with one retirement, which is the property
-//! that makes a stored flag safe.
+//! The animation-only flag is the same kind of bit, raised and cleared by the animation-only
+//! traversal.
 
 use zgui_bits::Dirty;
 
@@ -49,16 +49,32 @@ impl Node<'_> {
     }
 
     /// Whether anything at or below this node owes the style engine work.
+    ///
+    /// True when a mark at or below this node is not yet retired, or when the engine's descent flag
+    /// is raised on this node.
     pub fn has_style_work_below(self) -> bool {
-        self.record().has_dirty_descendants(STYLE_WORK)
+        self.record().has_dirty_descendants(STYLE_WORK) || self.has_descent_flag()
     }
 
-    /// Records that something below this node owes the style engine work.
+    /// Whether the engine's descent flag is raised on this node.
     ///
-    /// Only the subtree half is written: this node's own obligations are the caller's to state, and
-    /// widening them here would restyle an element whose own style nothing asked about.
+    /// No dirty-child record leads to the children the flag stands for, so a traversal that finds
+    /// it visits every child.
+    pub fn has_descent_flag(self) -> bool {
+        self.record().has_atomic(atomics::DIRTY_DESCENDANTS)
+    }
+
+    /// Raises the engine's descent flag, so that the traversal descends into this element's
+    /// children.
+    ///
+    /// The invalidation word stays as it is; the module documentation says why.
     pub fn note_style_work_below(self) {
-        self.record().dirty().mark_subtree(STYLE_WORK);
+        self.record().set_atomic(atomics::DIRTY_DESCENDANTS);
+    }
+
+    /// Clears the engine's descent flag, once the traversal has visited this element.
+    pub fn clear_style_work_below(self) {
+        self.record().clear_atomic(atomics::DIRTY_DESCENDANTS);
     }
 
     /// Whether the custom property map this element inherits from moved since its style was built.
@@ -108,7 +124,7 @@ mod tests {
     use crate::node::kind::NodeKind;
 
     #[test]
-    fn work_below_is_read_from_the_invalidation_word_and_not_from_a_bit() {
+    fn a_mark_below_a_node_is_work_below_it() {
         let mut document = Document::new();
         let root = document.append(
             document.document_index(),
@@ -118,13 +134,33 @@ mod tests {
         let child = document.append(root, NodeKind::Element, ElementName::new("item"));
 
         assert!(!document.node(root).has_style_work_below());
-        document.store().core(child).dirty().mark(Dirty::RESTYLE);
-        document.node(root).note_style_work_below();
+        crate::dirty::propagate::mark(document.store_mut(), child, Dirty::RESTYLE);
         assert!(document.node(root).has_style_work_below());
         assert!(
             document.node(child).has_style_work_below(),
             "a node's own obligation is part of its own subtree"
         );
+    }
+
+    #[test]
+    fn the_descent_flag_is_work_below_and_keeps_out_of_the_invalidation_word() {
+        let mut document = Document::new();
+        let root = document.append(
+            document.document_index(),
+            NodeKind::Element,
+            ElementName::new("root"),
+        );
+        let node = document.node(root);
+
+        node.note_style_work_below();
+        assert!(node.has_style_work_below());
+        assert_eq!(
+            document.store().core(root).dirty().subtree(),
+            Dirty::empty(),
+            "a union raised here would stop every later mark below this node"
+        );
+        node.clear_style_work_below();
+        assert!(!node.has_style_work_below());
     }
 
     #[test]

@@ -3,20 +3,19 @@
 //! This is the one property nothing had run before. Marking returns at its *first* early-out — the
 //! node's own invalidation word — before it touches any ancestor, so a second mark of a node whose
 //! own bits have not yet been retired restores nothing anywhere. Whether that matters depends
-//! entirely on whether the flag the traversal descends by is the same storage: if the engine keeps a
-//! flag of its own, cleared on the engine's schedule, then the second traversal stops above the node
-//! and the change is lost silently. If the descent question is answered from the invalidation word
-//! itself, the union is still there and the traversal still descends.
+//! entirely on what the traversal descends by for a mark: if it were a flag of the engine's,
+//! cleared on the engine's schedule, the second traversal would stop above the node and the change
+//! would be lost silently. The traversal descends by the invalidation word for a mark, so the union
+//! is still there and the traversal still descends.
 //!
 //! The hazard and the ancestor marking have each been shown on their own, the first against a
 //! stand-in flag and the second against a traversal that never re-marked. Neither exercised both at
 //! once against a real traversal. This does.
 //!
 //! The last case is the same question from the other side. The engine raises a descent flag of its
-//! own — on the *sibling* whose descendant an invalidation reached — and it raises it in the same
-//! storage, so a walk of the marked set never visits that node and never retires it. A mark of that
-//! node afterwards must still reach the ancestors, which it only does if the early-out tests the
-//! node's own bits rather than its subtree union.
+//! own on the *sibling* whose descendant an invalidation reached, a node that no mark leads to and
+//! that a walk of the marked set never visits. That flag keeps out of the invalidation word, so a
+//! later mark of that node or of a node below it still reaches the ancestors.
 
 use zgui_bits::Dirty;
 use zgui_dom::{Document, NodeIndex, NodeKind};
@@ -158,13 +157,14 @@ fn sideways() -> Sideways {
 }
 
 #[test]
-fn a_mark_of_a_node_the_engine_left_a_descent_flag_on_still_reaches_the_root() {
+fn a_mark_on_or_below_a_node_the_engine_descended_through_reaches_the_root() {
     let mut shape = sideways();
     let mut engine = Engine::new(&shape.document);
     engine.add_author_sheet(
         ".c { color: rgb(1, 1, 1) }
          .a + .b .c { color: rgb(9, 0, 0) }
-         .b.q { color: rgb(5, 0, 0) }",
+         .b.q { color: rgb(5, 0, 0) }
+         .c.r.r.r { color: rgb(7, 0, 0) }",
     );
     engine.restyle(&mut shape.document, None);
     walk_retire(&shape.document);
@@ -180,32 +180,37 @@ fn a_mark_of_a_node_the_engine_left_a_descent_flag_on_still_reaches_the_root() {
         "the combinator applied, which is what makes the engine descend into `y` at all"
     );
     walk_retire(&shape.document);
-    assert!(
-        shape
-            .document
-            .store()
-            .core(shape.y)
-            .dirty()
-            .subtree()
-            .contains(Dirty::RESTYLE),
-        "the engine's descent flag on `y` outlives the walk, because the walk never visits `y`"
+    assert_eq!(
+        shape.document.store().core(shape.y).dirty().subtree(),
+        Dirty::empty(),
+        "the walk never visits `y`, so a union raised on it would stay raised"
     );
 
-    // Now `y` itself changes. Its own bits are clean, so this mark has real work to do — and a mark
-    // that early-returned on the subtree union would do none of it.
+    // Now `z` changes. The mark climbs through `y` to the root.
+    edit::set_classes(
+        &shape.document,
+        shape.z,
+        &[ClassName::new("c"), ClassName::new("r")],
+    );
+    let pass = engine.restyle(&mut shape.document, None);
+    assert!(
+        pass.traversed,
+        "the mark on `z` has to reach the root, or nothing is traversed at all"
+    );
+    assert_eq!(
+        color(&shape.document, shape.z),
+        (7, 0, 0),
+        "and the failure is a silently stale colour, not an error"
+    );
+    walk_retire(&shape.document);
+
+    // And `y` itself.
     edit::set_classes(
         &shape.document,
         shape.y,
         &[ClassName::new("b"), ClassName::new("q")],
     );
     let pass = engine.restyle(&mut shape.document, None);
-    assert!(
-        pass.traversed,
-        "the mark on `y` has to reach the root, or nothing is traversed at all"
-    );
-    assert_eq!(
-        color(&shape.document, shape.y),
-        (5, 0, 0),
-        "and the failure is a silently stale colour, not an error"
-    );
+    assert!(pass.traversed, "the mark on `y` reaches the root as well");
+    assert_eq!(color(&shape.document, shape.y), (5, 0, 0));
 }

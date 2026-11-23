@@ -415,13 +415,15 @@ impl<'doc> DomTraversal<Node<'doc>> for RecalcStyle<'_> {
             note_child,
         );
 
-        // The animation-only traversal's descent flag is retired here, by the traversal that read
-        // it: the call above has already asked whether to descend and has already noted the
-        // children it is descending to, so what is left is a flag nothing reads again this frame.
-        // Left raised, it takes every later frame's animation traversal down a subtree that has
-        // had nothing to do in it since.
+        // Each traversal's descent flag is retired here, by the traversal that read it: the call
+        // above has already asked whether to descend and has already noted the children it is
+        // descending to, so what is left is a flag nothing reads again this frame. Left raised, the
+        // animation flag takes every later frame's animation traversal down a subtree that has had
+        // nothing to do in it since, and the ordinary flag does the same for every restyle.
         if context.shared.traversal_flags.for_animation_only() {
             crate::engine::animate::descent::clear(element);
+        } else {
+            element.clear_style_work_below();
         }
 
         // Visited is not styled. The traversal descends *through* every element on the path to the
@@ -446,11 +448,6 @@ impl<'doc> DomTraversal<Node<'doc>> for RecalcStyle<'_> {
             viewport_units: data.has_styles()
                 && data.styles.viewport_unit_usage() != ViewportUnitUsage::None,
         });
-
-        // The engine's descent flag is not cleared here, because this document does not store one:
-        // "is there work below me" is a view of the invalidation word, and that word is retired
-        // exactly once per frame by the walk that also retires the obligations it summarises.
-        // Clearing it on a second schedule is how a mark taken between the two is silently lost.
     }
 
     /// The engine's own answer, plus one of this document's: an element whose inherited custom

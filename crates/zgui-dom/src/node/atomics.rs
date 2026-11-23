@@ -1,17 +1,13 @@
 //! The style engine's bookkeeping word.
 //!
-//! Four bits, in one atomic, because every one of them is read or written from a worker thread
-//! while the traversal runs. They are a single word rather than four cells for the same reason:
+//! The bits share one atomic, because every one of them is read or written from a worker thread
+//! while the traversal runs. They are a single word rather than several cells for the same reason:
 //! the word is already paid for, and a bit that the engine only reads today is one release away
 //! from being a bit it writes.
 //!
-//! **What is deliberately *not* here is a descendants-dirty bit.** The engine asks whether
-//! anything below an element needs restyling, and the document already stores exactly that, as the
-//! subtree half of the node's invalidation word. Keeping a second copy on the engine's schedule
-//! would give one obligation two storages retired at two different times, and the one that is
-//! retired later is silently dropped by the marking path's own early-out. So the question is
-//! answered from the invalidation word, raising it is a subtree mark, and clearing it is a
-//! documented no-op.
+//! The two descendants-dirty bits belong to the engine alone. The engine raises each of them during
+//! a restyle, and a traversal of that same restyle clears it. Marks record their obligations in the
+//! invalidation word, and [`flags`](crate::stylo::flags) says why the two records stay apart.
 
 /// A snapshot of this element's pre-mutation state is recorded and not yet consumed.
 pub const HAS_SNAPSHOT: u32 = 1 << 0;
@@ -30,9 +26,8 @@ pub const STYLED: u32 = 1 << 2;
 
 /// Something below this element has an animation-only restyle pending.
 ///
-/// This one *is* stored, unlike the ordinary descendants-dirty bit, because the engine both raises
-/// and clears it inside a single traversal of its own — one storage with one retirement, which is
-/// the property that makes a stored flag safe.
+/// Raised and cleared by the animation-only traversal, as [`DIRTY_DESCENDANTS`] is by an ordinary
+/// one.
 pub const ANIMATION_DIRTY_DESCENDANTS: u32 = 1 << 3;
 
 /// The custom property map this element inherits from moved since its style was built.
@@ -42,15 +37,25 @@ pub const ANIMATION_DIRTY_DESCENDANTS: u32 = 1 << 3;
 /// something it declares reads the map, or takes the new map into its existing style.
 pub const CUSTOM_MAP_CHANGED: u32 = 1 << 4;
 
+/// The engine's traversal descends into this element's children.
+///
+/// Raised on the path to an element that an invalidation reached, and cleared when the traversal
+/// visits this element.
+pub const DIRTY_DESCENDANTS: u32 = 1 << 5;
+
 /// Every bit this word defines.
-pub const ALL: u32 =
-    HAS_SNAPSHOT | SNAPSHOT_HANDLED | STYLED | ANIMATION_DIRTY_DESCENDANTS | CUSTOM_MAP_CHANGED;
+pub const ALL: u32 = HAS_SNAPSHOT
+    | SNAPSHOT_HANDLED
+    | STYLED
+    | ANIMATION_DIRTY_DESCENDANTS
+    | CUSTOM_MAP_CHANGED
+    | DIRTY_DESCENDANTS;
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ALL, ANIMATION_DIRTY_DESCENDANTS, CUSTOM_MAP_CHANGED, HAS_SNAPSHOT, SNAPSHOT_HANDLED,
-        STYLED,
+        ALL, ANIMATION_DIRTY_DESCENDANTS, CUSTOM_MAP_CHANGED, DIRTY_DESCENDANTS, HAS_SNAPSHOT,
+        SNAPSHOT_HANDLED, STYLED,
     };
 
     #[test]
@@ -61,8 +66,9 @@ mod tests {
             STYLED,
             ANIMATION_DIRTY_DESCENDANTS,
             CUSTOM_MAP_CHANGED,
+            DIRTY_DESCENDANTS,
         ];
         assert_eq!(bits.iter().fold(0, |all, bit| all | bit), ALL);
-        assert_eq!(ALL.count_ones(), 5);
+        assert_eq!(ALL.count_ones(), 6);
     }
 }

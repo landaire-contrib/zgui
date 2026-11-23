@@ -242,10 +242,12 @@ pub(crate) fn run_pass(
 /// The engine's own traversal starts at the root and, at every element it enters, asks each
 /// child whether it needs a visit — which is a probe of every row of a list for a class toggled
 /// on one cell of one of them. The document's dirty-child records already say which child that
-/// is, so the start descends while an element owes nothing itself, carries no snapshot and no
-/// hint of the engine's, and has exactly one child with style work under it. An element with a
-/// snapshot stops the descent above it, because the invalidation the snapshot runs can reach the
-/// element's later siblings, and those are only visited from their parent.
+/// is, so the start descends while an element owes nothing itself, carries no snapshot, no hint of
+/// the engine's and no descent flag, and has exactly one child with style work under it. An element
+/// with a snapshot stops the descent above it, because the invalidation the snapshot runs can reach
+/// the element's later siblings, and those are only visited from their parent. An element with the
+/// descent flag stops it at the element, because no dirty-child record names the children the flag
+/// stands for.
 fn traversal_start<'doc>(document: &'doc Document, root: Node<'doc>) -> Node<'doc> {
     use style::dom::TElement;
 
@@ -257,6 +259,7 @@ fn traversal_start<'doc>(document: &'doc Document, root: Node<'doc>) -> Node<'do
         let (own, _) = record.dirty().get();
         if own.intersects(zgui_dom::stylo::flags::STYLE_WORK)
             || current.has_snapshot()
+            || current.has_descent_flag()
             || current.has_custom_map_changed()
             || current
                 .borrow_data()

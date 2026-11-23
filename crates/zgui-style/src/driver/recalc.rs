@@ -793,11 +793,6 @@ fn note_children<'doc, F>(
             );
         }
 
-        // The engine's reasons to visit the child are noted below the parent, where the document's
-        // retirement walk finds them through the dirty-child records the same marks widened. A
-        // child visited only because its inherited map moved is found through its own bit: noting
-        // it below the parent would raise a subtree word the walk never reaches, and every later
-        // mark climbing through it would stop there.
         let engine_needs =
             super::traversal::engine_needs_traversal(child, flags, child_data.as_deref());
         if !engine_needs && custom_changed.is_some() && !reached {
@@ -805,12 +800,10 @@ fn note_children<'doc, F>(
         }
         if engine_needs || reached {
             note_child(child_node);
-            if !is_initial_style && engine_needs {
-                if flags.for_animation_only() {
-                    element.note_animation_work_below();
-                } else {
-                    element.note_style_work_below();
-                }
+            // An ordinary traversal visits every child it notes, so the parent needs no flag for
+            // it. The animation-only traversal keeps its flag until its final pass.
+            if !is_initial_style && engine_needs && flags.for_animation_only() {
+                element.note_animation_work_below();
             }
         }
     }

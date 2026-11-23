@@ -44,7 +44,7 @@
 //! | [`selectors`] | the matcher's view of an element, split by concern |
 //! | [`attributes`] | the by-name attribute lookup a container query reads through |
 //! | [`data`] | reading the engine's per-element output back off the tree |
-//! | [`flags`] | the engine's bookkeeping bits, and the descent flag that is a view |
+//! | [`flags`] | the engine's bookkeeping bits, and the two records of style work below an element |
 //! | [`bloom`] | the ancestor hashes selector matching filters candidates with |
 
 pub mod attributes;

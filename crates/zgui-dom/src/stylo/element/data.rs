@@ -35,10 +35,12 @@ impl<'doc> Node<'doc> {
     /// Resets this element's style data and records that it has none.
     ///
     /// Both halves happen here, in this order, because a cleared bit with stale data behind it makes
-    /// the next cascade read a style nothing computed.
+    /// the next cascade read a style nothing computed. The engine's descent flag goes with them: an
+    /// element with no style data is styled whole when it is next reached.
     pub fn clear_style_data(self) {
         *self.record().data().borrow_mut() = ElementData::default();
-        self.record().clear_atomic(atomics::STYLED);
+        self.record()
+            .clear_atomic(atomics::STYLED | atomics::DIRTY_DESCENDANTS);
     }
 
     /// Clears the style data of everything below this element, leaving its own alone.

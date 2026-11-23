@@ -10,17 +10,16 @@
 //!
 //! The walk returns at the first ancestor whose subtree union already contains everything being
 //! added, because everything above that ancestor already contains it too. That turns marking `n`
-//! nodes into `O(n + depth)` steps rather than `O(n · depth)`.
+//! nodes into `O(n + depth)` steps rather than `O(n · depth)`. It holds because only a mark raises a
+//! subtree union, and a mark raises every union above it. A union raised in any other way would
+//! stop every later mark below that node, and the node's ancestors would never learn of those
+//! marks. The style engine's own descent flag is therefore a separate bit; see
+//! [`crate::stylo::flags`].
 //!
 //! **The marked node itself is tested on its *own* bits and not on its subtree union**, and the two
 //! are not the same test. A node's own bits are set by nothing but a mark, so finding them already
 //! set means an earlier mark of this node already walked the ancestors — which is what makes the
-//! early return safe. Its subtree union is also raised by the style engine's own descent flag, on
-//! elements the marked set never leads to: a sibling whose descendant an invalidation reached. Such
-//! a flag outlives the walk that retires the marked set, because that walk never visits the node
-//! carrying it — and a later mark of that node, tested against its subtree union, would return
-//! before telling a single ancestor. The result is an element that is never traversed again and
-//! keeps a stale style with nothing to notice it by.
+//! early return safe. Its subtree union also holds what the nodes below it owe.
 //!
 //! The dirty-child record is widened **before** that early return, and the order is load-bearing: an
 //! ancestor that already owes these obligations *for a different child* must still learn about this
@@ -158,14 +157,15 @@ mod tests {
     }
 
     #[test]
-    fn a_node_carrying_only_the_engines_descent_flag_still_marks_its_ancestors() {
+    fn a_mark_below_the_engines_descent_flag_reaches_every_ancestor() {
         let (mut document, nodes) = chain(3);
         let middle = nodes[1];
-        // Exactly what the style engine's own descent flag does: it raises the subtree union of an
-        // element it is about to descend into, and it does that on elements no mark ever led to.
+        let leaf = nodes[2];
+        // The style engine raises its flag on the path to an element an invalidation reached, and
+        // no mark leads to that path.
         document.node(middle).note_style_work_below();
 
-        mark(document.store_mut(), middle, Dirty::RESTYLE);
+        mark(document.store_mut(), leaf, Dirty::RESTYLE);
 
         assert!(
             document
@@ -174,8 +174,7 @@ mod tests {
                 .dirty()
                 .subtree()
                 .contains(Dirty::RESTYLE),
-            "a mark tested against the subtree union would have returned here, and this node would \
-             never have been traversed again"
+            "the mark stopped at the flagged node, and the leaf is out of reach of every traversal"
         );
         let marked: Vec<_> = document
             .store()

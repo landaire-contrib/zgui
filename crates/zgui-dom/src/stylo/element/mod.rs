@@ -17,12 +17,12 @@
 //!
 //! # The methods that are not the engine's default
 //!
-//! Four, and each is a decision rather than a stub. Which pseudo-elements may be generated, because
+//! Five, and each is a decision rather than a stub. Which pseudo-elements may be generated, because
 //! the default resolves a first-letter style nothing reads. What a layout-affecting change costs,
 //! because the default is "nothing" and every incremental relayout would be skipped. The subtree
-//! hash summary, pinned to "unfiltered" so a future release cannot change it silently. And the
-//! animation-only descent flag, which is the one descent flag this document stores rather than
-//! derives.
+//! hash summary, pinned to "unfiltered" so a future release cannot change it silently. And the two
+//! descent flags, which this document stores apart from its invalidation word; see
+//! [`flags`](crate::stylo::flags).
 //!
 //! Two more are deliberately *left* at the default and it is worth saying why, because both existed
 //! to serve a design where a pseudo-element was a node. There is no such node here, so asking an
@@ -186,13 +186,9 @@ impl<'doc> TElement for Node<'doc> {
         self.note_style_work_below();
     }
 
-    /// Deliberately does nothing.
-    ///
-    /// The answer to "is there work below me" is a view of this node's invalidation word, and that
-    /// word is retired exactly once per frame, by the walk that also retires the obligations it
-    /// summarises. Clearing it here would retire it on a second schedule, and a mark taken between
-    /// the two would be dropped silently.
-    unsafe fn unset_dirty_descendants(&self) {}
+    unsafe fn unset_dirty_descendants(&self) {
+        self.clear_style_work_below();
+    }
 
     fn has_animation_only_dirty_descendants(&self) -> bool {
         self.has_animation_work_below()
