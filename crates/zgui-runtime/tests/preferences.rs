@@ -8,12 +8,17 @@ use std::rc::Rc;
 use zgui_geom::DevicePx;
 use zgui_platform::Lifecycle;
 use zgui_platform::MotionPreference;
+use zgui_platform::SurfaceEvent;
 use zgui_platform::TextScale;
 use zgui_platform_headless::Harness;
+use zgui_reactive::RwSignal;
+use zgui_reactive::prelude::Get;
+use zgui_reactive::prelude::Set;
 use zgui_runtime::App;
 use zgui_runtime::Runtime;
 use zgui_view::Anchor;
 use zgui_view::BuildCx;
+use zgui_view::ClassName;
 use zgui_view::IntoView;
 use zgui_view::View;
 
@@ -111,4 +116,48 @@ fn each_lifecycle_move_reaches_the_lifecycle_hook_in_order() {
         1,
         "the window stays through every move"
     );
+}
+
+#[test]
+fn what_the_application_changes_on_will_resign_active_is_drawn_in_the_same_turn() {
+    let covered = RwSignal::new_local(false);
+    let handler = App::new()
+        .with_title("test")
+        .with_size(400.0, 300.0)
+        .with_stylesheet(
+            "root { display: block } .content { display: block; height: 10px } \
+             .content.covered { height: 20px }",
+        )
+        .with_renderer(Box::new(support::capture))
+        .with_context(move || {
+            let guard = zgui_runtime::desktop::on_lifecycle(move |event| {
+                if event == Lifecycle::WillResignActive {
+                    covered.set(true);
+                }
+            });
+            core::mem::forget(guard);
+        })
+        .into_handler(move |cx: &mut BuildCx<'_>| -> Box<dyn Anchor> {
+            Box::new(
+                zgui_elements::column()
+                    .child(
+                        zgui_elements::column()
+                            .class("content")
+                            .class_toggle(ClassName::new("covered"), move || covered.get()),
+                    )
+                    .into_view()
+                    .build(cx),
+            )
+        })
+        .expect("the reactive runtime installs");
+    let mut harness = Harness::new(handler);
+    harness.settle(4);
+    assert_eq!(content_height(&harness), DevicePx(10.0));
+
+    harness
+        .platform()
+        .send_lifecycle(Lifecycle::WillResignActive);
+    // Delivers the queued move and runs no redraw the platform was asked for.
+    harness.deliver_to_first(SurfaceEvent::Focused(false));
+    assert_eq!(content_height(&harness), DevicePx(20.0));
 }

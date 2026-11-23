@@ -1220,6 +1220,14 @@ impl Runtime {
                     let _zone = zgui_reactive::enter_non_reactive_zone();
                     hooks.lifecycle(lifecycle);
                 });
+                // The system takes the picture for its application switcher after this move, so
+                // what the application changed in answer is drawn now, ahead of the frame pacing.
+                if lifecycle == zgui_platform::Lifecycle::WillResignActive {
+                    let clock = cx.clock();
+                    for window in &mut self.windows {
+                        window.frame(clock.as_ref());
+                    }
+                }
             }
             // The focused window receives the press the menu took from it.
             AppEvent::Role(role) => {
