@@ -78,7 +78,9 @@
 //! caret on the screen.
 
 #![deny(missing_docs)]
-#![forbid(unsafe_code)]
+// Apple's Compression library decodes `emjc` pictures. Its calls in `raster::emjc::lzfse` are the
+// only unsafe code.
+#![deny(unsafe_code)]
 
 pub mod direction;
 pub mod font;

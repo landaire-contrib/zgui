@@ -69,6 +69,11 @@ const ALLOWLIST: &[(&str, &str)] = &[
         "the two `borrow_raw` calls that report a surface's DRM handles, and the Vulkan calls that \
          make the images a display scans out of — every one of those is reached through wgpu's hal",
     ),
+    (
+        "zgui-text-parley",
+        "the calls into Apple's Compression library that decompress Apple Color Emoji's `emjc` \
+         pictures",
+    ),
 ];
 
 /// Runs the check.

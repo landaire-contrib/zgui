@@ -13,6 +13,7 @@ use zgui_text::{
 use crate::raster::faces::FaceBytes;
 use crate::raster::image::convert;
 use crate::raster::outline::Outlines;
+use crate::raster::sbix;
 use crate::system::FontSystem;
 
 /// The sources a monochrome or subpixel request draws from, in order of preference.
@@ -84,6 +85,12 @@ impl Rasteriser {
     /// Rasterises one glyph through `context`.
     fn raster_with(&self, context: &mut ScaleContext, key: &GlyphKey) -> Option<GlyphImage> {
         let (blob, index) = self.faces.get(&self.fonts, key.face)?;
+        // Swash reads no `emjc` or `flip` records, and answers an outline mask for them.
+        if key.style == RasterStyle::Color
+            && let Some(image) = sbix::apple_bitmap(blob.data(), index, key.glyph, key.size())
+        {
+            return Some(image);
+        }
         let font = FontRef::from_index(blob.data(), index as usize)?;
         let coords = self.fonts.variation_coords(key.instance);
         let mut scaler = context
