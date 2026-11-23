@@ -18,6 +18,7 @@
 use core::ops::Range;
 
 use zgui_text::{BrokenParagraph, InlineBoxGeometry, InlineBoxPlacement, StrutMetrics, StyledRun};
+use zgui_text_style::{WhiteSpaceCollapse, WrapMode};
 
 use crate::inline::strut::{Extents, RunExtents};
 
@@ -37,6 +38,8 @@ pub struct LineBox {
     pub ink: Extents,
     /// The advance the line's content occupies.
     pub width: f32,
+    /// The advance of the white space that hangs past the end of the line, which `width` includes.
+    pub hanging: f32,
     /// How far in from the context's start edge the content begins.
     pub offset: f32,
     /// Where the line is cut off, when it reaches past its box and the box marks the cut.
@@ -97,6 +100,11 @@ pub fn compute(
             extents,
             ink: extents.union(content),
             width: line.width.0,
+            hanging: if hangs(runs, &line.text) {
+                line.trailing.0
+            } else {
+                0.0
+            },
             offset: line.offset.0,
             ellipsis: None,
         });
@@ -116,16 +124,39 @@ fn overlaps(run: &Range<usize>, line: &Range<usize>) -> bool {
     run.start < line.end && line.start < run.end
 }
 
+/// Whether the white space at the end of a line hangs past the line's end edge.
+///
+/// The style of the line's last character decides. White space hangs where the line may wrap. The
+/// white space that `white-space: pre` and `break-spaces` keep takes up room on the line.
+fn hangs(runs: &[StyledRun], line: &Range<usize>) -> bool {
+    let Some(last) = line.end.checked_sub(1) else {
+        return false;
+    };
+
+    runs.iter()
+        .find(|run| run.text.contains(&last))
+        .is_some_and(|run| {
+            run.style.wrap_mode == WrapMode::Wrap
+                && run.style.white_space != WhiteSpaceCollapse::BreakSpaces
+        })
+}
+
 /// The height every line together occupies.
 pub fn height(lines: &[LineBox]) -> f32 {
     lines.iter().map(LineBox::height).sum()
 }
 
-/// The width the lines together occupy, measured from the context's start edge.
-pub fn width(lines: &[LineBox]) -> f32 {
+/// The width the lines together occupy, measured from the context's left edge.
+///
+/// The white space that hangs at the end of a line is left out. In a right-to-left paragraph it
+/// hangs past the left edge, so the right ends of its lines include all of their content.
+pub fn width(lines: &[LineBox], is_rtl: bool) -> f32 {
     lines
         .iter()
-        .map(|line| line.offset + line.width)
+        .map(|line| {
+            let hanging = if is_rtl { 0.0 } else { line.hanging };
+            line.offset + line.width - hanging
+        })
         .fold(0.0_f32, f32::max)
 }
 
@@ -155,7 +186,7 @@ mod tests {
 
     use crate::inline::strut::{Extents, RunExtents};
 
-    use super::{compute, height};
+    use super::{compute, height, width};
 
     /// Two lines of a paragraph whose shaper reported a 10 px line height for both.
     fn broken() -> BrokenParagraph {
@@ -168,6 +199,7 @@ mod tests {
                         baseline: CssPx(8.0),
                         height: CssPx(10.0),
                         width: CssPx(40.0),
+                        trailing: CssPx(0.0),
                         offset: CssPx(0.0),
                     },
                     LineGeometry {
@@ -176,6 +208,7 @@ mod tests {
                         baseline: CssPx(18.0),
                         height: CssPx(10.0),
                         width: CssPx(30.0),
+                        trailing: CssPx(0.0),
                         offset: CssPx(0.0),
                     },
                 ],
@@ -209,6 +242,44 @@ mod tests {
         assert_eq!(lines[1].top, 16.0);
         assert_eq!(lines[1].baseline(), 28.0);
         assert_eq!(height(&lines), 32.0);
+    }
+
+    #[test]
+    fn the_white_space_at_the_end_of_a_wrapping_line_adds_nothing_to_the_width() {
+        use std::sync::Arc;
+        use zgui_text::StyledRun;
+        use zgui_text_style::{TextStyle, WrapMode};
+
+        let mut broken = broken();
+        Arc::make_mut(&mut broken.geometry).lines[0].trailing = CssPx(8.0);
+        let run = |wrap_mode| StyledRun {
+            text: 0..9,
+            style: Arc::new(TextStyle {
+                wrap_mode,
+                ..TextStyle::initial()
+            }),
+            brush: zgui_scene::PaintSlot(0),
+        };
+
+        let wrapping = compute(&broken, &[run(WrapMode::Wrap)], &[], &strut(), &[], &[]);
+        assert_eq!(wrapping[0].hanging, 8.0);
+        assert_eq!(
+            width(&wrapping, false),
+            32.0,
+            "the space hangs past the right edge"
+        );
+        assert_eq!(
+            width(&wrapping, true),
+            40.0,
+            "a right-to-left line hangs its space past the left edge"
+        );
+
+        let preformatted = compute(&broken, &[run(WrapMode::NoWrap)], &[], &strut(), &[], &[]);
+        assert_eq!(
+            width(&preformatted, false),
+            40.0,
+            "the spaces of a line that may not wrap take up room"
+        );
     }
 
     #[test]

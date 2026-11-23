@@ -299,7 +299,7 @@ pub(crate) fn compute<C: MeasureContent>(
         );
         let measured = Measured {
             size: Size {
-                width: lines::width(&computed),
+                width: lines::width(&computed, broken.geometry.is_rtl),
                 height: lines::height(&computed),
             },
             first_baseline: computed.first().map(LineBox::baseline),
@@ -451,7 +451,7 @@ pub(crate) fn compute<C: MeasureContent>(
     };
     let measured = Measured {
         size: Size {
-            width: lines::width(&resolution.lines),
+            width: lines::width(&resolution.lines, resolution.is_rtl),
             height: lines::height(&resolution.lines),
         },
         first_baseline: resolution.first_baseline(),

@@ -47,6 +47,19 @@ pub fn geometry(
         });
 
         let text_advance: f32 = clusters[start..end].iter().map(|held| held.advance.0).sum();
+        // The white space at the end of the line, unless an inline box follows it.
+        let text = shaped.text();
+        let trailing: f32 = clusters[start..end]
+            .iter()
+            .rev()
+            .take_while(|held| {
+                text[held.offset..].starts_with([' ', '\t'])
+                    && on_line
+                        .iter()
+                        .all(|geometry| geometry.offset <= held.offset)
+            })
+            .map(|held| held.advance.0)
+            .sum();
         let box_advance: f32 = on_line.iter().map(|geometry| geometry.width.0).sum();
         let width = text_advance + box_advance;
         let indent = if index == 0 { request.indent().0 } else { 0.0 };
@@ -82,6 +95,7 @@ pub fn geometry(
             baseline,
             height: CssPx(ascent.0 + descent.0),
             width: CssPx(width),
+            trailing: CssPx(trailing),
             offset: CssPx(offset),
         });
         top = CssPx(top.0 + ascent.0 + descent.0);

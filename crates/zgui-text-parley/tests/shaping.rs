@@ -304,6 +304,31 @@ fn the_geometry_reports_both_baselines() {
     assert!(shaped.strut().line_height.0 > 0.0, "the strut was measured");
 }
 
+/// The space that ends a wrapped line hangs past the line's end edge, and the line reports it.
+#[test]
+fn a_wrapped_line_reports_the_space_that_hangs_at_its_end() {
+    let _guard = counting();
+    let (_fonts, mut shaper) = support::shaper(Controls::Verbatim);
+    let fixture = Fixture::new("hanging space", Direction::LeftToRight);
+    let content = fixture.content();
+    let mut shaped = shaper.shape(&content);
+    let narrow = shaper.break_lines(&mut shaped, &BreakRequest::new(&content, Some(CssPx(1.0))));
+    let first = &narrow.geometry.lines[0];
+    assert_eq!(&fixture.text[first.text.clone()], "hanging ");
+    assert!(first.trailing.0 > 0.0, "the space has an advance");
+
+    // The word fits and the space after it does not.
+    let word = first.width.0 - first.trailing.0;
+    let broken = shaper.break_lines(&mut shaped, &BreakRequest::new(&content, Some(CssPx(word))));
+    let line = &broken.geometry.lines[0];
+    assert_eq!(&fixture.text[line.text.clone()], "hanging ");
+    assert!(
+        line.offset.0 + line.width.0 > word,
+        "the space reaches past the end edge"
+    );
+    assert_eq!(line.offset.0 + line.width.0 - line.trailing.0, word);
+}
+
 /// A banded request breaks each line into its own width, and an unbanded one does not.
 ///
 /// The engine breaks a whole paragraph into a single width in one call, so the per-line widths a

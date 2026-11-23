@@ -125,6 +125,7 @@ impl Located {
                 baseline: CssPx(line.baseline()),
                 height: CssPx(line.height()),
                 width: CssPx(line.width),
+                trailing: CssPx(line.hanging),
                 offset: CssPx(line.offset),
             })
             .collect();

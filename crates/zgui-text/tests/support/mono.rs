@@ -267,6 +267,19 @@ fn assemble(shaped: &ShapedParagraph<MonoLayout>, request: &BreakRequest<'_>) ->
             CssPx(deepest.0.max(geometry.below_baseline().0))
         });
         let text_advance: f32 = clusters[start..end].iter().map(|c| c.advance.0).sum();
+        // The white space at the end of the line, unless an inline box follows it.
+        let text = shaped.text();
+        let trailing: f32 = clusters[start..end]
+            .iter()
+            .rev()
+            .take_while(|cluster| {
+                text[cluster.offset..].starts_with([' ', '\t'])
+                    && on_line
+                        .iter()
+                        .all(|geometry| geometry.offset <= cluster.offset)
+            })
+            .map(|cluster| cluster.advance.0)
+            .sum();
         let box_advance: f32 = on_line.iter().map(|geometry| geometry.width.0).sum();
         let width = text_advance + box_advance;
         let indent = if index == 0 { request.indent().0 } else { 0.0 };
@@ -292,6 +305,7 @@ fn assemble(shaped: &ShapedParagraph<MonoLayout>, request: &BreakRequest<'_>) ->
             baseline,
             height: CssPx(ascent.0 + descent.0),
             width: CssPx(width),
+            trailing: CssPx(trailing),
             offset: CssPx(offset),
         });
         top = CssPx(top.0 + ascent.0 + descent.0);

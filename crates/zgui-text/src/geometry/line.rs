@@ -22,6 +22,11 @@ pub struct LineGeometry {
     pub height: CssPx,
     /// The advance the line's content occupies, before alignment.
     pub width: CssPx,
+    /// The advance of the white space at the end of the line, which `width` includes.
+    ///
+    /// Where this white space hangs past the line's end edge, it adds nothing to the paragraph's
+    /// width.
+    pub trailing: CssPx,
     /// How far the line's content is inset from the paragraph's start edge, after alignment and
     /// any indent.
     pub offset: CssPx,

@@ -91,6 +91,7 @@ impl LineMap {
     ///     baseline: CssPx(12.0),
     ///     height: CssPx(16.0),
     ///     width: CssPx(16.0),
+    ///     trailing: CssPx(0.0),
     ///     offset: CssPx(0.0),
     /// }];
     /// let clusters = [
@@ -222,6 +223,7 @@ impl LineMap {
     ///     baseline: CssPx(12.0),
     ///     height: CssPx(16.0),
     ///     width: CssPx(24.0),
+    ///     trailing: CssPx(0.0),
     ///     offset: CssPx(4.0),
     /// }];
     /// let clusters: Vec<ClusterGeometry> = (0..3)

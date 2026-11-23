@@ -399,6 +399,7 @@ fn read(engine: &ShapedLayout, has_boxes: bool) -> BrokenParagraph {
             baseline: CssPx(metrics.baseline),
             height: CssPx(metrics.line_height),
             width: CssPx(metrics.advance),
+            trailing: CssPx(metrics.trailing_whitespace),
             offset: CssPx(metrics.offset + metrics.inline_min_coord),
         });
         if has_boxes {

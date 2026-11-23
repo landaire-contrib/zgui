@@ -76,6 +76,7 @@ fn line_box(line: &parley::Line<'_, SlotBrush>, prefix: usize) -> LineGeometry {
         baseline: CssPx(metrics.baseline),
         height: CssPx(metrics.line_height),
         width: CssPx(metrics.advance),
+        trailing: CssPx(metrics.trailing_whitespace),
         offset: CssPx(metrics.offset + metrics.inline_min_coord),
     }
 }
