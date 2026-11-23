@@ -26,6 +26,16 @@
 //! takes. That is the whole activation story, and it is why no component contains separate
 //! accessibility activation logic.
 //!
+//! # What a reader reaches
+//!
+//! - An element that declared no role and holds text is static text, a `Label` whose value is the
+//!   text. A button with no label of its own takes its name from the static text inside it.
+//! - An element with `display: none`, a `visibility` other than `visible`, the `inert` attribute,
+//!   or a declaration that it is hidden is a hidden node with no children. Nothing below it is in
+//!   the tree.
+//! - A field with no label and no `labelled_by` is named by its placeholder.
+//! - A password field reports one bullet for each character it holds.
+//!
 //! # What lives where
 //!
 //! | Module | Contents |

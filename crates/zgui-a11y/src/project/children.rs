@@ -3,7 +3,8 @@
 //! The document's own child order is the answer, with the nodes that have no presence left out:
 //! a marker holds a place for content that comes and goes and announces nothing, and a text node
 //! holding no characters says nothing either. Leaving them in would put identifiers in a parent's
-//! child list that resolve to nodes a consumer then has to be told to ignore.
+//! child list that resolve to nodes a consumer then has to be told to ignore. A concealed element
+//! has no children here.
 
 use accesskit::NodeId;
 use zgui_dom::{NodeKey, NodeKind};
@@ -21,7 +22,7 @@ pub fn of(world: &World<'_>, node: NodeKey) -> Vec<NodeId> {
     // sibling chain hangs below it, so it is attached exactly when the parent is. Asking per child
     // walks to the document node per child, which a container with thousands of them pays in full
     // every time its child list is projected.
-    if !world.is_projected(node) {
+    if !world.is_projected(node) || world.conceals(node) {
         return Vec::new();
     }
     let mut children = Vec::new();

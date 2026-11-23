@@ -11,6 +11,11 @@ use smallvec::SmallVec;
 use zgui_interned::AttrName;
 use zgui_vocab::SharedString;
 
+/// The attribute that takes an element and everything below it out of the accessibility tree.
+///
+/// Setting or clearing it marks the element for the accessibility phase.
+pub const INERT: &str = "inert";
+
 /// One attribute.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Attr {

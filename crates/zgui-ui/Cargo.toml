@@ -51,6 +51,8 @@ rustc-hash.workspace = true
 # Asserting on the tree this library *publishes* is asserting on our own structure; this applies
 # the updates the way a real client does and asks the result the questions a reader asks.
 accesskit_consumer.workspace = true
+# The action names, for the replica of the rules VoiceOver on iOS stops by.
+accesskit.workspace = true
 
 [lints]
 workspace = true

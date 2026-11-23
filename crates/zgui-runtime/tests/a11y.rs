@@ -1220,3 +1220,240 @@ fn a_scrolled_list_keeps_its_rows_where_the_scroll_put_them() {
     assert_eq!(hit.as_deref(), Some("Group 4"));
     assert_every_update_resolves(&harness);
 }
+
+/// Every node a reader reaches, in tree order, as its role and what it says.
+///
+/// Read through the consumer filter every platform adapter starts from, so a hidden subtree and a
+/// layout box are absent exactly as they are for a reader.
+fn reached(harness: &Harness<Runtime>) -> Vec<String> {
+    fn walk(node: &accesskit_consumer::Node<'_>, into: &mut Vec<String>) {
+        for child in node.filtered_children(&accesskit_consumer::common_filter) {
+            let said = child.label().or_else(|| child.value()).unwrap_or_default();
+            into.push(format!("{:?} {said}", child.role()));
+            walk(&child, into);
+        }
+    }
+    let tree = support::a11y_tree(harness);
+    let mut found = Vec::new();
+    walk(&tree.state().root(), &mut found);
+    found
+}
+
+#[test]
+fn text_is_static_text_and_names_the_button_it_sits_in() {
+    let mut harness = support::app_with_text(CSS, |cx: &mut zgui_view::BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(zgui_elements::text().child("User name"))
+                .child(zgui_elements::text().child("lander@example.com"))
+                .child(
+                    zgui_elements::control()
+                        .on(events::CLICK, |_| {})
+                        .a11y(A11yBinding::new(Role::Button))
+                        .child(zgui_elements::text().child("Copy user name")),
+                )
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+
+    assert_every_update_resolves(&harness);
+    assert_eq!(
+        reached(&harness),
+        [
+            "Label User name",
+            "Label lander@example.com",
+            "Button Copy user name",
+            "Label Copy user name",
+        ]
+    );
+}
+
+#[test]
+fn static_text_that_moved_is_re_announced_where_it_is() {
+    let tall = RwSignal::new_local(false);
+    let caption = NodeRef::new();
+    let mut harness = support::app_with_text(CSS, move |cx: &mut zgui_view::BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(zgui_elements::r#box().style_property("height", move || {
+                    Some(if tall.get() { "80px" } else { "10px" }.to_owned())
+                }))
+                .child(zgui_elements::text().node_ref(caption).child("Password"))
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+    let target = bound_id(caption);
+    let top = |harness: &Harness<Runtime>| {
+        let tree = support::a11y_tree(harness);
+        let state = tree.state();
+        let node = state
+            .node_by_tree_local_id(target, TreeId::ROOT)
+            .expect("the text reached the tree");
+        node.bounding_box().expect("the text has a rectangle").y0
+    };
+    let before = top(&harness);
+
+    tall.set(true);
+    harness.settle(8);
+
+    assert_eq!(top(&harness) - before, 70.0);
+    assert_every_update_resolves(&harness);
+}
+
+#[test]
+fn a_password_field_is_named_by_its_placeholder_and_reports_only_bullets() {
+    let mut harness = support::app_with_text(CSS, |cx: &mut zgui_view::BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(
+                    zgui_elements::control()
+                        .class("field")
+                        .a11y(
+                            A11yBinding::new(Role::PasswordInput)
+                                .placeholder("Master password")
+                                .value("hunter2"),
+                        )
+                        .child("hunter2"),
+                )
+                .child(
+                    zgui_elements::control().class("field").a11y(
+                        A11yBinding::new(Role::TextInput)
+                            .label("Database")
+                            .placeholder("Path to .kdbx database"),
+                    ),
+                )
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+
+    assert_every_update_resolves(&harness);
+    let tree = support::a11y_tree(&harness);
+    let state = tree.state();
+    let fields: Vec<_> = state
+        .root()
+        .filtered_children(&accesskit_consumer::common_filter)
+        .map(|field| {
+            (
+                field.label(),
+                field.value(),
+                field.placeholder().map(str::to_owned),
+            )
+        })
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            (
+                Some("Master password".to_owned()),
+                Some("\u{2022}".repeat(7)),
+                None
+            ),
+            (
+                Some("Database".to_owned()),
+                None,
+                Some("Path to .kdbx database".to_owned())
+            ),
+        ]
+    );
+}
+
+/// One way to take a pane out of what a reader reaches.
+#[derive(Clone, Copy)]
+enum Conceal {
+    /// `display: none`.
+    Display,
+    /// `visibility: hidden`.
+    Visibility,
+    /// The `inert` attribute.
+    Inert,
+    /// A declaration that the pane is hidden.
+    Declared,
+}
+
+/// Conceals a pane `how`, then shows it again, reading what a reader reaches each time.
+fn a_concealed_pane_leaves_the_tree_and_returns(how: Conceal) {
+    let concealed = RwSignal::new_local(false);
+    let css = format!(
+        "{CSS}\n.pane {{ display: block }}\n.pane.gone {{ display: none }}\n\
+         .pane.ghost {{ visibility: hidden }}"
+    );
+    let mut harness = support::app_with_text(&css, move |cx: &mut zgui_view::BuildCx<'_>| {
+        let pane = zgui_elements::column().class("pane");
+        let pane = match how {
+            Conceal::Display => {
+                pane.class_toggle(zgui_view::ClassName::new("gone"), move || concealed.get())
+            }
+            Conceal::Visibility => {
+                pane.class_toggle(zgui_view::ClassName::new("ghost"), move || concealed.get())
+            }
+            Conceal::Inert => pane.attribute(zgui_view::AttrName::new("inert"), move || {
+                concealed.get().then(String::new)
+            }),
+            Conceal::Declared => {
+                pane.a11y(A11yBinding::unspecified().hidden(move || concealed.get()))
+            }
+        };
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(
+                    pane.child(zgui_elements::text().child("Password")).child(
+                        zgui_elements::control()
+                            .a11y(A11yBinding::new(Role::Button).label("Copy password")),
+                    ),
+                )
+                .child(zgui_elements::text().child("Always here"))
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+    let shown = reached(&harness);
+    assert_eq!(
+        shown,
+        [
+            "Label Password",
+            "Button Copy password",
+            "Label Always here"
+        ]
+    );
+
+    concealed.set(true);
+    harness.settle(8);
+    assert_eq!(reached(&harness), ["Label Always here"]);
+    assert_every_update_resolves(&harness);
+
+    concealed.set(false);
+    harness.settle(8);
+    assert_eq!(reached(&harness), shown);
+    assert_every_update_resolves(&harness);
+}
+
+#[test]
+fn a_pane_css_takes_out_of_the_rendering_leaves_the_tree_and_returns() {
+    a_concealed_pane_leaves_the_tree_and_returns(Conceal::Display);
+}
+
+#[test]
+fn a_pane_css_makes_invisible_leaves_the_tree_and_returns() {
+    a_concealed_pane_leaves_the_tree_and_returns(Conceal::Visibility);
+}
+
+#[test]
+fn an_inert_pane_leaves_the_tree_and_returns() {
+    a_concealed_pane_leaves_the_tree_and_returns(Conceal::Inert);
+}
+
+#[test]
+fn a_pane_declared_hidden_leaves_the_tree_and_returns() {
+    a_concealed_pane_leaves_the_tree_and_returns(Conceal::Declared);
+}

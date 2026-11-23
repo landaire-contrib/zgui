@@ -10,5 +10,5 @@ focus #1
 #8 GenericContainer children=[#9 #10]
 #9 Button label="Delete" expanded=true has_popup=Dialog owns=[#10]
 #10 Dialog modal labelled_by=[#11] described_by=[#12] popup_for=#9 children=[#11 #12]
-#11 GenericContainer label="Delete file?"
-#12 GenericContainer label="This cannot be undone."
+#11 Label value="Delete file?"
+#12 Label value="This cannot be undone."

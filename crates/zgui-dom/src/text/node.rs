@@ -34,11 +34,31 @@ pub fn set_text(store: &mut DocumentStore, index: NodeIndex, text: &str) {
     *store.columns_mut().text.get_mut(key) = Some(text.into());
 }
 
+/// Whether a text child of `index` holds text other than white space.
+///
+/// Such an element is static text in the accessibility tree, so its rectangle is announced.
+///
+/// # Panics
+///
+/// Panics if `index` names no live node of `store`.
+pub fn holds_text(store: &DocumentStore, index: NodeIndex) -> bool {
+    let mut child = store.core(index).first_child();
+    while let Some(current) = child {
+        if store.core(current).kind() == NodeKind::Text
+            && text_of(store, current).is_some_and(|text| !text.trim().is_empty())
+        {
+            return true;
+        }
+        child = store.core(current).next_sibling();
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use zgui_interned::ElementName;
 
-    use super::{set_text, text_of};
+    use super::{holds_text, set_text, text_of};
     use crate::arena::document::Document;
     use crate::node::kind::NodeKind;
 
@@ -57,6 +77,21 @@ mod tests {
         assert_eq!(text_of(document.store(), text), Some("hello"));
         set_text(document.store_mut(), text, "goodbye");
         assert_eq!(text_of(document.store(), text), Some("goodbye"));
+    }
+
+    #[test]
+    fn only_text_other_than_white_space_is_held() {
+        let mut document = Document::new();
+        let root = document.append(
+            document.document_index(),
+            NodeKind::Element,
+            ElementName::new("root"),
+        );
+        let text = document.append(root, NodeKind::Text, ElementName::new("#text"));
+        set_text(document.store_mut(), text, " \n");
+        assert!(!holds_text(document.store(), root));
+        set_text(document.store_mut(), text, "Password");
+        assert!(holds_text(document.store(), root));
     }
 
     #[test]

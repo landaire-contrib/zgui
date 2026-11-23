@@ -8,7 +8,7 @@ focus #1
 #6 GenericContainer
 #7 GenericContainer
 #8 GenericContainer children=[#9 #10 #11 #12]
-#9 GenericContainer label="Full name"
+#9 Label value="Full name"
 #10 TextInput required labelled_by=[#9] described_by=[#11] error_message=#12
-#11 GenericContainer label="As it appears on your passport"
-#12 GenericContainer label="Required"
+#11 Label value="As it appears on your passport"
+#12 Label value="Required"

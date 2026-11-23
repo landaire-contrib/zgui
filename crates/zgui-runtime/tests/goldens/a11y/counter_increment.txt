@@ -1,2 +1,2 @@
 focus #2
-#1 GenericContainer label="1"
+#1 Label value="1"

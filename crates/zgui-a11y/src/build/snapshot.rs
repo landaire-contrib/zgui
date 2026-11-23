@@ -48,6 +48,21 @@ pub struct Snapshots {
     /// naming it, that node is never re-sent and the consumer is left holding an identifier it
     /// resolves with an unchecked lookup.
     referrers: HashMap<NodeId, BTreeSet<NodeKey>>,
+    /// Which held nodes declare a relation to a node the tree does not hold.
+    ///
+    /// A node below a concealed ancestor is out of the tree, so a relation to it is left out. When
+    /// the ancestor is shown again, nothing marks the node that declared the relation; this is how
+    /// it is found and projected again.
+    waiting: BTreeSet<NodeKey>,
+}
+
+/// Whether a node declares a relation to a node the tree does not hold.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Waiting {
+    /// Every relation it declares resolves.
+    No,
+    /// At least one relation it declares names a node out of the tree.
+    Yes,
 }
 
 impl Snapshots {
@@ -185,6 +200,7 @@ impl Snapshots {
         self.unindex(node);
         self.unfile(node);
         self.origins.remove(&node);
+        self.waiting.remove(&node);
         self.nodes.remove(&node);
     }
 
@@ -198,11 +214,29 @@ impl Snapshots {
             .map_or_else(Vec::new, |set| set.iter().copied().collect())
     }
 
+    /// Records whether held `node` declares a relation to a node the tree does not hold.
+    pub fn set_waiting(&mut self, node: NodeKey, waiting: Waiting) {
+        match waiting {
+            Waiting::Yes if self.nodes.contains_key(&node) => {
+                self.waiting.insert(node);
+            }
+            Waiting::Yes | Waiting::No => {
+                self.waiting.remove(&node);
+            }
+        }
+    }
+
+    /// Every held node that declares a relation to a node the tree does not hold.
+    pub fn waiting(&self) -> impl Iterator<Item = NodeKey> + '_ {
+        self.waiting.iter().copied()
+    }
+
     /// Forgets everything, so the next update has to be a whole tree.
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.origins.clear();
         self.referrers.clear();
+        self.waiting.clear();
         self.by_space.clear();
         self.spaces_of.clear();
     }

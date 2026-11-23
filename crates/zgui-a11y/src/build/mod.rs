@@ -37,6 +37,7 @@ use zgui_profile::Counter;
 
 use crate::build::pending::Pending;
 use crate::build::snapshot::Snapshots;
+use crate::build::snapshot::Waiting;
 use crate::id::to_a11y;
 use crate::project;
 use crate::world::World;
@@ -170,9 +171,24 @@ impl A11yBuilder {
         // The nodes whose origin moved on the page. Their children are measured from that origin,
         // so a child that stayed where it was on the page now sits somewhere else relative to it.
         let mut anchors: Vec<NodeKey> = Vec::new();
+        let held_before = self.held.len();
         for key in &targets {
             if self.reproject(world, *key, &mut nodes) {
                 anchors.push(*key);
+            }
+        }
+        // Nodes arrived, so a relation that named a node out of the tree may resolve now. The node
+        // that declared it is marked by nothing this frame.
+        if self.held.len() > held_before {
+            let waiting: Vec<NodeKey> = self
+                .held
+                .waiting()
+                .filter(|key| !targets.contains(key))
+                .collect();
+            for key in waiting {
+                if self.reproject(world, key, &mut nodes) {
+                    anchors.push(key);
+                }
             }
         }
         // After the projections, and skipping anything they already covered: a node the departure
@@ -334,7 +350,9 @@ impl A11yBuilder {
                     let (resent, moved) = self.remeasure_and_tell(world, child, nodes);
                     resent && moved
                 };
-                if moved || project::geometry::origin(world, child).is_none() {
+                // Below a concealed child nothing is held, so the walk ends there.
+                let opens = moved || project::geometry::origin(world, child).is_none();
+                if opens && !world.conceals(child) {
                     anchors.push(child);
                 }
             }
@@ -388,7 +406,22 @@ impl A11yBuilder {
         self.held.measured_through(key, spaces.into_iter());
     }
 
+    /// Records whether held `key` declares a relation to a node the tree leaves out.
+    fn note_waiting(&mut self, world: &World<'_>, key: NodeKey) {
+        let waiting = match world.semantics(key) {
+            Some(semantics) if project::relations::awaits(world, &semantics.relations) => {
+                Waiting::Yes
+            }
+            _ => Waiting::No,
+        };
+        self.held.set_waiting(key, waiting);
+    }
+
     /// Projects one node, putting it in `nodes` only if the consumer would see a difference.
+    ///
+    /// A child the consumer is not holding is projected with everything below it. That is the case
+    /// for a subtree an ancestor concealed until this frame: nothing in it was marked when it was
+    /// shown again, and a child list naming a node the consumer never received is one it rejects.
     ///
     /// Answers whether the node's origin moved on the page.
     fn reproject(
@@ -402,16 +435,26 @@ impl A11yBuilder {
             return false;
         };
         zgui_profile::counter::bump(Counter::A11yProjected);
+        let unheld: Vec<NodeKey> = projected
+            .children()
+            .iter()
+            .filter_map(|child| crate::id::to_document(*child))
+            .filter(|child| !self.held.holds(*child))
+            .collect();
         let changed = self.held.record(key, &projected);
         self.file_by_space(world, key);
+        self.note_waiting(world, key);
         let moved = self.held.place(key, project::geometry::origin(world, key));
         if changed {
             nodes.push((to_a11y(key), projected));
         }
+        for child in unheld {
+            self.project_subtree(world, child, nodes);
+        }
         moved
     }
 
-    /// Projects `key` and everything below it, in document order.
+    /// Projects `key` and every node below it the consumer is not holding, in document order.
     ///
     /// Walked over an explicit stack rather than by recursion, because a document's depth is
     /// whatever an application nested and a stack overflow is not a failure mode a tree walk may
@@ -430,11 +473,14 @@ impl A11yBuilder {
             let children = projected.children().to_vec();
             self.held.record(key, &projected);
             self.file_by_space(world, key);
+            self.note_waiting(world, key);
             self.held.place(key, project::geometry::origin(world, key));
             nodes.push((to_a11y(key), projected));
             // Reversed, so that popping visits the children in document order.
             for child in children.into_iter().rev() {
-                if let Some(child) = crate::id::to_document(child) {
+                if let Some(child) = crate::id::to_document(child)
+                    && !self.held.holds(child)
+                {
                     stack.push(child);
                 }
             }

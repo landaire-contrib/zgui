@@ -6536,6 +6536,7 @@ dependencies = [
 name = "zgui-ui"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
  "accesskit_consumer",
  "image",
  "rustc-hash 2.1.3",

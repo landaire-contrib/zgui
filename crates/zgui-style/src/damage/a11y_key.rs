@@ -13,16 +13,18 @@
 //! is exposed.
 
 use zgui_css::ComputedStyle;
+use zgui_css::values::size::VisibilityValue;
 use zgui_dom::side::a11y_key::A11yKey;
+use zgui_dom::side::a11y_key::Presence;
 use zgui_dom::{DocumentStore, NodeIndex};
 
 /// The accessibility key of the element at `index`.
 ///
-/// The key holds the semantics record alone. A style group's address moves on every cascade of an
-/// element that declares anything in it, and a hash of the text is a walk over the document's text
-/// on every restyle; the projection needs neither, because it reads no computed value and a text
-/// edit marks the element itself.
-pub fn a11y_key(store: &DocumentStore, index: NodeIndex, _style: &ComputedStyle) -> A11yKey {
+/// The key holds the semantics record and whether `style` hides the element. A style group's
+/// address moves on every cascade of an element that declares anything in it, and a hash of the
+/// text is a walk over the document's text on every restyle; the projection needs neither, because
+/// a text edit marks the element itself.
+pub fn a11y_key(store: &DocumentStore, index: NodeIndex, style: &ComputedStyle) -> A11yKey {
     A11yKey {
         semantics: store
             .columns()
@@ -30,5 +32,17 @@ pub fn a11y_key(store: &DocumentStore, index: NodeIndex, _style: &ComputedStyle)
             .get(store.key_of(index))
             .as_ref()
             .map_or(0, |semantics| core::ptr::from_ref(&**semantics) as usize),
+        presence: presence(style),
+    }
+}
+
+/// Whether `style` hides its element from the accessibility tree.
+fn presence(style: &ComputedStyle) -> Presence {
+    let displayed = !style.get_box().clone_display().is_none();
+    let visible = style.get_inherited_box().visibility == VisibilityValue::Visible;
+    if displayed && visible {
+        Presence::Shown
+    } else {
+        Presence::Hidden
     }
 }

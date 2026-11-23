@@ -21,6 +21,7 @@ use zgui_vocab::SharedString;
 use crate::id::node_key::NodeIndex;
 use crate::mutate::ancestors;
 use crate::mutate::edit::Edit;
+use crate::side::attrs::INERT;
 
 impl Edit<'_> {
     /// Replaces `node`'s classes.
@@ -127,6 +128,9 @@ impl Edit<'_> {
         store.write_attribute(node, name, value);
         if matters {
             ancestors::mark(store, node, Dirty::RESTYLE);
+        }
+        if name.as_str() == INERT {
+            ancestors::mark(store, node, Dirty::A11Y);
         }
     }
 
@@ -249,6 +253,24 @@ mod tests {
         );
         assert_eq!(document.pending_snapshots(), 0);
         assert!(document.store().core(root).dirty().own().is_clean());
+    }
+
+    #[test]
+    fn inert_marks_the_element_for_the_accessibility_phase_whatever_the_rules_name() {
+        let (document, root) = one();
+        document
+            .edit(&OnlyHot, |edit| {
+                edit.set_attribute(root, AttrName::new("inert"), Some(SharedString::from("")));
+            })
+            .expect("not poisoned");
+        assert!(
+            document
+                .store()
+                .core(root)
+                .dirty()
+                .own()
+                .contains(Dirty::A11Y)
+        );
     }
 
     #[test]

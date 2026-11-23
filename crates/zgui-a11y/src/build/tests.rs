@@ -2,8 +2,10 @@
 
 use accesskit::{NodeId, Role};
 use zgui_dom::{Document, EverythingMatters, NodeIndex};
+use zgui_interned::AttrName;
 use zgui_interned::ElementName;
 use zgui_layout::tree::store::LayoutStore;
+use zgui_vocab::SharedString;
 use zgui_vocab::{A11y, EventKind, ListenerOptions};
 
 use super::A11yBuilder;
@@ -432,4 +434,90 @@ fn nothing_is_filed_for_a_consumer_that_is_holding_nothing() {
         0,
         "a node the consumer is not holding has no rectangle to correct"
     );
+}
+
+/// A pane holding a box holding a button, under the root of `counter`.
+fn pane(document: &Document) -> (NodeIndex, NodeIndex) {
+    let root = document.root_index().expect("the document has a root");
+    document
+        .edit(&EverythingMatters, |edit| {
+            let pane = edit.create_element(ElementName::new("pane"));
+            edit.insert_before(root, pane, None);
+            let holder = edit.create_element(ElementName::new("box"));
+            edit.insert_before(pane, holder, None);
+            let button = edit.create_element(ElementName::new("control"));
+            edit.insert_before(holder, button, None);
+            edit.set_semantics(button, Some(A11y::new(Role::Button).label("Copy").into()));
+            (pane, button)
+        })
+        .expect("not poisoned")
+}
+
+/// Hides and shows the pane of [`pane`] through `conceal`, checking what the consumer holds.
+fn conceal_and_show(conceal: impl Fn(&mut zgui_dom::Edit<'_>, NodeIndex, bool)) {
+    let (mut document, _button, _text) = counter();
+    let (pane, button) = pane(&document);
+    let layout = LayoutStore::new(document.store().document());
+    let mut builder = A11yBuilder::new();
+    builder.collect(&mut document);
+    builder.build(&world!(document, layout));
+    let pane_id = to_a11y(document.store().key_of(pane));
+    let button_id = to_a11y(document.store().key_of(button));
+
+    document
+        .edit(&EverythingMatters, |edit| conceal(edit, pane, true))
+        .expect("not poisoned");
+    builder.collect(&mut document);
+    let update = builder.build(&world!(document, layout));
+    let sent = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == pane_id)
+        .map(|(_, node)| node.clone())
+        .expect("the pane is sent again");
+    assert!(sent.is_hidden());
+    assert!(sent.children().is_empty(), "{}", crate::dump(&update));
+    assert!(
+        !builder.retained().any(|id| id == button_id),
+        "everything below a concealed element leaves the tree"
+    );
+    assert!(crate::dangling(&update, builder.retained()).is_empty());
+
+    document
+        .edit(&EverythingMatters, |edit| conceal(edit, pane, false))
+        .expect("not poisoned");
+    builder.collect(&mut document);
+    let update = builder.build(&world!(document, layout));
+    assert!(
+        update.nodes.iter().any(|(id, _)| *id == button_id),
+        "a subtree shown again arrives whole although nothing inside it was marked: {}",
+        crate::dump(&update)
+    );
+    assert!(crate::dangling(&update, builder.retained()).is_empty());
+
+    let mut fresh = A11yBuilder::new();
+    fresh.build(&world!(document, layout));
+    let mut held: Vec<NodeId> = builder.retained().collect();
+    let mut whole: Vec<NodeId> = fresh.retained().collect();
+    held.sort_unstable();
+    whole.sort_unstable();
+    assert_eq!(held, whole, "the differences add up to the whole tree");
+}
+
+#[test]
+fn a_subtree_declared_hidden_leaves_the_tree_and_comes_back_whole() {
+    conceal_and_show(|edit, pane, hidden| {
+        edit.set_semantics(pane, Some(A11y::new(Role::Group).hidden(hidden).into()));
+    });
+}
+
+#[test]
+fn an_inert_subtree_leaves_the_tree_and_comes_back_whole() {
+    conceal_and_show(|edit, pane, inert| {
+        edit.set_attribute(
+            pane,
+            AttrName::new("inert"),
+            inert.then(|| SharedString::from("")),
+        );
+    });
 }

@@ -67,6 +67,16 @@ fn exists(world: &World<'_>, target: accesskit::NodeId) -> bool {
     to_document(target).is_some_and(|key| world.is_projected(key))
 }
 
+/// Whether `relations` names a node of the document that the projected tree leaves out.
+///
+/// Such a node is below a concealed ancestor. When the ancestor is shown again, the node that
+/// declared the relation is projected again so that it names the node.
+pub fn awaits(world: &World<'_>, relations: &Relations) -> bool {
+    relations
+        .targets()
+        .any(|target| to_document(target).is_some_and(|key| !world.is_projected(key)))
+}
+
 /// Every identifier `node` relates to, in the order the relations were written.
 ///
 /// This is what an integrity check walks: a relation is only ever wrong in one way, and it is the

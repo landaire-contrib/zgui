@@ -27,7 +27,8 @@ pub trait FrameDirty {
     /// A widget that moved is a widget whose accessibility node changed, because that node's
     /// bounds are geometry. A *layout box* that moved is not, and the difference is what keeps the
     /// claim honest: a scrolled list of five thousand rows moves five thousand boxes and changes
-    /// the accessibility tree only where something declared what it means.
+    /// the accessibility tree only where something declared what it means. An element that holds
+    /// text is static text, and counts as declared.
     ///
     /// Answering `false` is always safe for a pass that has no document to ask.
     fn is_semantic(&self, node: Option<zgui_dom::NodeKey>) -> bool {
@@ -247,14 +248,21 @@ impl FrameDirty for DocumentMarks<'_> {
     }
 
     fn is_semantic(&self, node: Option<zgui_dom::NodeKey>) -> bool {
-        node.is_some_and(|node| {
-            self.store
-                .columns()
-                .semantics
-                .get(node)
-                .and_then(|slot| slot.as_deref())
-                .is_some_and(|semantics| !semantics.is_trivial())
-        })
+        let Some(node) = node else {
+            return false;
+        };
+        let declared = self
+            .store
+            .columns()
+            .semantics
+            .get(node)
+            .and_then(|slot| slot.as_deref())
+            .is_some_and(|semantics| !semantics.is_trivial());
+        declared
+            || self.store.index_of(node).is_some_and(|index| {
+                self.store.core(index).kind() == zgui_dom::NodeKind::Element
+                    && zgui_dom::text::node::holds_text(self.store, index)
+            })
     }
 
     fn carries_children(&self, node: Option<zgui_dom::NodeKey>) -> bool {

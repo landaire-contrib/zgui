@@ -8,7 +8,11 @@
 //! So the updates are taken from the surface, applied through `accesskit_consumer` — the crate every
 //! platform adapter is built on — and the result is asked the two questions a reader asks first.
 
-use accesskit_consumer::{Node, Tree, TreeChangeHandler};
+use accesskit::Action;
+use accesskit_consumer::Node;
+use accesskit_consumer::Tree;
+use accesskit_consumer::TreeChangeHandler;
+use accesskit_consumer::common_filter;
 use zgui_platform_headless::OffscreenSurface;
 
 /// One node, as a reader would meet it.
@@ -77,4 +81,87 @@ fn walk(node: &Node<'_>, found: &mut Vec<Announced>) {
     for child in node.children() {
         walk(&child, found);
     }
+}
+
+/// One element VoiceOver on iOS stops on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stop {
+    /// What it is, by the name a consumer reports.
+    pub role: String,
+    /// What it is called.
+    pub label: String,
+    /// What it holds.
+    pub value: String,
+}
+
+/// The elements VoiceOver on iOS stops on, in order.
+///
+/// The rules are those of `accesskit_ios` 0.1.2, which builds only for iOS. A node the common
+/// filter keeps is an element when it can act, holds a value, or holds no child that can take focus
+/// or has children of its own. Any other node is a container, and VoiceOver walks into it.
+pub fn ios_stops(surface: &OffscreenSurface) -> Vec<Stop> {
+    let Some(tree) = consumed(surface) else {
+        return Vec::new();
+    };
+    let state = tree.state();
+    let mut found = Vec::new();
+    let mut pending: Vec<Node<'_>> = state
+        .root()
+        .filtered_children(common_filter)
+        .rev()
+        .collect();
+    while let Some(node) = pending.pop() {
+        if is_element(&node) {
+            found.push(Stop {
+                role: format!("{:?}", node.role()),
+                label: node.label().unwrap_or_default(),
+                value: node.value().unwrap_or_default(),
+            });
+            continue;
+        }
+        pending.extend(node.filtered_children(common_filter).rev());
+    }
+    found
+}
+
+/// Whether `node` offers an action other than scrolling.
+fn can_act(node: &Node<'_>) -> bool {
+    [
+        Action::Click,
+        Action::Focus,
+        Action::Increment,
+        Action::Decrement,
+        Action::Expand,
+        Action::Collapse,
+        Action::CustomAction,
+        Action::ReplaceSelectedText,
+        Action::SetTextSelection,
+        Action::SetValue,
+    ]
+    .into_iter()
+    .any(|action| node.supports_action(action, &common_filter))
+}
+
+/// Whether VoiceOver can stop on `node`.
+fn can_be_focused(node: &Node<'_>) -> bool {
+    node.has_label()
+        || node.toggled().is_some()
+        || node.has_value()
+        || node.numeric_value().is_some()
+        || node.has_description()
+        || can_act(node)
+}
+
+/// Whether `node` is an element rather than a container.
+fn is_element(node: &Node<'_>) -> bool {
+    if can_act(node)
+        || node.toggled().is_some()
+        || node.has_value()
+        || node.numeric_value().is_some()
+    {
+        return true;
+    }
+    !node.filtered_children(common_filter).any(|child| {
+        can_be_focused(&child) || child.filtered_children(common_filter).next().is_some()
+    })
 }

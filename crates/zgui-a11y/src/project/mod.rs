@@ -10,10 +10,11 @@
 //! | [`semantics`] | what the element declared about itself |
 //! | [`relations`] | which other nodes it names, filtered to the ones that exist |
 //! | [`geometry`] | where it is, and whether it clips what is inside it |
-//! | [`name`] | the name an element that declared none takes from its own text |
+//! | [`name`] | the role and name an element takes from its own text |
 //! | [`children`] | which nodes hang below it |
 //! | [`actions`] | what it can be asked to do |
-//! | [`presence`] | whether it is on the screen at all |
+//!
+//! Whether a node is in the tree at all is [`World::conceals`] and [`World::is_projected`].
 //!
 //! # A text node is not a node here
 //!
@@ -22,13 +23,13 @@
 //! "the label now reads 1" — one node, the label. Exposing the text as a node of its own would
 //! make it two, would put a node in the tree that no relation can usefully point at, and would
 //! disagree with the invalidation key this projection is scheduled by, which hashes exactly an
-//! element's own text children.
+//! element's own text children. An element that declared no role and holds text is static text:
+//! see [`name::apply`].
 
 pub mod actions;
 pub mod children;
 pub mod geometry;
 pub mod name;
-pub mod presence;
 pub mod relations;
 pub mod semantics;
 
@@ -72,14 +73,14 @@ fn element(world: &World<'_>, node: NodeKey) -> Node {
     let declared = world.semantics(node).cloned().unwrap_or_default();
     let mut projected = Node::new(declared.role);
     semantics::apply(&declared, &mut projected);
-    // After the declaration and before everything else, because an element that generates no box is
-    // hidden whatever it declared: a component that sets `display: none` on its own content has
-    // said so in CSS, and the accessibility tree is not the place to disagree with it.
-    if presence::is_absent(world, node) {
+    // A concealed element stays as a hidden node with no children, so that a relation naming it
+    // keeps a target and a consumer drops it with everything it held.
+    if world.conceals(node) {
         projected.set_hidden();
     }
     name::apply(world, node, &declared, &mut projected);
     relations::apply(world, &declared.relations, &mut projected);
+    name::from_placeholder(&mut projected);
     geometry::apply(world, node, &mut projected);
     actions::apply(world, node, &declared, &mut projected);
     projected.set_children(children::of(world, node));

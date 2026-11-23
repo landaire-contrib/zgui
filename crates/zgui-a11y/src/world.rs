@@ -6,10 +6,13 @@
 //! one value is what keeps the projection a function of the frame rather than of whatever happened
 //! to be reachable.
 
+use zgui_dom::side::a11y_key::Presence;
+use zgui_dom::side::attrs::INERT;
 use zgui_dom::{Document, NodeKey, NodeKind};
 use zgui_layout::scroll_region::ScrollOffsets;
 use zgui_layout::tree::store::LayoutStore;
 use zgui_scene::Placements;
+use zgui_vocab::SemanticFlags;
 use zgui_vocab::Semantics;
 
 /// The document, its geometry and its focus, as one frame's projection reads them.
@@ -57,7 +60,7 @@ impl World<'_> {
             .and_then(|slot| slot.as_deref())
     }
 
-    /// Whether `node` declares anything beyond being a box on the screen.
+    /// Whether `node` declares anything beyond being a box on the screen, or holds static text.
     ///
     /// The same test the fragment pass applies before recording that a moved element owes a
     /// rectangle — see
@@ -65,14 +68,55 @@ impl World<'_> {
     /// is here for the same reason: a moved *layout box* changes nothing an assistive technology
     /// was told, and a document is mostly layout boxes.
     pub fn declares_semantics(&self, node: NodeKey) -> bool {
-        self.semantics(node)
+        if self
+            .semantics(node)
             .is_some_and(|semantics| !semantics.is_trivial())
+        {
+            return true;
+        }
+        let store = self.document.store();
+        store.index_of(node).is_some_and(|index| {
+            store.core(index).kind() == NodeKind::Element
+                && zgui_dom::text::node::holds_text(store, index)
+        })
     }
 
     /// The text `node` holds, when it is a text node holding any.
     pub fn text(&self, node: NodeKey) -> Option<&str> {
         let index = self.document.store().index_of(node)?;
         zgui_dom::text::node::text_of(self.document.store(), index)
+    }
+
+    /// Whether `node` hides itself and everything below it from the tree.
+    ///
+    /// An element is concealed when it declares itself hidden, carries the `inert` attribute, or
+    /// has a computed style of `display: none` or a `visibility` other than `visible`. Each of these
+    /// marks the element for the accessibility phase when it changes.
+    ///
+    /// A concealed element is projected as a hidden node with no children. It stays in the tree so
+    /// that a relation that names it, such as a dialog labelled by a title that is hidden, keeps a
+    /// target. Nothing below it is projected.
+    pub fn conceals(&self, node: NodeKey) -> bool {
+        if self
+            .semantics(node)
+            .is_some_and(|semantics| semantics.flags.contains(SemanticFlags::HIDDEN))
+        {
+            return true;
+        }
+        let store = self.document.store();
+        let columns = store.columns();
+        let inert = columns
+            .attrs
+            .get(node)
+            .and_then(Option::as_deref)
+            .is_some_and(|attrs| attrs.get_by_str(INERT).is_some());
+        if inert {
+            return true;
+        }
+        columns
+            .a11y_key
+            .get(node)
+            .is_some_and(|key| key.presence == Presence::Hidden)
     }
 
     /// Whether `node` appears in the projected tree at all.
@@ -83,7 +127,8 @@ impl World<'_> {
     /// that has been taken out of the document: a removed node is still in the arena until the
     /// frame ends, and a projection that took "still allocated" for "still in the tree" would keep
     /// writing relations into a subtree the consumer has already dropped — which a consumer
-    /// resolves with an unchecked lookup, on a thread this process does not own.
+    /// resolves with an unchecked lookup, on a thread this process does not own. A node below a
+    /// [concealed](World::conceals) ancestor also resolves to nothing.
     pub fn is_projected(&self, node: NodeKey) -> bool {
         let store = self.document.store();
         let Some(index) = store.index_of(node) else {
@@ -104,21 +149,67 @@ impl World<'_> {
             if current == document {
                 return true;
             }
-            match store.core(current).parent() {
-                Some(parent) => current = parent,
-                None => return false,
+            let Some(parent) = store.core(current).parent() else {
+                return false;
+            };
+            if self.conceals(store.key_of(parent)) {
+                return false;
             }
+            current = parent;
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use zgui_dom::{Document, NodeKind};
+    use zgui_dom::{Document, EverythingMatters, NodeKind};
+    use zgui_interned::AttrName;
     use zgui_interned::ElementName;
     use zgui_layout::tree::store::LayoutStore;
+    use zgui_vocab::A11y;
+    use zgui_vocab::Role;
+    use zgui_vocab::SharedString;
 
     use super::World;
+
+    #[test]
+    fn a_concealed_element_stays_and_everything_below_it_leaves() {
+        let mut document = Document::new();
+        let root = document.append(
+            document.document_index(),
+            NodeKind::Element,
+            ElementName::new("root"),
+        );
+        let hidden = document.append(root, NodeKind::Element, ElementName::new("title"));
+        let inside = document.append(hidden, NodeKind::Element, ElementName::new("box"));
+        let inert = document.append(root, NodeKind::Element, ElementName::new("page"));
+        let below_inert = document.append(inert, NodeKind::Element, ElementName::new("box"));
+        document
+            .edit(&EverythingMatters, |edit| {
+                edit.set_semantics(hidden, Some(A11y::new(Role::Label).hidden(true).into()));
+                edit.set_attribute(inert, AttrName::new("inert"), Some(SharedString::from("")));
+            })
+            .expect("not poisoned");
+        let layout = LayoutStore::new(document.store().document());
+        let world = World {
+            document: &document,
+            layout: &layout,
+            placements: &zgui_scene::Placements::EMPTY,
+            scale: 1.0,
+            focus: None,
+            scroll: None,
+        };
+
+        let store = document.store();
+        assert!(world.conceals(store.key_of(hidden)));
+        assert!(world.conceals(store.key_of(inert)));
+        assert!(
+            world.is_projected(store.key_of(hidden)),
+            "a relation may name a hidden title, so the title itself stays as a target"
+        );
+        assert!(!world.is_projected(store.key_of(inside)));
+        assert!(!world.is_projected(store.key_of(below_inert)));
+    }
 
     #[test]
     fn a_marker_is_never_part_of_the_projected_tree() {
