@@ -35,7 +35,7 @@ pub use crate::surface::serial::InputSerial;
 pub use crate::surface::subpixel::SubpixelLayout;
 pub use crate::surface::text_input::{
     Autocapitalize, CaretStop, EnterKeyHint, TextContentType, TextInput, TextInputHints,
-    TextInputPurpose, TextSelection, TextSnapshot,
+    TextInputPurpose, TextInputSession, TextSelection, TextSnapshot,
 };
 pub use crate::surface::timing::{ComposeAhead, PresentPacing, PresentationTiming};
 pub use crate::surface::watchdog::Watchdog;

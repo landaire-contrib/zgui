@@ -21,6 +21,8 @@ pub enum TextInputPurpose {
     Pin,
     /// A number.
     Number,
+    /// A whole number, made of digits only.
+    Digits,
     /// A telephone number.
     Phone,
     /// A web address.
@@ -36,7 +38,39 @@ impl TextInputPurpose {
     pub const fn is_secret(self) -> bool {
         matches!(self, Self::Password | Self::Pin)
     }
+
+    /// The purpose an `inputmode` attribute value names, after HTML: `numeric`, `decimal`,
+    /// `tel`, `url`, `email` or `search`. `text` and unknown values name no purpose.
+    ///
+    /// ```
+    /// use zgui_platform::TextInputPurpose;
+    ///
+    /// assert_eq!(TextInputPurpose::parse("numeric"), Some(TextInputPurpose::Digits));
+    /// assert_eq!(TextInputPurpose::parse("Decimal"), Some(TextInputPurpose::Number));
+    /// assert_eq!(TextInputPurpose::parse("text"), None);
+    /// ```
+    pub fn parse(value: &str) -> Option<Self> {
+        const NAMES: [(&str, TextInputPurpose); 6] = [
+            ("numeric", TextInputPurpose::Digits),
+            ("decimal", TextInputPurpose::Number),
+            ("tel", TextInputPurpose::Phone),
+            ("url", TextInputPurpose::Url),
+            ("email", TextInputPurpose::Email),
+            ("search", TextInputPurpose::Search),
+        ];
+
+        let value = value.trim();
+        NAMES
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(value))
+            .map(|(_, purpose)| *purpose)
+    }
 }
+
+/// One run of typing into one field: it starts when focus enters an editable field and ends when
+/// focus leaves it. Focus that moves straight from one field to another starts a new session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TextInputSession(pub u64);
 
 /// What the return key of an on-screen keyboard says, after the values of HTML's `enterkeyhint`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -224,6 +258,8 @@ pub struct TextInput {
     pub purpose: TextInputPurpose,
     /// How the keyboard behaves.
     pub hints: TextInputHints,
+    /// The session this state belongs to, when the window tells it.
+    pub session: Option<TextInputSession>,
 }
 
 impl TextInput {
@@ -240,6 +276,7 @@ impl TextInput {
                 autocapitalize: None,
                 content_type: None,
             },
+            session: None,
         }
     }
 
@@ -252,6 +289,12 @@ impl TextInput {
     /// The same state with different keyboard hints.
     pub const fn with_hints(mut self, hints: TextInputHints) -> Self {
         self.hints = hints;
+        self
+    }
+
+    /// The same state in a different session.
+    pub const fn with_session(mut self, session: TextInputSession) -> Self {
+        self.session = Some(session);
         self
     }
 }

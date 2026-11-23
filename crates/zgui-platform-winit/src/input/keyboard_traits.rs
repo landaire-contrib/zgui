@@ -72,7 +72,8 @@ impl KeyboardTraits {
         let content_type = hints.content_type;
 
         let keys = match (input.purpose, content_type) {
-            (TextInputPurpose::Pin, _) | (_, Some(TextContentType::OneTimeCode)) => Keys::Digits,
+            (TextInputPurpose::Pin | TextInputPurpose::Digits, _)
+            | (_, Some(TextContentType::OneTimeCode)) => Keys::Digits,
             (TextInputPurpose::Number, _) => Keys::Decimal,
             (TextInputPurpose::Phone, _) | (_, Some(TextContentType::Telephone)) => Keys::Phone,
             (TextInputPurpose::Url, _) | (_, Some(TextContentType::Url)) => Keys::Url,
@@ -185,6 +186,20 @@ mod tests {
         assert_eq!(traits.return_key, ReturnKey::Go);
         assert_eq!(traits.autocorrect, Some(false));
         assert_eq!(traits.autocapitalize, Autocapitalize::None);
+    }
+
+    #[test]
+    fn an_input_mode_picks_the_keys() {
+        let keys = |mode: &str| {
+            let purpose = TextInputPurpose::parse(mode).expect("a known input mode");
+            KeyboardTraits::of(&input(purpose, TextInputHints::default())).keys
+        };
+        assert_eq!(keys("numeric"), Keys::Digits);
+        assert_eq!(keys("decimal"), Keys::Decimal);
+        assert_eq!(keys("tel"), Keys::Phone);
+        assert_eq!(keys("email"), Keys::Email);
+        assert_eq!(keys("url"), Keys::Url);
+        assert_eq!(keys("search"), Keys::Search);
     }
 
     #[test]

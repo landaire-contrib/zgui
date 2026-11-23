@@ -231,6 +231,19 @@ impl Editors {
             && zgui_dom::Node::new(record).attr(SECURE).is_some()
     }
 
+    /// What kind of text an element expects, from its `inputmode` attribute.
+    pub(crate) fn purpose(
+        document: &Document,
+        node: NodeKey,
+    ) -> Option<zgui_platform::TextInputPurpose> {
+        let index = document.store().index_of(node)?;
+        let element = zgui_dom::Node::new(document.store().core(index));
+
+        element
+            .attr("inputmode")
+            .and_then(|value| zgui_platform::TextInputPurpose::parse(value.as_str()))
+    }
+
     /// How an element's keyboard behaves, from the attributes it declares.
     ///
     /// `enterkeyhint`, `autocorrect`, `autocapitalize` and `autocomplete` take the values HTML

@@ -750,19 +750,37 @@ impl Window {
     ///
     /// The area is in the platform's CSS pixels, which do not include the zoom.
     fn caret_area(&self, node: zgui_dom::NodeKey) -> Option<zgui_platform::TextInput> {
-        let (secure, hints) = {
+        let (secure, declared, hints) = {
             let document = self.document.borrow();
             (
                 self.editors.is_secure(node)
                     || crate::editing::Editors::is_secure_element(&document, node),
+                crate::editing::Editors::purpose(&document, node),
                 crate::editing::Editors::hints(&document, node),
             )
         };
         // A secure field asks the input method for a password purpose: no prediction, no learning.
-        let purpose = if secure {
-            zgui_platform::TextInputPurpose::Password
-        } else {
-            zgui_platform::TextInputPurpose::Normal
+        let purpose = match (secure, declared) {
+            (
+                true,
+                Some(
+                    zgui_platform::TextInputPurpose::Digits
+                    | zgui_platform::TextInputPurpose::Number,
+                ),
+            ) => zgui_platform::TextInputPurpose::Pin,
+            (true, _) => zgui_platform::TextInputPurpose::Password,
+            (false, declared) => declared.unwrap_or(zgui_platform::TextInputPurpose::Normal),
+        };
+        let session = self
+            .text_session
+            .filter(|(held, _)| *held == node)
+            .map(|(_, session)| session);
+        let finish = |area: zgui_platform::TextInput| {
+            let area = area.with_hints(hints);
+            match session {
+                Some(session) => area.with_session(session),
+                None => area,
+            }
         };
         if let Some(caret) = self.caret_rect() {
             let area = zgui_input::ime::caret_area(
@@ -771,7 +789,7 @@ impl Window {
                 zgui_geom::Scale::new(self.platform_scale),
                 purpose,
             );
-            return Some(area.with_hints(hints));
+            return Some(finish(area));
         }
         let layout = self.layout.borrow();
         let first = *layout.boxes_of(node).first()?;
@@ -782,7 +800,7 @@ impl Window {
             zgui_geom::Scale::new(self.platform_scale),
             purpose,
         );
-        Some(area.with_hints(hints))
+        Some(finish(area))
     }
 
     /// Tells the surface whether text is being typed, and where.
@@ -810,6 +828,16 @@ impl Window {
             let document = self.document.borrow();
             crate::editing::Editors::is_editable(&document, *node)
         });
+        // Focus that enters a field, from nothing or straight from another field, starts a new
+        // session.
+        self.text_session = match (editable, self.text_session) {
+            (Some(node), Some((held, session))) if held == node => Some((held, session)),
+            (Some(node), _) => {
+                self.text_sessions += 1;
+                Some((node, zgui_platform::TextInputSession(self.text_sessions)))
+            }
+            (None, _) => None,
+        };
         let area = editable.and_then(|node| self.caret_area(node));
         if let Some(told) = self.ime.focused(editable, area) {
             self.surface.set_text_input(match told {

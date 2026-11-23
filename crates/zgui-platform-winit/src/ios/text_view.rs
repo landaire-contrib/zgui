@@ -37,7 +37,8 @@ use zgui_platform::{
 };
 
 use crate::input::keyboard_traits::{KeyboardTraits, Keys, ReturnKey};
-use crate::input::text_mirror::{Direction, Mirror, SelectionRect};
+use crate::input::text_focus::{Keyboard, Step};
+use crate::input::text_mirror::{Changed, Direction, Mirror, SelectionRect};
 use crate::surface::WinitSurface;
 
 thread_local! {
@@ -53,6 +54,8 @@ struct TextViewState {
     mirror: RefCell<Mirror>,
     /// The keyboard of the focused field, and nothing while no field is focused.
     traits: Cell<Option<KeyboardTraits>>,
+    /// The session the view takes part in, and when it takes the keyboard.
+    keyboard: Cell<Keyboard>,
     /// How many edits were reported and not yet delivered to the window.
     ///
     /// A snapshot that arrives while edits are on their way was made before them, so it is
@@ -366,7 +369,14 @@ define_class!(
 
         #[unsafe(method(insertText:))]
         fn insert_text(&self, text: &NSString) {
-            let events = self.ivars().mirror.borrow_mut().insert(&text.to_string());
+            let text = text.to_string();
+            if matches!(text.as_str(), "\n" | "\r" | "\r\n") {
+                // The keyboard counts the line break as text, and the field takes it as Enter.
+                let mut keyboard = self.ivars().keyboard.get();
+                keyboard.returned();
+                self.ivars().keyboard.set(keyboard);
+            }
+            let events = self.ivars().mirror.borrow_mut().insert(&text);
             self.report(events);
         }
 
@@ -667,6 +677,7 @@ impl TextView {
             surface,
             mirror: RefCell::new(Mirror::new()),
             traits: Cell::new(None),
+            keyboard: Cell::new(Keyboard::new()),
             in_flight: Cell::new(0),
             delegate: RefCell::new(None),
             tokenizer: OnceCell::new(),
@@ -806,12 +817,54 @@ impl TextView {
     }
 
     /// Takes the window's snapshot, and tells UIKit what changed.
-    fn take(&self, snapshot: TextSnapshot) {
+    ///
+    /// The first snapshot of a session replaces the copy before the view becomes the first
+    /// responder, so the keyboard reads the text of the field it serves.
+    fn take(&self, snapshot: Option<TextSnapshot>) {
+        let mut keyboard = self.ivars().keyboard.get();
+        let step = keyboard.snapshot();
+        self.ivars().keyboard.set(keyboard);
+
+        match step {
+            Step::Begin { restart } => {
+                if restart && self.isFirstResponder() {
+                    self.resignFirstResponder();
+                }
+                if let Some(snapshot) = snapshot {
+                    let bounds = snapshot.bounds;
+                    self.ivars().mirror.borrow_mut().replace(snapshot);
+                    self.setFrame(frame_of(bounds));
+                }
+                self.setHidden(false);
+                self.becomeFirstResponder();
+                self.hide_native_marks();
+            }
+            Step::Refresh { announce } => {
+                if let Some(snapshot) = snapshot {
+                    self.refresh(snapshot, announce);
+                }
+            }
+        }
+    }
+
+    /// Replaces the copy with a snapshot of the same session, and tells UIKit what changed.
+    ///
+    /// With `announce`, UIKit is told the text changed even when the copy holds it already.
+    fn refresh(&self, snapshot: TextSnapshot, announce: bool) {
         if self.ivars().in_flight.get() > 0 {
             return;
         }
-        let Some(changed) = self.ivars().mirror.borrow().changes(&snapshot) else {
-            return;
+        let changed = self.ivars().mirror.borrow().changes(&snapshot);
+        let changed = match (changed, announce) {
+            (Some(changed), _) => Changed {
+                text: changed.text || announce,
+                ..changed
+            },
+            (None, true) => Changed {
+                text: true,
+                selection: false,
+            },
+            (None, false) => return,
         };
 
         let bounds = snapshot.bounds;
@@ -835,6 +888,9 @@ impl TextView {
                 delegate.selectionDidChange(Some(input));
             }
         }
+        let mut keyboard = self.ivars().keyboard.get();
+        keyboard.announced();
+        self.ivars().keyboard.set(keyboard);
         self.hide_native_marks();
     }
 
@@ -895,14 +951,20 @@ pub(crate) fn forget(surface: SurfaceId) {
 }
 
 /// Shows the keyboard of the focused field of `surface`, or hides it when no field is focused.
+///
+/// The view becomes the first responder when the snapshot of the field arrives, which is in the
+/// same frame.
 pub(crate) fn set_text_input(surface: SurfaceId, state: Option<TextInput>) {
     let Some(view) = view(surface) else {
         return;
     };
     let Some(state) = state else {
-        if view.ivars().traits.take().is_none() {
-            return;
-        }
+        view.ivars().traits.set(None);
+        let mut keyboard = view.ivars().keyboard.get();
+        keyboard.blur();
+        view.ivars().keyboard.set(keyboard);
+        // Every path that leaves no field focused gives the keyboard up, whatever made the view
+        // the first responder.
         if view.isFirstResponder() {
             view.resignFirstResponder();
         }
@@ -914,10 +976,11 @@ pub(crate) fn set_text_input(surface: SurfaceId, state: Option<TextInput>) {
 
     let traits = KeyboardTraits::of(&state);
     let previous = view.ivars().traits.replace(Some(traits));
-    if !view.isFirstResponder() {
-        view.setHidden(false);
-        view.becomeFirstResponder();
-    } else if previous != Some(traits) {
+    let responding = view.isFirstResponder();
+    let mut keyboard = view.ivars().keyboard.get();
+    keyboard.focus(state.session, responding);
+    view.ivars().keyboard.set(keyboard);
+    if responding && previous != Some(traits) {
         // UIKit reads the traits when the view becomes the first responder, and again here.
         view.reloadInputViews();
     }
@@ -934,9 +997,7 @@ pub(crate) fn set_text_snapshot(
     if view.traits().is_none() {
         return;
     }
-    if let Some(snapshot) = build() {
-        view.take(snapshot);
-    }
+    view.take(build());
 }
 
 /// Counts one edit of `surface` as delivered to the window.

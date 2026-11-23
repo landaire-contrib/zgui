@@ -643,3 +643,31 @@ fn removing_a_typed_editor_forgets_its_text_and_history() {
 fn removing_an_ancestor_of_a_typed_editor_forgets_its_text_and_history() {
     assert_eq!(models_after_removal(true), 0);
 }
+
+/// Hides the editor and reports what the surface was told about text input before and after.
+fn text_input_around_removal(wrapped: bool) -> (bool, Option<zgui_platform::TextInput>) {
+    let shown = zgui_reactive::RwSignal::new(true);
+    let mut harness = typed_into_removable(shown, wrapped);
+    let told = |harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>| {
+        harness
+            .platform()
+            .offscreens()
+            .first()
+            .expect("a surface was created")
+            .last_text_input()
+            .flatten()
+    };
+    let before = told(&harness).is_some();
+    zgui_reactive::prelude::Set::set(&shown, false);
+    harness.settle(8);
+    let after = told(&harness);
+    harness.shut_down();
+    (before, after)
+}
+
+#[test]
+fn removing_the_focused_editor_turns_text_input_off() {
+    // A platform keeps its on-screen keyboard up for as long as text input is on.
+    assert_eq!(text_input_around_removal(false), (true, None));
+    assert_eq!(text_input_around_removal(true), (true, None));
+}

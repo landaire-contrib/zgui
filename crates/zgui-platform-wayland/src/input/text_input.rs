@@ -15,6 +15,7 @@ pub const fn purpose(purpose: TextInputPurpose) -> ContentPurpose {
         TextInputPurpose::Password => ContentPurpose::Password,
         TextInputPurpose::Pin => ContentPurpose::Pin,
         TextInputPurpose::Number => ContentPurpose::Number,
+        TextInputPurpose::Digits => ContentPurpose::Digits,
         TextInputPurpose::Phone => ContentPurpose::Phone,
         TextInputPurpose::Url => ContentPurpose::Url,
         TextInputPurpose::Email => ContentPurpose::Email,

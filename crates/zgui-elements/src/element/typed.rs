@@ -135,6 +135,19 @@ impl<T: Valued> Element<T> {
     pub fn autocomplete<M>(self, content: impl IntoReactiveValue<Option<String>, M>) -> Self {
         self.attribute(AttrName::new("autocomplete"), content)
     }
+
+    /// Which keys an on-screen keyboard shows, as HTML's `inputmode`: `numeric` for digits,
+    /// `decimal` for a number with a decimal point, `tel`, `email`, `url` or `search`. A secure
+    /// field with `numeric` or `decimal` gets a secure digit keyboard, and with any other mode a
+    /// secure keyboard.
+    ///
+    /// ```
+    /// zgui_elements::field().input_mode("numeric");
+    /// ```
+    #[must_use]
+    pub fn input_mode<M>(self, mode: impl IntoReactiveValue<Option<String>, M>) -> Self {
+        self.attribute(AttrName::new("inputmode"), mode)
+    }
 }
 
 impl<T: Operable> Element<T> {

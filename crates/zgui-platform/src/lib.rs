@@ -110,8 +110,8 @@ pub use crate::surface::{
     Layer, LayerPatch, LayerPlacement, PointerShape, PointerTarget, PointerTargetId,
     PopupPlacement, PresentPacing, PresentationTiming, ResizeEdge, Spring, SubpixelLayout, Surface,
     SurfaceAttributes, SurfaceEvent, SurfaceId, SurfaceRole, TextContentType, TextInput,
-    TextInputHints, TextInputPurpose, TextSelection, TextSnapshot, TitleButtons, Watchdog,
-    WindowIcon, WindowLevel,
+    TextInputHints, TextInputPurpose, TextInputSession, TextSelection, TextSnapshot, TitleButtons,
+    Watchdog, WindowIcon, WindowLevel,
 };
 pub use crate::theme::ColorScheme;
 pub use crate::waker::Waker;

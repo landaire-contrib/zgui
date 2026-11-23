@@ -430,6 +430,10 @@ pub struct Window {
     pastes: Vec<(zgui_dom::NodeKey, String)>,
     /// What the surface has been told about text input, and what it is owed.
     ime: zgui_input::Ime,
+    /// The field text input is on, and its session.
+    text_session: Option<(zgui_dom::NodeKey, zgui_platform::TextInputSession)>,
+    /// How many sessions of text input the window started.
+    text_sessions: u64,
     /// Platform events that arrived since the last frame.
     queued: Vec<crate::window::input::Queued>,
     /// The window's own reactive scope.
@@ -848,6 +852,8 @@ impl Window {
             secure_changes,
             pastes: Vec::new(),
             ime: zgui_input::Ime::new(),
+            text_session: None,
+            text_sessions: 0,
             queued: Vec::new(),
             scope: Some(scope),
             view: Some(built),

@@ -28,5 +28,7 @@ pub mod pinch;
 pub mod pointer;
 pub mod scrolling;
 #[cfg(any(target_os = "ios", test))]
+pub(crate) mod text_focus;
+#[cfg(any(target_os = "ios", test))]
 pub(crate) mod text_mirror;
 pub mod wheel;

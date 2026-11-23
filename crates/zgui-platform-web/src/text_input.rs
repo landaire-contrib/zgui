@@ -80,6 +80,7 @@ pub(crate) fn place(area: &HtmlTextAreaElement, canvas: &HtmlCanvasElement, stat
 pub(crate) const fn input_mode(purpose: TextInputPurpose) -> &'static str {
     match purpose {
         TextInputPurpose::Number | TextInputPurpose::Pin => "decimal",
+        TextInputPurpose::Digits => "numeric",
         TextInputPurpose::Phone => "tel",
         TextInputPurpose::Url => "url",
         TextInputPurpose::Email => "email",
