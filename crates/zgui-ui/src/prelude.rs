@@ -39,6 +39,7 @@ pub use crate::avatar::{
     AvatarProps, AvatarSize,
 };
 pub use crate::badge::{Badge, BadgeProps, BadgeVariant};
+pub use crate::bottom_sheet::{BottomSheet, BottomSheetProps, Detent};
 pub use crate::breadcrumb::{
     Breadcrumb, BreadcrumbEllipsis, BreadcrumbEllipsisProps, BreadcrumbItem, BreadcrumbItemProps,
     BreadcrumbLink, BreadcrumbLinkProps, BreadcrumbList, BreadcrumbListProps, BreadcrumbPage,

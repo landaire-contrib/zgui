@@ -103,7 +103,7 @@
 //! | [`Carousel`] | the arrows for its own axis step between the slides |
 //! | [`SidebarTrigger`] | <kbd>Ctrl</kbd>+<kbd>B</kbd> from anywhere in the window |
 //! | [`Form`] | <kbd>Enter</kbd> sends it, and a field that is wrong gets the keyboard |
-//! | [`Dialog`], [`AlertDialog`], [`Sheet`], [`Drawer`] | <kbd>Escape</kbd> closes; <kbd>Tab</kbd> is confined and comes back |
+//! | [`Dialog`], [`AlertDialog`], [`Sheet`], [`Drawer`], [`BottomSheet`] | <kbd>Escape</kbd> closes; <kbd>Tab</kbd> is confined and comes back |
 //! | [`DropdownMenu`], [`ContextMenu`] | one tab stop; <kbd>↑</kbd><kbd>↓</kbd> walk and wrap; a letter jumps; <kbd>→</kbd> opens a submenu and <kbd>←</kbd> leaves it |
 //! | [`Select`], [`Combobox`], [`Command`] | the caret stays put and the list is walked; <kbd>Enter</kbd> chooses; <kbd>Escape</kbd> closes |
 //!
@@ -118,11 +118,11 @@
 //! | [`input`], [`textarea`], [`input_otp`], [`input_group`] | the text fields |
 //! | [`checkbox`], [`radio_group`], [`switch`], [`toggle`], [`slider`] | the choices |
 //! | [`collapsible`], [`accordion`], [`tabs`] | the disclosures |
-//! | [`menubar`], [`navigation_menu`], [`breadcrumb`], [`pagination`], [`sidebar`] | getting about |
+//! | [`menubar`], [`navigation_menu`], [`nav_stack`], [`breadcrumb`], [`pagination`], [`sidebar`] | getting about |
 //! | [`scroll_area`], [`resizable`], [`carousel`] | the surfaces that move |
 //! | [`toast`] | what an application says when something has happened |
 //! | [`form`] | fields, what is wrong with them, and sending them |
-//! | [`dialog`], [`alert_dialog`], [`sheet`], [`drawer`] | the surfaces that take the window over |
+//! | [`dialog`], [`alert_dialog`], [`sheet`], [`drawer`], [`bottom_sheet`] | the surfaces that take the window over |
 //! | [`popover`], [`tooltip`], [`hover_card`] | the surfaces that float beside a control |
 //! | [`menu`], [`dropdown_menu`], [`context_menu`] | the lists of things to do |
 //! | [`select`], [`combobox`], [`command`] | the lists one thing is chosen from |
@@ -147,6 +147,7 @@ pub mod alert_dialog;
 pub mod aspect_ratio;
 pub mod avatar;
 pub mod badge;
+pub mod bottom_sheet;
 pub mod breadcrumb;
 pub mod button;
 pub mod button_group;
@@ -230,6 +231,7 @@ pub use crate::avatar::{
     AvatarProps, AvatarSize, AvatarStyle, AvatarVariants,
 };
 pub use crate::badge::{Badge, BadgeProps, BadgeStyle, BadgeVariant, BadgeVariants};
+pub use crate::bottom_sheet::{BottomSheet, BottomSheetProps, BottomSheetStyle, Detent};
 pub use crate::breadcrumb::{
     Breadcrumb, BreadcrumbEllipsis, BreadcrumbEllipsisProps, BreadcrumbItem, BreadcrumbItemProps,
     BreadcrumbLink, BreadcrumbLinkProps, BreadcrumbList, BreadcrumbListProps, BreadcrumbPage,
