@@ -1,7 +1,8 @@
 //! The surface a menu's items sit on.
 
+use zgui::geom::{Css, CssPx, Point};
 use zgui::prelude::*;
-use zgui::reactive::{LocalStorage, StoredValue};
+use zgui::reactive::{LocalStorage, RenderEffect, StoredValue};
 use zgui::view::ClassName;
 use zgui::{component, view};
 use zgui_ui_primitives::prelude::*;
@@ -22,7 +23,31 @@ use crate::overlay::{AnchoredSurfaceProps, OverlayState};
 pub(crate) struct MenuSurface {
     /// The panel's element.
     surface: NodeRef,
+    /// How far the pointer has moved over the items since the panel opened.
+    travel: StoredValue<Travel, LocalStorage>,
 }
+
+/// How far the pointer has moved over a panel's items since the panel opened.
+///
+/// A panel can open under a pointer that is still down, as after a long press. Lifting it where it
+/// was chooses nothing, so a release chooses an item only after a press on the panel or a move
+/// past [`TRAVEL`]. A release after the panel scrolled chooses nothing, because the finger that
+/// scrolls a long menu lifts over an item that it did not aim at.
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum Travel {
+    /// No pointer event has reached an item yet.
+    Unseen,
+    /// The pointer was first seen over an item at this point and has stayed near it.
+    From(Point<CssPx, Css>),
+    /// The pointer was pressed on the panel or moved past [`TRAVEL`].
+    Moved,
+    /// The panel scrolled since the last press.
+    Scrolled,
+}
+
+/// How far a pointer must move, in CSS pixels, before its release can choose an item. Equal to the
+/// slop of a touch tap.
+const TRAVEL: f32 = 10.0;
 
 impl MenuSurface {
     /// The panel the calling scope's items sit on, when it is inside a menu.
@@ -33,6 +58,41 @@ impl MenuSurface {
     /// The panel's element.
     pub(crate) fn node(self) -> NodeRef {
         self.surface
+    }
+
+    /// Records a press on one of the panel's items.
+    pub(crate) fn pressed(self) {
+        self.travel.set_value(Travel::Moved);
+    }
+
+    /// Records a move over one of the panel's items, and tells whether the pointer has moved far
+    /// enough for its release to choose an item.
+    pub(crate) fn moved(self, at: Point<CssPx, Css>) -> bool {
+        let next = match self.travel.get_value() {
+            Travel::Unseen => Travel::From(at),
+            Travel::From(from) => {
+                let dx = at.x.0 - from.x.0;
+                let dy = at.y.0 - from.y.0;
+                if dx * dx + dy * dy > TRAVEL * TRAVEL {
+                    Travel::Moved
+                } else {
+                    Travel::From(from)
+                }
+            }
+            settled @ (Travel::Moved | Travel::Scrolled) => settled,
+        };
+        self.travel.set_value(next);
+        next == Travel::Moved
+    }
+
+    /// Records that the panel scrolled.
+    fn scrolled(self) {
+        self.travel.set_value(Travel::Scrolled);
+    }
+
+    /// Whether a release can choose an item now.
+    pub(crate) fn may_choose(self) -> bool {
+        self.travel.get_value() == Travel::Moved
     }
 }
 
@@ -90,12 +150,27 @@ pub fn MenuContent(
     // Items blur themselves onto the panel they sit on when the pointer leaves them, and this is
     // how they find it. Published per surface rather than per menu, so an item inside a submenu
     // reaches the submenu's own panel and not the outermost one.
-    provide_local_context(MenuSurface {
+    let travel = StoredValue::new_local(Travel::Unseen);
+    let surface = MenuSurface {
         surface: state.content(),
+        travel,
+    };
+    provide_local_context(surface);
+    // Each opening starts again, because the pointer that opened it may still be down.
+    let opened = RenderEffect::new(move |_| {
+        if state.is_open() {
+            travel.set_value(Travel::Unseen);
+        }
     });
+    on_cleanup_local(move || drop(opened));
     let own = Attrs::new()
         .class_toggle(ClassName::new(MenuStyle::CLASS), true)
-        .class_toggle(ClassName::new("zui-menu"), true);
+        .class_toggle(ClassName::new("zui-menu"), true)
+        .listener(
+            events::SCROLL,
+            zgui::vocab::ListenerOptions::DEFAULT,
+            move |_: &mut EventCx<'_, events::Scroll>| surface.scrolled(),
+        );
     // Held rather than moved: a menu is rebuilt every time it re-opens, and children a closure
     // moved out of on the first open are children the second open does not have.
     let children = StoredValue::new_local(children);

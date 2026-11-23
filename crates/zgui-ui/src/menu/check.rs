@@ -10,10 +10,9 @@ use zgui_ui_icons::set::mark::{CHECK, DOT};
 use zgui_ui_primitives::{Binding, Controllable, use_roving_item_when};
 
 use crate::menu::content::MenuSurface;
-use crate::menu::item::defocus_on_leave;
+use crate::menu::item::{HIGHLIGHTED, Release, defocus_on_leave, highlighted};
 use crate::menu::style::MenuStyle;
 use crate::menu::{MenuContext, SHEET};
-use crate::support::activate_on_press;
 
 /// A menu item that is on or off.
 ///
@@ -77,6 +76,7 @@ pub fn MenuCheckboxItem(
     let menu = MenuContext::current();
     let value = Controllable::new(checked, default_checked, on_change);
     let on_leave = defocus_on_leave(node, MenuSurface::current().map(MenuSurface::node));
+    let release = Release::new();
 
     let select = move || {
         if disabled.get_untracked() {
@@ -95,6 +95,7 @@ pub fn MenuCheckboxItem(
             Some(if value.get() { "checked" } else { "unchecked" }.to_owned())
         })
         .state(UiState::CHECKED, move || value.get())
+        .attribute(AttrName::new(HIGHLIGHTED), highlighted(node))
         .state(UiState::DISABLED, move || disabled.get())
         .a11y_from(
             A11yBinding::new(Role::MenuItemCheckBox)
@@ -106,7 +107,9 @@ pub fn MenuCheckboxItem(
         control(
             node_ref = node,
             tabindex = move || item.map_or(Focus::Sequential, |item| item.tabindex().get()),
-            on:pointer_down = activate_on_press(),
+            on:pointer_down = release.on_down(),
+            on:pointer_move = release.on_move(),
+            on:pointer_up = release.on_up(),
             on:click = move |_| select(),
             on:pointer_enter = move |_| {
                 if !disabled.get_untracked() {
@@ -117,7 +120,10 @@ pub fn MenuCheckboxItem(
                 }
             },
             // And leaving takes it back, so nothing stays lit where the pointer used to be.
-            on:pointer_leave = on_leave,
+            on:pointer_leave = move |ev| {
+                release.disarm();
+                on_leave(ev);
+            },
             on:focus_in = move |_| { if let Some(item) = item { item.activate() } },
             {..own},
             {..attrs},
@@ -279,6 +285,7 @@ pub fn MenuRadioItem(
     let menu = MenuContext::current();
     let group = MenuRadioContext::current();
     let on_leave = defocus_on_leave(node, MenuSurface::current().map(MenuSurface::node));
+    let release = Release::new();
 
     let chosen = {
         let value = value.clone();
@@ -311,6 +318,7 @@ pub fn MenuRadioItem(
             move || Some(value.clone())
         })
         .state(UiState::CHECKED, chosen.clone())
+        .attribute(AttrName::new(HIGHLIGHTED), highlighted(node))
         .state(UiState::DISABLED, move || disabled.get())
         .a11y_from(
             A11yBinding::new(Role::MenuItemRadio)
@@ -322,7 +330,9 @@ pub fn MenuRadioItem(
         control(
             node_ref = node,
             tabindex = move || item.map_or(Focus::Sequential, |item| item.tabindex().get()),
-            on:pointer_down = activate_on_press(),
+            on:pointer_down = release.on_down(),
+            on:pointer_move = release.on_move(),
+            on:pointer_up = release.on_up(),
             on:click = move |_| select(),
             on:pointer_enter = move |_| {
                 if !disabled.get_untracked() {
@@ -333,7 +343,10 @@ pub fn MenuRadioItem(
                 }
             },
             // And leaving takes it back, so nothing stays lit where the pointer used to be.
-            on:pointer_leave = on_leave,
+            on:pointer_leave = move |ev| {
+                release.disarm();
+                on_leave(ev);
+            },
             on:focus_in = move |_| { if let Some(item) = item { item.activate() } },
             {..own},
             {..attrs},

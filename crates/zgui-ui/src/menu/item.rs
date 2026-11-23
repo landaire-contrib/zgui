@@ -1,9 +1,9 @@
 //! One thing a menu offers to do.
 
 use zgui::prelude::*;
-use zgui::reactive::{LocalStorage, UnsyncCallback};
+use zgui::reactive::{LocalStorage, StoredValue, UnsyncCallback};
 use zgui::view::AttrName;
-use zgui::vocab::UiState;
+use zgui::vocab::{PointerButton, UiState};
 use zgui::{component, view};
 use zgui_ui_primitives::use_roving_item_when;
 
@@ -12,7 +12,6 @@ use crate::menu::SHEET;
 use crate::menu::content::MenuSurface;
 use crate::menu::parts::MenuShortcutProps;
 use crate::menu::style::MenuStyle;
-use crate::support::activate_on_press;
 
 /// The handler that takes an item's highlight away as the pointer leaves it.
 ///
@@ -36,6 +35,96 @@ pub(crate) fn defocus_on_leave(
             surface.focus();
         }
     }
+}
+
+/// The attribute that marks the item that holds the highlight, for a style sheet to draw it.
+pub(crate) const HIGHLIGHTED: &str = "data-highlighted";
+
+/// The value of [`HIGHLIGHTED`] for `item`: present while the focus is on it or inside it.
+pub(crate) fn highlighted(item: NodeRef) -> impl Fn() -> Option<String> + 'static {
+    let focused = focused_node();
+    move || {
+        focused
+            .get()
+            .is_some_and(|holder| item.contains(holder))
+            .then(|| "true".to_owned())
+    }
+}
+
+/// What chooses an item with the pointer: the release over it.
+///
+/// The pointer can go down on the item, on another item of the menu, or on the control that opened
+/// the menu, and then slide onto the item. A release over a different item chooses that item, and
+/// a release away from every item chooses nothing. The primary and the secondary buttons choose,
+/// so that a right press that opened a context menu can slide onto an item and lift.
+#[derive(Copy, Clone)]
+pub(crate) struct Release {
+    /// Whether the pointer went down on the item or moved over it since it arrived.
+    armed: StoredValue<bool, LocalStorage>,
+    /// The panel the item sits on.
+    surface: Option<MenuSurface>,
+}
+
+impl Release {
+    /// The release of an item in the calling scope.
+    pub(crate) fn new() -> Self {
+        Self {
+            armed: StoredValue::new_local(false),
+            surface: MenuSurface::current(),
+        }
+    }
+
+    /// The `pointer_down` handler.
+    pub(crate) fn on_down(self) -> impl Fn(&mut EventCx<'_, events::PointerDown>) + Copy + 'static {
+        move |ev: &mut EventCx<'_, events::PointerDown>| {
+            if !chooses(ev.button) {
+                return;
+            }
+            if let Some(surface) = self.surface {
+                surface.pressed();
+            }
+            self.armed.set_value(true);
+        }
+    }
+
+    /// The `pointer_move` handler.
+    pub(crate) fn on_move(self) -> impl Fn(&mut EventCx<'_, events::PointerMove>) + Copy + 'static {
+        move |ev: &mut EventCx<'_, events::PointerMove>| {
+            if self
+                .surface
+                .is_none_or(|surface| surface.moved(ev.position))
+            {
+                self.armed.set_value(true);
+            }
+        }
+    }
+
+    /// The `pointer_up` handler.
+    pub(crate) fn on_up(self) -> impl Fn(&mut EventCx<'_, events::PointerUp>) + Copy + 'static {
+        move |ev: &mut EventCx<'_, events::PointerUp>| {
+            let armed = self.armed.get_value();
+            self.armed.set_value(false);
+            if armed && chooses(ev.button) && self.surface.is_none_or(MenuSurface::may_choose) {
+                // The press can have started on another element. The item clicks itself, and the
+                // click of the pressed element is refused.
+                ev.prevent_default();
+                ev.activate_now();
+            }
+        }
+    }
+
+    /// Forgets the press, for a pointer that left the item.
+    pub(crate) fn disarm(self) {
+        self.armed.set_value(false);
+    }
+}
+
+/// Whether a press or a release of `button` can choose a menu item.
+fn chooses(button: Option<PointerButton>) -> bool {
+    matches!(
+        button,
+        None | Some(PointerButton::Primary | PointerButton::Secondary)
+    )
 }
 
 /// One command in a menu.
@@ -73,8 +162,16 @@ pub(crate) fn defocus_on_leave(
 /// # The highlight is the focus
 ///
 /// Moving the pointer onto an item focuses it, so there is exactly one notion of *where the menu
-/// is* and the keyboard and the pointer cannot disagree about it. That is also why nothing here
-/// keeps a `highlighted` signal: `:focus` and `:hover` are states the engine already knows.
+/// is* and the keyboard and the pointer cannot disagree about it. The item that holds the
+/// highlight has the `data-highlighted` attribute for a style sheet, and the item under a pressed
+/// pointer also matches `:active`.
+///
+/// # The pointer
+///
+/// The pointer chooses an item when it comes up over it, as in the menus of macOS and iOS. A touch
+/// highlights the item under the finger, the highlight follows the finger, and the item under the
+/// finger when it lifts is chosen. A lift outside the items chooses nothing. After a long press
+/// opens a context menu, the finger can slide onto an item and lift to choose it.
 #[component]
 pub fn MenuItem(
     /// Whether it can be chosen.
@@ -113,6 +210,7 @@ pub fn MenuItem(
     let item = use_roving_item_when(node, Signal::derive_local(move || !disabled.get()));
     let menu = MenuContext::current();
     let on_leave = defocus_on_leave(node, MenuSurface::current().map(MenuSurface::node));
+    let release = Release::new();
 
     let select = move || {
         if disabled.get_untracked() {
@@ -139,6 +237,7 @@ pub fn MenuItem(
         .attribute(AttrName::new("data-inset"), move || {
             inset.then(|| "true".to_owned())
         })
+        .attribute(AttrName::new(HIGHLIGHTED), highlighted(node))
         .state(UiState::DISABLED, move || disabled.get())
         .a11y_from({
             let semantics = A11yBinding::new(Role::MenuItem).disabled(move || disabled.get());
@@ -152,8 +251,9 @@ pub fn MenuItem(
         control(
             node_ref = node,
             tabindex = move || item.map_or(Focus::Sequential, |item| item.tabindex().get()),
-            // A menu answers the press, as every desktop's own menus do.
-            on:pointer_down = activate_on_press(),
+            on:pointer_down = release.on_down(),
+            on:pointer_move = release.on_move(),
+            on:pointer_up = release.on_up(),
             on:click = move |_| select(),
             // The pointer moves the keyboard rather than shadowing it: one highlight, and the two
             // ways of driving a menu cannot end up pointing at different items.
@@ -168,7 +268,10 @@ pub fn MenuItem(
             // And leaving takes it back: the pointer moving onto something that is not an item —
             // a label, a separator — is a menu with nothing highlighted, not one still lit where
             // the pointer used to be.
-            on:pointer_leave = on_leave,
+            on:pointer_leave = move |ev| {
+                release.disarm();
+                on_leave(ev);
+            },
             on:focus_in = move |_| { if let Some(item) = item { item.activate() } },
             {..own},
             {..attrs},

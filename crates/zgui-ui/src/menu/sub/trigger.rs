@@ -15,7 +15,7 @@ use zgui_ui_primitives::use_roving_item_when;
 
 use crate::menu::SHEET;
 use crate::menu::content::MenuSurface;
-use crate::menu::item::defocus_on_leave;
+use crate::menu::item::{HIGHLIGHTED, defocus_on_leave, highlighted};
 use crate::menu::style::MenuStyle;
 use crate::menu::sub::triangle::heading_toward;
 use crate::menu::sub::{CLOSE_DELAY, OPEN_DELAY, SubIntent};
@@ -150,6 +150,7 @@ pub fn MenuSubTrigger(
         .attribute(AttrName::new("data-state"), move || {
             Some(state.state_name().to_owned())
         })
+        .attribute(AttrName::new(HIGHLIGHTED), highlighted(node))
         .state(UiState::DISABLED, move || disabled.get())
         .a11y_from(
             A11yBinding::new(Role::MenuItem)

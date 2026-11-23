@@ -275,7 +275,7 @@ fn a_pointer_reaches_a_control_as_a_press_a_release_and_then_a_click() {
     );
 }
 
-/// A menu whose items count what ran, for the controls that answer the press.
+/// A menu whose item counts what ran.
 #[component]
 fn PressPage(
     /// How many times the item ran.
@@ -319,34 +319,9 @@ fn a_menu_opens_on_the_press_and_the_release_that_ends_it_does_nothing() {
 }
 
 #[test]
-fn a_menu_item_runs_once_on_the_press_and_not_again_on_the_release() {
-    let ran = RwSignal::new_local(0_u32);
-    let mut stage = Stage::open(SHEET, move || view! { PressPage(ran = ran) });
-    stage.click_saying("Open menu");
-    stage.settle();
-
-    stage.press_saying("Duplicate");
-    stage.settle();
-    assert_eq!(
-        ran.get_untracked(),
-        1,
-        "the item did not run while the button was still down"
-    );
-
-    stage.release();
-    stage.settle();
-    assert_eq!(
-        ran.get_untracked(),
-        1,
-        "the release ran the item a second time"
-    );
-}
-
-#[test]
-fn enter_still_runs_a_menu_item_that_answers_the_press() {
-    // The behaviour lives in one `click` handler and the press reaches it early. A keyboard's
-    // activation is a click too, so moving the pointer forward must leave this exactly as it was —
-    // and this is the assertion that says so.
+fn enter_runs_a_menu_item() {
+    // The behaviour lives in one `click` handler. The pointer reaches it through the release, and
+    // the keyboard reaches it through its own activation.
     let ran = RwSignal::new_local(0_u32);
     let mut stage = Stage::open(SHEET, move || view! { PressPage(ran = ran) });
     stage.click_saying("Open menu");

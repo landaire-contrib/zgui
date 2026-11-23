@@ -55,6 +55,8 @@ pub struct Stage {
     handles: Handles,
     /// Where the pointer is, so a press lands where the last move left it.
     pointer: Point<CssPx, Css>,
+    /// Where the finger that is down is.
+    finger: Point<CssPx, Css>,
     /// Held for the life of the fixture.
     _turn: MutexGuard<'static, ()>,
 }
@@ -99,6 +101,7 @@ impl Stage {
             harness,
             handles,
             pointer: Point::new(CssPx(0.0), CssPx(0.0)),
+            finger: Point::new(CssPx(0.0), CssPx(0.0)),
             _turn: turn,
         }
     }
@@ -169,6 +172,28 @@ impl Stage {
         self.deliver(pointer(PointerAction::Moved, position, None));
     }
 
+    /// Moves the pointer to the middle of the control that says `text`, in steps of at most four
+    /// CSS pixels, as a hand moves a mouse.
+    ///
+    /// # Panics
+    ///
+    /// Panics when nothing in the document says it.
+    pub fn move_saying(&mut self, text: &str) {
+        let from = self.pointer;
+        let to = self.css(self.centre_of(text));
+        let distance = (to.x.0 - from.x.0).hypot(to.y.0 - from.y.0);
+        let steps = (distance / 4.0).ceil().max(1.0) as u32;
+        for step in 1..=steps {
+            let part = step as f32 / steps as f32;
+            self.pointer = Point::new(
+                CssPx(from.x.0 + (to.x.0 - from.x.0) * part),
+                CssPx(from.y.0 + (to.y.0 - from.y.0) * part),
+            );
+            let position = self.pointer;
+            self.deliver(pointer(PointerAction::Moved, position, None));
+        }
+    }
+
     /// Turns the wheel `lines` down where the pointer is, and lets the scroll finish.
     ///
     /// A detent is carried to its destination over the frames that follow rather than landing in
@@ -212,6 +237,82 @@ impl Stage {
             position,
             Some(PointerButton::Primary),
         ));
+    }
+
+    /// Puts a finger down at `at`, and leaves it down.
+    pub fn touch(&mut self, at: Point<DevicePx, Device>) {
+        self.finger = self.css(at);
+        let position = self.finger;
+        self.deliver(finger(
+            PointerAction::Pressed,
+            position,
+            Some(PointerButton::Primary),
+        ));
+    }
+
+    /// Puts a finger down over the middle of the control that says `text`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when nothing in the document says it.
+    pub fn touch_saying(&mut self, text: &str) {
+        let at = self.centre_of(text);
+        self.touch(at);
+    }
+
+    /// Slides the finger that is down to `at`, in steps of at most four CSS pixels.
+    pub fn slide(&mut self, at: Point<DevicePx, Device>) {
+        let from = self.finger;
+        let to = self.css(at);
+        let distance = (to.x.0 - from.x.0).hypot(to.y.0 - from.y.0);
+        let steps = (distance / 4.0).ceil().max(1.0) as u32;
+        for step in 1..=steps {
+            let part = step as f32 / steps as f32;
+            self.finger = Point::new(
+                CssPx(from.x.0 + (to.x.0 - from.x.0) * part),
+                CssPx(from.y.0 + (to.y.0 - from.y.0) * part),
+            );
+            let position = self.finger;
+            self.deliver(finger(PointerAction::Moved, position, None));
+        }
+    }
+
+    /// Slides the finger that is down by `x` and `y` CSS pixels.
+    pub fn slide_by(&mut self, x: f32, y: f32) {
+        let scale = self.scale();
+        let at = Point::new(
+            DevicePx((self.finger.x.0 + x) * scale),
+            DevicePx((self.finger.y.0 + y) * scale),
+        );
+        self.slide(at);
+    }
+
+    /// Slides the finger that is down to the middle of the control that says `text`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when nothing in the document says it.
+    pub fn slide_to_saying(&mut self, text: &str) {
+        let at = self.centre_of(text);
+        self.slide(at);
+    }
+
+    /// Lifts the finger where it is.
+    pub fn lift(&mut self) {
+        let position = self.finger;
+        self.deliver(finger(
+            PointerAction::Released,
+            position,
+            Some(PointerButton::Primary),
+        ));
+    }
+
+    /// The middle of the control that says `text`.
+    fn centre_of(&self, text: &str) -> Point<DevicePx, Device> {
+        self.census()
+            .control(text)
+            .and_then(|node| node.centre())
+            .unwrap_or_else(|| panic!("nothing laid out says {text:?}"))
     }
 
     /// Puts the button down over the middle of the control that says `text`, and leaves it down.
@@ -392,6 +493,26 @@ fn pointer(
     button: Option<PointerButton>,
 ) -> SurfaceEvent {
     let mut event = PointerEvent::mouse(at);
+    if let Some(button) = button {
+        event = event.with_button(button);
+    }
+    SurfaceEvent::Pointer {
+        action,
+        event,
+        modifiers: Modifiers::NONE,
+        timestamp: Timestamp::ORIGIN,
+    }
+}
+
+/// A touch event of the first finger.
+fn finger(
+    action: PointerAction,
+    at: Point<CssPx, Css>,
+    button: Option<PointerButton>,
+) -> SurfaceEvent {
+    let mut event = PointerEvent::mouse(at);
+    event.id = zgui::vocab::PointerId::new(1);
+    event.kind = zgui::vocab::PointerKind::Touch;
     if let Some(button) = button {
         event = event.with_button(button);
     }
