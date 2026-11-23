@@ -984,6 +984,7 @@ impl Runtime {
         if let Some(scheme) = cx.color_scheme() {
             window.set_platform_color_scheme(scheme);
         }
+        window.set_platform_preferences(cx.text_scale(), cx.motion_preference());
         // What a detent of a wheel means here, asked of the backend rather than assumed: how far
         // one travels and which way it points are both properties of the desktop, and a constant
         // above this line is a wheel that is wrong on every machine but the one it was written on.
@@ -1211,6 +1212,13 @@ impl Runtime {
                 self.scope.with(|| {
                     let _zone = zgui_reactive::enter_non_reactive_zone();
                     hooks.status_item_press(&anchor);
+                });
+            }
+            AppEvent::Lifecycle(lifecycle) => {
+                let hooks = self.hooks.clone();
+                self.scope.with(|| {
+                    let _zone = zgui_reactive::enter_non_reactive_zone();
+                    hooks.lifecycle(lifecycle);
                 });
             }
             // The focused window receives the press the menu took from it.
@@ -1590,6 +1598,17 @@ impl AppHandler for Runtime {
                         window.set_platform_color_scheme(scheme);
                     }
                     window.request_frame();
+                }
+            }
+            // Read here and pushed into every window, for the same reason as the scheme: the
+            // values reach the cascade only through the window's viewport.
+            WakeReason::PreferencesChanged => {
+                let text_scale = cx.text_scale();
+                let motion = cx.motion_preference();
+                for window in &mut self.windows {
+                    if window.set_platform_preferences(text_scale, motion) {
+                        window.request_frame();
+                    }
                 }
             }
             WakeReason::DeviceLost => {

@@ -29,6 +29,9 @@ pub(crate) const START: Viewport = Viewport {
     scheme: zgui_style::ColorScheme::Light,
     safe_area: Edges::uniform(CssPx(0.0)),
     virtual_keyboard: None,
+    keyboard_motion: None,
+    text_scale: zgui_style::TextScale::DEFAULT,
+    motion: zgui_style::MotionPreference::NoPreference,
 };
 
 /// A document with a style engine over it.
@@ -217,6 +220,27 @@ impl Harness {
     /// The same, for an on-screen keyboard that shows over `area` or hides.
     pub(crate) fn set_virtual_keyboard(&mut self, area: Option<Rect<CssPx, Css>>) -> DeviceEpoch {
         let next = self.engine.viewport().with_virtual_keyboard(area);
+        self.engine.device_epoch(&mut self.document, next)
+    }
+
+    /// The same, for a change of how the on-screen keyboard moves.
+    pub(crate) fn set_keyboard_motion(
+        &mut self,
+        motion: Option<zgui_style::KeyboardMotion>,
+    ) -> DeviceEpoch {
+        let next = self.engine.viewport().with_keyboard_motion(motion);
+        self.engine.device_epoch(&mut self.document, next)
+    }
+
+    /// The same, for a change of the text scale.
+    pub(crate) fn set_text_scale(&mut self, text_scale: zgui_style::TextScale) -> DeviceEpoch {
+        let next = self.engine.viewport().with_text_scale(text_scale);
+        self.engine.device_epoch(&mut self.document, next)
+    }
+
+    /// The same, for a change of the motion preference.
+    pub(crate) fn set_motion(&mut self, motion: zgui_style::MotionPreference) -> DeviceEpoch {
+        let next = self.engine.viewport().with_motion(motion);
         self.engine.device_epoch(&mut self.document, next)
     }
 

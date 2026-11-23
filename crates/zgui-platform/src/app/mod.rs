@@ -5,7 +5,7 @@ mod idle;
 mod park;
 mod wake;
 
-pub use crate::app::event::AppEvent;
+pub use crate::app::event::{AppEvent, Lifecycle};
 pub use crate::app::idle::IdlePolicy;
 pub use crate::app::park::{Install, Park, Parked};
 pub use crate::app::wake::WakeReason;

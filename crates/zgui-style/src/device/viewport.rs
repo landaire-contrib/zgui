@@ -5,9 +5,11 @@ use rustc_hash::FxHashSet;
 use style::data::ViewportUnitUsage;
 use style::invalidation::element::restyle_hints::RestyleHint;
 use zgui_bits::Dirty;
+use zgui_css::environment::{Environment, KeyboardMotion, TextScale};
+use zgui_css::media::MotionPreference;
 use zgui_dom::dirty::propagate;
 use zgui_dom::{Document, DocumentStore, NodeFlags, NodeIndex, NodeKey, NodeKind};
-use zgui_geom::{Css, CssPx, Edges, Rect};
+use zgui_geom::{Css, CssPx, Edges, Rect, Size};
 
 use crate::device::color_scheme::ColorScheme;
 
@@ -15,8 +17,9 @@ use crate::device::color_scheme::ColorScheme;
 ///
 /// Three quantities make the device, because three different things in a stylesheet read them:
 /// media queries read all of them, viewport units read the size, and device-pixel rounding reads
-/// the ratio. The safe area and the on-screen keyboard are not part of the device. A stylesheet
-/// reads them with `env()`.
+/// the ratio. The safe area, the on-screen keyboard and the text scale are not part of the device.
+/// A stylesheet reads them with `env()`. The motion preference is not part of the device either.
+/// A stylesheet that queries it is parsed again when it changes.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct Viewport {
     /// Width of the surface, in CSS pixels.
@@ -33,10 +36,17 @@ pub struct Viewport {
     ///
     /// `None` when no on-screen keyboard shows.
     pub virtual_keyboard: Option<Rect<CssPx, Css>>,
+    /// How the on-screen keyboard moved last, or `None` when the platform did not say.
+    pub keyboard_motion: Option<KeyboardMotion>,
+    /// The number the user's text size setting multiplies text by.
+    pub text_scale: TextScale,
+    /// Whether the user asked for less motion.
+    pub motion: MotionPreference,
 }
 
 impl Viewport {
-    /// A `width` by `height` surface at one device pixel per CSS pixel, in the light scheme.
+    /// A `width` by `height` surface at one device pixel per CSS pixel, in the light scheme, with
+    /// the default text scale and no motion preference.
     pub fn new(width: CssPx, height: CssPx) -> Self {
         Self {
             width,
@@ -45,6 +55,9 @@ impl Viewport {
             scheme: ColorScheme::Light,
             safe_area: Edges::uniform(CssPx(0.0)),
             virtual_keyboard: None,
+            keyboard_motion: None,
+            text_scale: TextScale::DEFAULT,
+            motion: MotionPreference::NoPreference,
         }
     }
 
@@ -75,6 +88,38 @@ impl Viewport {
         }
     }
 
+    /// The same surface with the on-screen keyboard last moving as `motion` says.
+    #[must_use]
+    pub fn with_keyboard_motion(self, motion: Option<KeyboardMotion>) -> Self {
+        Self {
+            keyboard_motion: motion,
+            ..self
+        }
+    }
+
+    /// The same surface with text scaled by `text_scale`.
+    #[must_use]
+    pub fn with_text_scale(self, text_scale: TextScale) -> Self {
+        Self { text_scale, ..self }
+    }
+
+    /// The same surface for a user with the motion preference `motion`.
+    #[must_use]
+    pub fn with_motion(self, motion: MotionPreference) -> Self {
+        Self { motion, ..self }
+    }
+
+    /// The values `env()` reads on this surface.
+    pub(crate) fn environment(self) -> Environment {
+        Environment {
+            viewport: Size::new(self.width, self.height),
+            safe_area: self.safe_area,
+            keyboard: self.virtual_keyboard,
+            keyboard_motion: self.keyboard_motion,
+            text_scale: self.text_scale,
+        }
+    }
+
     /// What changed between `self` and `next`.
     pub(crate) fn changes_to(self, next: Self) -> ViewportChange {
         ViewportChange {
@@ -93,6 +138,8 @@ impl Viewport {
 
         self.safe_area != next.safe_area
             || self.virtual_keyboard != next.virtual_keyboard
+            || self.keyboard_motion != next.keyboard_motion
+            || self.text_scale != next.text_scale
             || (next.virtual_keyboard.is_some() && resized)
     }
 }

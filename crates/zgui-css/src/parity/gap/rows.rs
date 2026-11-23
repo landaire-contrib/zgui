@@ -183,16 +183,13 @@ pub static GAPS: &[Gap] = &[
         reason: "the engine's servo build carries a fixed list of media features and this is not \
                  on it, so the feature name is an error rather than a query that does not match — \
                  and the `@media` rule it heads is dropped whole, with every rule inside it",
-        instead: "make it a fact about the document rather than about the device. An application \
-                  that has discovered the preference sets an attribute on its root element and \
-                  writes `[reduced-motion] .toast { animation: none }`, which is an ordinary \
-                  attribute selector and works today. The tokens already ship a zero duration for \
-                  exactly this, so a component built on them needs one rule and not one per \
-                  animation",
-        patch: "add the feature to the engine's media-feature list; then discover the preference — \
-                which no windowing library this framework uses reports — from the desktop, and \
-                rebuild the device when it changes",
-        owner: "the style engine, then zgui-platform-winit and zgui-runtime",
+        instead: "write `@media (prefers-reduced-motion: reduce)` as usual. This framework writes \
+                  each such condition as one the engine knows before the sheet is parsed, with \
+                  the answer the platform's setting gives, and parses the sheet again when the \
+                  setting changes",
+        patch: "add the feature to the engine's media-feature list, then remove the rewrite in \
+                `zgui_css::media`",
+        owner: "the style engine, then zgui-css",
         status: GapStatus::OutOfReachThenWork,
         probe: GapProbe::MediaFeatureRejected("prefers-reduced-motion: reduce"),
     },

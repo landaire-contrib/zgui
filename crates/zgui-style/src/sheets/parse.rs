@@ -1,5 +1,6 @@
 //! Turning stylesheet source into a sheet the rule set can hold.
 
+use std::cell::Cell;
 use std::str::FromStr;
 
 use cssparser::SourceLocation;
@@ -14,6 +15,7 @@ use style::stylesheets::{
     AllowImportRules, DocumentStyleSheet, Origin, Stylesheet, StylesheetLoader, UrlExtraData,
 };
 use style::values::CssUrl;
+use zgui_css::media::MotionPreference;
 use zgui_dom::{SheetLoader, SheetRequest};
 
 use crate::sheets::errors::{DiagnosticSink, DropKind};
@@ -28,6 +30,10 @@ pub(crate) struct ParseContext<'a> {
     pub(crate) loader: &'a dyn SheetLoader,
     /// Where what the parser drops is recorded.
     pub(crate) sink: &'a DiagnosticSink,
+    /// The motion preference a `prefers-reduced-motion` query is answered with.
+    pub(crate) motion: MotionPreference,
+    /// Set when the sheet or a sheet it imports queries `prefers-reduced-motion`.
+    pub(crate) reads_motion: Cell<bool>,
 }
 
 impl ParseContext<'_> {
@@ -47,8 +53,14 @@ impl ParseContext<'_> {
         origin: Origin,
         media: ServoArc<Locked<MediaList>>,
     ) -> Stylesheet {
+        let environment = zgui_css::environment::substitute(css);
+        let substituted = zgui_css::media::substitute(&environment, self.motion);
+        if substituted.reads_motion {
+            self.reads_motion.set(true);
+        }
+
         Stylesheet::from_str(
-            &zgui_css::environment::substitute(css),
+            &substituted.text,
             self.url.clone(),
             origin,
             media,

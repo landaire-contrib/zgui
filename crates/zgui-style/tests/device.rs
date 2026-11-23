@@ -360,6 +360,125 @@ fn env_reads_the_virtual_keyboard_of_the_viewport_and_zero_when_it_hides() {
 }
 
 #[test]
+fn env_reads_the_keyboard_motion_and_the_fallback_while_it_is_unknown() {
+    use std::time::Duration;
+    use zgui_style::{KeyboardEasing, KeyboardMotion, Spring};
+
+    let transition = |harness: &Harness, node| {
+        let style = harness
+            .document
+            .node(node)
+            .primary_style()
+            .expect("the element is styled");
+        let ui = style.get_ui();
+        (
+            ui.transition_duration_mod(0).seconds(),
+            format!("{:?}", ui.transition_timing_function_mod(0)),
+        )
+    };
+    let mut harness = Harness::new();
+    let sheet = harness.append(harness.root, "box");
+    let diagnostics = harness.add_author(
+        "box { transition: width env(keyboard-animation-duration, 0.1s) \
+         env(keyboard-animation-easing, linear) }",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    harness.frame();
+    let (duration, fallback) = transition(&harness, sheet);
+    assert_eq!(
+        duration, 0.1,
+        "the motion is unknown, so the fallback applies"
+    );
+    harness.retire_all();
+
+    let epoch = harness.set_keyboard_motion(Some(KeyboardMotion {
+        duration: Duration::from_millis(500),
+        easing: KeyboardEasing::Spring(Spring {
+            mass: 3.0,
+            stiffness: 1000.0,
+            damping: 109.5,
+        }),
+    }));
+    assert!(
+        !epoch.changed,
+        "the keyboard motion is not part of the device"
+    );
+    assert!(harness.frame().traversed);
+    let (duration, easing) = transition(&harness, sheet);
+    assert_eq!(duration, 0.5);
+    assert_ne!(easing, fallback, "the sampled spring replaced the fallback");
+}
+
+#[test]
+fn env_reads_the_text_scale_of_the_viewport() {
+    let mut harness = Harness::new();
+    let sheet = harness.append(harness.root, "box");
+    harness.add_author("box { width: calc(100px * env(preferred-text-scale)) }");
+    harness.frame();
+    assert_eq!(width(&harness, sheet), 100.0, "the default scale is one");
+    harness.retire_all();
+
+    let scale = zgui_style::TextScale::new(1.5).expect("a positive scale");
+    let epoch = harness.set_text_scale(scale);
+    assert!(!epoch.changed, "the text scale is not part of the device");
+    assert!(harness.frame().traversed);
+    assert_eq!(width(&harness, sheet), 150.0);
+}
+
+#[test]
+fn prefers_reduced_motion_matches_the_preference_and_follows_a_change() {
+    use zgui_style::MotionPreference;
+
+    let mut harness = Harness::new();
+    let reduced = harness.append(harness.root, "box");
+    let moving = harness.append(harness.root, "box");
+    harness.set_classes(reduced, &["reduced"]);
+    harness.set_classes(moving, &["moving"]);
+    let diagnostics = harness.add_author(
+        "@media (prefers-reduced-motion: reduce) { .reduced { display: none } } \
+         @media not (prefers-reduced-motion) { .moving { display: none } }",
+    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    harness.frame();
+    assert!(!display(&harness, reduced).is_none());
+    assert!(display(&harness, moving).is_none());
+    harness.retire_all();
+
+    harness.set_motion(MotionPreference::Reduce);
+    assert!(harness.frame().traversed);
+    assert!(display(&harness, reduced).is_none());
+    assert!(!display(&harness, moving).is_none());
+    harness.retire_all();
+
+    harness.set_motion(MotionPreference::NoPreference);
+    assert!(harness.frame().traversed);
+    assert!(!display(&harness, reduced).is_none());
+    assert!(display(&harness, moving).is_none());
+}
+
+#[test]
+fn an_imported_sheet_that_queries_the_motion_preference_follows_a_change() {
+    use std::sync::Arc;
+    use zgui_style::{EmbeddedSheets, MotionPreference};
+
+    let mut harness = Harness::new();
+    harness
+        .document
+        .install_sheet_loader(Arc::new(EmbeddedSheets::new().with(
+            "motion.css",
+            "@media (prefers-reduced-motion: reduce) { root { color: rgb(5, 5, 5) } }",
+        )));
+    harness.add_author("@import url(\"motion.css\");");
+    harness.frame();
+    assert_ne!(color(&harness, harness.root), (5, 5, 5));
+    harness.retire_all();
+
+    harness.set_motion(MotionPreference::Reduce);
+    assert!(harness.frame().traversed);
+    assert_eq!(color(&harness, harness.root), (5, 5, 5));
+}
+
+#[test]
 fn a_safe_area_reference_keeps_the_location_of_what_follows_it() {
     // The two values are the same length, so the unknown property is at the same column in both.
     let column = |css: &str| {

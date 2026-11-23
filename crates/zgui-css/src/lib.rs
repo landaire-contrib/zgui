@@ -12,7 +12,8 @@
 //! | [`computed`] | [`ComputedStyle`], the style-struct accessors, [`StyleDraft`] and [`inherited_style`] |
 //! | [`values`] | the computed value types a reader has to name to destructure a property |
 //! | [`prefs`] | the feature flags a style sheet has to be parsed with |
-//! | [`environment`] | the safe area and keyboard insets a style sheet reads with `env()` |
+//! | [`environment`] | the safe area, keyboard and text scale values a style sheet reads with `env()` |
+//! | [`media`] | the media features a style sheet can query that the engine does not know |
 //! | [`name`] | the bridge between interned names and the engine's own atoms |
 //! | [`engine`] | the engine's own length unit and geometry, and the width the cascade may run at |
 //! | [`parity`] | which CSS this framework actually implements, as a number rather than a claim |
@@ -50,6 +51,7 @@
 pub mod computed;
 pub mod engine;
 pub mod environment;
+pub mod media;
 pub mod name;
 pub mod parity;
 pub mod prefs;

@@ -5,9 +5,10 @@ use std::sync::{Arc, Mutex};
 
 use zgui_geom::{DevicePx, Size};
 use zgui_platform::{
-    AppEvent, ClickSettings, Clipboard, Clock, ColorScheme, FocusGrabId, MonitorInfo,
-    PlatformCapabilities, PlatformCx, PlatformError, ScrollSettings, StatusAnchor, StatusItem,
-    StatusPress, Surface, SurfaceAttributes, SurfaceId, VirtualClock, WakeReason, Waker,
+    AppEvent, ClickSettings, Clipboard, Clock, ColorScheme, FocusGrabId, Lifecycle, MonitorInfo,
+    MotionPreference, PlatformCapabilities, PlatformCx, PlatformError, ScrollSettings,
+    StatusAnchor, StatusItem, StatusPress, Surface, SurfaceAttributes, SurfaceId, TextScale,
+    VirtualClock, WakeReason, Waker,
 };
 
 use crate::clipboard::MemoryClipboard;
@@ -49,6 +50,10 @@ pub struct Headless {
     monitors: Mutex<Vec<MonitorInfo>>,
     /// The desktop's light or dark preference, when one has been declared.
     color_scheme: Mutex<Option<ColorScheme>>,
+    /// The user's text size setting.
+    text_scale: Mutex<TextScale>,
+    /// The user's motion preference.
+    motion: Mutex<MotionPreference>,
     /// What this platform says a scroll from its devices means.
     scroll: Mutex<ScrollSettings>,
     /// What this platform says the desktop's double-click time and distance are.
@@ -107,6 +112,8 @@ impl Headless {
             next_surface: AtomicU64::new(1),
             monitors: Mutex::new(Vec::new()),
             color_scheme: Mutex::new(None),
+            text_scale: Mutex::new(TextScale::DEFAULT),
+            motion: Mutex::new(MotionPreference::NoPreference),
             scroll: Mutex::new(ScrollSettings::desktop()),
             click: Mutex::new(ClickSettings::desktop()),
             status_items: Mutex::new(Vec::new()),
@@ -170,6 +177,28 @@ impl Headless {
             .color_scheme
             .lock()
             .expect("the preference is not poisoned") = scheme;
+    }
+
+    /// Declares the user's text size setting, and wakes the loop with
+    /// [`WakeReason::PreferencesChanged`].
+    pub fn set_text_scale(&self, text_scale: TextScale) {
+        *self
+            .text_scale
+            .lock()
+            .expect("the preference is not poisoned") = text_scale;
+        self.waker.wake(WakeReason::PreferencesChanged);
+    }
+
+    /// Declares the user's motion preference, and wakes the loop with
+    /// [`WakeReason::PreferencesChanged`].
+    pub fn set_motion_preference(&self, motion: MotionPreference) {
+        *self.motion.lock().expect("the preference is not poisoned") = motion;
+        self.waker.wake(WakeReason::PreferencesChanged);
+    }
+
+    /// Moves the application to another state of its lifecycle, as the system would.
+    pub fn send_lifecycle(&self, event: Lifecycle) {
+        self.waker.wake(WakeReason::App(AppEvent::Lifecycle(event)));
     }
 
     /// Every status item the application set, in order, with an absent one for each removal.
@@ -432,6 +461,17 @@ impl PlatformCx for Headless {
             .color_scheme
             .lock()
             .expect("the preference is not poisoned")
+    }
+
+    fn text_scale(&self) -> TextScale {
+        *self
+            .text_scale
+            .lock()
+            .expect("the preference is not poisoned")
+    }
+
+    fn motion_preference(&self) -> MotionPreference {
+        *self.motion.lock().expect("the preference is not poisoned")
     }
 
     fn clipboard(&self) -> &dyn Clipboard {

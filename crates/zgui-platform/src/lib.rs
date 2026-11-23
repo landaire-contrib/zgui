@@ -71,6 +71,7 @@ pub mod error;
 pub mod grab;
 pub mod menu;
 pub mod monitor;
+pub mod preferences;
 pub mod scroll;
 pub mod surface;
 pub mod theme;
@@ -81,7 +82,9 @@ mod api;
 #[cfg(test)]
 mod backends;
 
-pub use crate::app::{AppEvent, AppHandler, IdlePolicy, Install, Park, Parked, WakeReason};
+pub use crate::app::{
+    AppEvent, AppHandler, IdlePolicy, Install, Lifecycle, Park, Parked, WakeReason,
+};
 pub use crate::capabilities::PlatformCapabilities;
 pub use crate::clipboard::{
     Clipboard, ClipboardData, ClipboardError, ClipboardFormat, ClipboardKind, ClipboardSerial,
@@ -98,15 +101,17 @@ pub use crate::menu::{
 pub use crate::monitor::{
     MonitorId, MonitorInfo, MonitorTarget, MonitorTransform, refresh_interval,
 };
+pub use crate::preferences::{MotionPreference, TextScale};
 pub use crate::scroll::ScrollSettings;
 pub use crate::surface::{
-    Anchor, Autocapitalize, BadIcon, CaretStop, CloseReason, ComposeAhead, Constrain, CursorStyle,
-    DecorationSource, Decorations, DragEvent, EnterKeyHint, ExclusiveZone, FullscreenMode,
-    GpuSurface, InputSerial, KeyboardInteractivity, Layer, LayerPatch, LayerPlacement,
-    PointerShape, PointerTarget, PointerTargetId, PopupPlacement, PresentPacing,
-    PresentationTiming, ResizeEdge, SubpixelLayout, Surface, SurfaceAttributes, SurfaceEvent,
-    SurfaceId, SurfaceRole, TextContentType, TextInput, TextInputHints, TextInputPurpose,
-    TextSelection, TextSnapshot, TitleButtons, Watchdog, WindowIcon, WindowLevel,
+    Anchor, Autocapitalize, BadIcon, CaretStop, CloseReason, ComposeAhead, Constrain, CubicBezier,
+    CursorStyle, DecorationSource, Decorations, DragEvent, EnterKeyHint, ExclusiveZone,
+    FullscreenMode, GpuSurface, InputSerial, KeyboardEasing, KeyboardInteractivity, KeyboardMotion,
+    Layer, LayerPatch, LayerPlacement, PointerShape, PointerTarget, PointerTargetId,
+    PopupPlacement, PresentPacing, PresentationTiming, ResizeEdge, Spring, SubpixelLayout, Surface,
+    SurfaceAttributes, SurfaceEvent, SurfaceId, SurfaceRole, TextContentType, TextInput,
+    TextInputHints, TextInputPurpose, TextSelection, TextSnapshot, TitleButtons, Watchdog,
+    WindowIcon, WindowLevel,
 };
 pub use crate::theme::ColorScheme;
 pub use crate::waker::Waker;

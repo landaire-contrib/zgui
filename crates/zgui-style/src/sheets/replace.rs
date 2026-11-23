@@ -36,9 +36,9 @@ impl Sheets {
             .set
             .origin_of(handle.id())
             .expect("the handle names a sheet installed in this rule set");
-        let sheet = self.parse(lock, loader, origin, source);
+        let parsed = self.parse(lock, loader, origin, source);
         let guard = lock.read();
-        self.set.replace(stylist, &guard, handle, sheet);
+        self.set.replace(stylist, &guard, handle.id(), parsed);
         drop(guard);
         self.sink.take()
     }

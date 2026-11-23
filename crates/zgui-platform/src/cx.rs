@@ -11,6 +11,7 @@ use crate::error::PlatformError;
 use crate::grab::FocusGrabId;
 use crate::menu::{AppMenu, StatusItem};
 use crate::monitor::MonitorInfo;
+use crate::preferences::{MotionPreference, TextScale};
 use crate::scroll::ScrollSettings;
 use crate::surface::{Surface, SurfaceAttributes, SurfaceId};
 use crate::theme::ColorScheme;
@@ -69,6 +70,23 @@ pub trait PlatformCx {
 
     /// The clipboards.
     fn clipboard(&self) -> &dyn Clipboard;
+
+    /// The number the user's text size setting multiplies text by.
+    ///
+    /// The default is [`TextScale::DEFAULT`], for a platform with no such setting. A backend whose
+    /// answer changes sends [`WakeReason::PreferencesChanged`](crate::WakeReason::PreferencesChanged).
+    fn text_scale(&self) -> TextScale {
+        TextScale::DEFAULT
+    }
+
+    /// Whether the user asked the system to reduce motion.
+    ///
+    /// The default is [`MotionPreference::NoPreference`], for a platform that cannot be asked. A
+    /// backend whose answer changes sends
+    /// [`WakeReason::PreferencesChanged`](crate::WakeReason::PreferencesChanged).
+    fn motion_preference(&self) -> MotionPreference {
+        MotionPreference::NoPreference
+    }
 
     /// What this platform can and cannot do.
     fn capabilities(&self) -> &PlatformCapabilities;

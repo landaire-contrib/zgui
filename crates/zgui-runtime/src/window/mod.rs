@@ -20,6 +20,7 @@ pub mod observe;
 mod pan;
 mod pointer_target;
 pub mod pointer_text;
+mod preferences;
 pub mod present;
 pub mod probe;
 pub mod query;
@@ -692,7 +693,12 @@ impl Window {
         let viewport = Viewport::new(CssPx(size.width.0 / scale), CssPx(size.height.0 / scale))
             .at_scale(scale)
             .with_safe_area(safe_area::css_safe_area(safe_area, scale))
-            .with_virtual_keyboard(virtual_keyboard::css_area(keyboard, scale));
+            .with_virtual_keyboard(virtual_keyboard::css_area(keyboard, scale))
+            .with_keyboard_motion(
+                surface
+                    .virtual_keyboard_motion()
+                    .and_then(preferences::keyboard_motion_from_platform),
+            );
         // A handle outlives a suspend, so the scheme it reports is reset to the new document's
         // before the view reads it.
         handle.set_color_scheme(scheme::to_platform(viewport.scheme));

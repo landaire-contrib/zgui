@@ -18,15 +18,19 @@ pub mod replace;
 pub mod set;
 pub mod ua;
 
+use std::cell::Cell;
+use std::sync::Arc;
+
 use style::shared_lock::SharedRwLock;
 use style::stylesheets::UrlExtraData;
 use style::stylist::Stylist;
+use zgui_css::media::MotionPreference;
 use zgui_dom::SheetLoader;
 
 use crate::sheets::errors::{CssDiagnostics, DiagnosticSink};
 use crate::sheets::origin::SheetOrigin;
 use crate::sheets::parse::ParseContext;
-use crate::sheets::set::{SheetHandle, SheetSet};
+use crate::sheets::set::{KeptSource, ParsedSheet, SheetHandle, SheetSet};
 
 /// Where one sheet's source comes from.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -49,15 +53,18 @@ pub(crate) struct Sheets {
     pub(crate) sink: DiagnosticSink,
     /// The base relative references are resolved against.
     pub(crate) url: UrlExtraData,
+    /// The motion preference a `prefers-reduced-motion` query is answered with.
+    motion: MotionPreference,
 }
 
 impl Sheets {
-    /// No sheets, and nothing reported.
-    pub(crate) fn new() -> Self {
+    /// No sheets, and nothing reported, with queries answered under `motion`.
+    pub(crate) fn new(motion: MotionPreference) -> Self {
         Self {
             set: SheetSet::new(),
             sink: DiagnosticSink::new(),
             url: parse::base_url(),
+            motion,
         }
     }
 
@@ -103,6 +110,25 @@ impl Sheets {
         self.set.remove_dropped(stylist, &guard)
     }
 
+    /// Answers `prefers-reduced-motion` queries under `motion` from now on, and parses each sheet
+    /// that queries it again.
+    pub(crate) fn set_motion(
+        &mut self,
+        stylist: &mut Stylist,
+        lock: &SharedRwLock,
+        loader: &dyn SheetLoader,
+        motion: MotionPreference,
+    ) {
+        self.motion = motion;
+        for KeptSource { id, origin, text } in self.set.kept_sources() {
+            let parsed = self.parse(lock, loader, origin, SheetSource::Text(&text));
+            let guard = lock.read();
+            self.set.replace(stylist, &guard, id, parsed);
+        }
+        // The same text gives the same complaints, and they were reported when it was installed.
+        let _ = self.sink.take();
+    }
+
     /// Parses one sheet, resolving a named source through `loader`.
     pub(crate) fn parse(
         &self,
@@ -110,12 +136,14 @@ impl Sheets {
         loader: &dyn SheetLoader,
         origin: SheetOrigin,
         source: SheetSource<'_>,
-    ) -> style::stylesheets::DocumentStyleSheet {
+    ) -> ParsedSheet {
         let context = ParseContext {
             lock,
             url: &self.url,
             loader,
             sink: &self.sink,
+            motion: self.motion,
+            reads_motion: Cell::new(false),
         };
         let text = match source {
             SheetSource::Text(text) => std::borrow::Cow::Borrowed(text),
@@ -133,6 +161,9 @@ impl Sheets {
                 }
             },
         };
-        context.parse(&text, origin.to_engine())
+        let sheet = context.parse(&text, origin.to_engine());
+        let source = context.reads_motion.get().then(|| Arc::from(text.as_ref()));
+
+        ParsedSheet { sheet, source }
     }
 }

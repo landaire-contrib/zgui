@@ -55,6 +55,11 @@ pub enum WakeReason {
     DeviceLost,
     /// The desktop's light or dark preference changed.
     ColorSchemeChanged,
+    /// The user changed the text size or the motion preference in the system settings.
+    ///
+    /// [`PlatformCx::text_scale`](crate::PlatformCx::text_scale) and
+    /// [`PlatformCx::motion_preference`](crate::PlatformCx::motion_preference) give the new values.
+    PreferencesChanged,
     /// The desktop asked something of the application as a whole.
     App(AppEvent),
     /// An output was connected or disconnected, or what is known about one changed.

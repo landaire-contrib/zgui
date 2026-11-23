@@ -86,6 +86,27 @@ struct Installed {
     origin: SheetOrigin,
     /// The parsed sheet the rule set holds.
     sheet: DocumentStyleSheet,
+    /// The text the sheet was parsed from, kept while its rules depend on a preference that is
+    /// answered at parse time.
+    source: Option<Arc<str>>,
+}
+
+/// A parsed sheet, and the text it was parsed from when it has to be parsed again.
+pub(crate) struct ParsedSheet {
+    /// The parsed sheet.
+    pub(crate) sheet: DocumentStyleSheet,
+    /// The text, when the sheet's rules depend on a preference that is answered at parse time.
+    pub(crate) source: Option<Arc<str>>,
+}
+
+/// An installed sheet that keeps the text it was parsed from.
+pub(crate) struct KeptSource {
+    /// The sheet.
+    pub(crate) id: SheetId,
+    /// The origin it cascades at.
+    pub(crate) origin: SheetOrigin,
+    /// The text.
+    pub(crate) text: Arc<str>,
 }
 
 /// Every sheet installed in one rule set, in cascade order within each origin.
@@ -108,19 +129,19 @@ impl SheetSet {
         }
     }
 
-    /// Adds `sheet` at the end of `origin`'s sheets.
+    /// Adds `parsed` at the end of `origin`'s sheets.
     pub(crate) fn append(
         &mut self,
         stylist: &mut Stylist,
         guard: &SharedRwLockReadGuard,
         origin: SheetOrigin,
-        sheet: DocumentStyleSheet,
+        parsed: ParsedSheet,
     ) -> SheetHandle {
-        stylist.append_stylesheet(sheet.clone(), guard);
-        self.record(origin, sheet)
+        stylist.append_stylesheet(parsed.sheet.clone(), guard);
+        self.record(origin, parsed)
     }
 
-    /// Adds `sheet` immediately before the sheet `before` names.
+    /// Adds `parsed` immediately before the sheet `before` names.
     ///
     /// # Panics
     ///
@@ -131,15 +152,15 @@ impl SheetSet {
         stylist: &mut Stylist,
         guard: &SharedRwLockReadGuard,
         origin: SheetOrigin,
-        sheet: DocumentStyleSheet,
+        parsed: ParsedSheet,
         before: &SheetHandle,
     ) -> SheetHandle {
         let position = self
             .position_of(before.id())
             .expect("the handle names a sheet installed in this rule set");
         let existing = self.installed[position].sheet.clone();
-        stylist.insert_stylesheet_before(sheet.clone(), existing, guard);
-        let handle = self.record(origin, sheet);
+        stylist.insert_stylesheet_before(parsed.sheet.clone(), existing, guard);
+        let handle = self.record(origin, parsed);
         // Keep our own order the same as the rule set's, so that a later replacement finds the
         // right neighbour to re-insert in front of.
         let inserted = self.installed.pop().expect("the sheet was just recorded");
@@ -147,21 +168,21 @@ impl SheetSet {
         handle
     }
 
-    /// Replaces the sheet `handle` names with `sheet`, keeping its cascade position.
+    /// Replaces the sheet `id` names with `parsed`, keeping its cascade position.
     ///
     /// # Panics
     ///
-    /// Panics if `handle` names no installed sheet.
+    /// Panics if `id` names no installed sheet.
     pub(crate) fn replace(
         &mut self,
         stylist: &mut Stylist,
         guard: &SharedRwLockReadGuard,
-        handle: &SheetHandle,
-        sheet: DocumentStyleSheet,
+        id: SheetId,
+        parsed: ParsedSheet,
     ) {
         let position = self
-            .position_of(handle.id())
-            .expect("the handle names a sheet installed in this rule set");
+            .position_of(id)
+            .expect("the identifier names a sheet installed in this rule set");
         let origin = self.installed[position].origin;
         let old = self.installed[position].sheet.clone();
         // The next sheet at the same origin is what decides the position: the rule set orders
@@ -173,10 +194,25 @@ impl SheetSet {
             .map(|entry| entry.sheet.clone());
         stylist.remove_stylesheet(old, guard);
         match next {
-            Some(next) => stylist.insert_stylesheet_before(sheet.clone(), next, guard),
-            None => stylist.append_stylesheet(sheet.clone(), guard),
+            Some(next) => stylist.insert_stylesheet_before(parsed.sheet.clone(), next, guard),
+            None => stylist.append_stylesheet(parsed.sheet.clone(), guard),
         }
-        self.installed[position].sheet = sheet;
+        self.installed[position].sheet = parsed.sheet;
+        self.installed[position].source = parsed.source;
+    }
+
+    /// Each installed sheet that keeps its text.
+    pub(crate) fn kept_sources(&self) -> Vec<KeptSource> {
+        self.installed
+            .iter()
+            .filter_map(|entry| {
+                Some(KeptSource {
+                    id: entry.id,
+                    origin: entry.origin,
+                    text: Arc::clone(entry.source.as_ref()?),
+                })
+            })
+            .collect()
     }
 
     /// Removes every sheet whose handle has been dropped, and reports how many were removed.
@@ -207,10 +243,15 @@ impl SheetSet {
     }
 
     /// Records a sheet the rule set has already been given.
-    fn record(&mut self, origin: SheetOrigin, sheet: DocumentStyleSheet) -> SheetHandle {
+    fn record(&mut self, origin: SheetOrigin, parsed: ParsedSheet) -> SheetHandle {
         let id = SheetId(self.next);
         self.next += 1;
-        self.installed.push(Installed { id, origin, sheet });
+        self.installed.push(Installed {
+            id,
+            origin,
+            sheet: parsed.sheet,
+            source: parsed.source,
+        });
         SheetHandle {
             id,
             dropped: Arc::clone(&self.dropped),

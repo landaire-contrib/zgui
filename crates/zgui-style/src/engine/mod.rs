@@ -108,7 +108,7 @@ impl StyleEngine {
         zgui_css::enable_css_features();
 
         let mut stylist = stylist::new(device::build::build(viewport, &metrics));
-        let mut sheets = Sheets::new();
+        let mut sheets = Sheets::new(viewport.motion);
         let lock = document.store().lock().clone();
         let (user_agent, dropped) = sheets.add(
             &mut stylist,
@@ -177,8 +177,9 @@ impl StyleEngine {
     ///
     /// Runs before anything else in a frame that follows a resize, a monitor change or a theme
     /// flip, and before the restyle, because which rules apply is decided by the device. A change of
-    /// the safe area or the on-screen keyboard replaces the sheet that gives them to `env()`, and
-    /// the next restyle matches the whole document again.
+    /// a value `env()` reads replaces the sheet that gives them, and a change of the motion
+    /// preference parses each sheet that queries it again. The next restyle then matches the whole
+    /// document again.
     pub fn device_epoch(&mut self, document: &mut Document, next: Viewport) -> DeviceEpoch {
         if self.viewport.moves_environment_to(next) {
             let rule = environment_rule(next);
@@ -192,6 +193,14 @@ impl StyleEngine {
             debug_assert!(
                 dropped.is_empty(),
                 "the environment rule must parse whole: {dropped:?}"
+            );
+        }
+        if self.viewport.motion != next.motion {
+            self.sheets.set_motion(
+                &mut self.stylist,
+                &self.lock,
+                document.store().host().sheets(),
+                next.motion,
             );
         }
 
@@ -352,11 +361,7 @@ impl StyleEngine {
     }
 }
 
-/// The rule that gives the safe area and the on-screen keyboard of `viewport` to `env()`.
+/// The rule that gives the values of `viewport` that `env()` reads.
 fn environment_rule(viewport: Viewport) -> String {
-    zgui_css::environment::rule(
-        zgui_geom::Size::new(viewport.width, viewport.height),
-        viewport.safe_area,
-        viewport.virtual_keyboard,
-    )
+    zgui_css::environment::rule(&viewport.environment())
 }

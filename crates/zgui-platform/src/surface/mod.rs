@@ -7,6 +7,7 @@ mod event;
 mod gpu;
 mod icon;
 mod id;
+mod keyboard;
 mod pointer_target;
 mod role;
 mod serial;
@@ -24,6 +25,7 @@ pub use crate::surface::event::{CloseReason, SurfaceEvent};
 pub use crate::surface::gpu::GpuSurface;
 pub use crate::surface::icon::{BadIcon, WindowIcon};
 pub use crate::surface::id::SurfaceId;
+pub use crate::surface::keyboard::{CubicBezier, KeyboardEasing, KeyboardMotion, Spring};
 pub use crate::surface::pointer_target::{PointerShape, PointerTarget, PointerTargetId};
 pub use crate::surface::role::{
     Anchor, Constrain, ExclusiveZone, KeyboardInteractivity, Layer, LayerPatch, LayerPlacement,
@@ -87,6 +89,14 @@ pub trait Surface: Send + Sync + 'static {
     /// `env(keyboard-inset-*)`. A backend with an on-screen keyboard sends
     /// [`SurfaceEvent::Resized`] when the area changes, also if the size stays the same.
     fn virtual_keyboard(&self) -> Option<Rect<DevicePx, Device>> {
+        None
+    }
+
+    /// How the on-screen keyboard moved to the area [`Surface::virtual_keyboard`] reports.
+    ///
+    /// `None` when the platform did not say. A backend changes it before the
+    /// [`SurfaceEvent::Resized`] that reports the area.
+    fn virtual_keyboard_motion(&self) -> Option<KeyboardMotion> {
         None
     }
 

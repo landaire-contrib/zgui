@@ -166,14 +166,14 @@ pub use zgui_custom as custom;
 /// The element vocabulary, as builders.
 pub use zgui_elements as elements;
 /// What an application has outside its windows: the application menu, the status item, the
-/// request to show it again, and its exit.
+/// request to show it again, its lifecycle and its exit.
 pub mod desktop {
     pub use zgui_platform::{
-        AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusAnchor, StatusIcon,
-        StatusItem, StatusPress, Submenu,
+        AppMenu, Lifecycle, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusAnchor,
+        StatusIcon, StatusItem, StatusPress, Submenu,
     };
     pub use zgui_runtime::desktop::{
-        AppHookGuard, on_exit, on_menu, on_reopen, on_status_item_press,
+        AppHookGuard, on_exit, on_lifecycle, on_menu, on_reopen, on_status_item_press,
     };
 }
 /// The pixel spaces and the geometry every stage agrees in.

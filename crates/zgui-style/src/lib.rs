@@ -91,3 +91,5 @@ pub use crate::sheets::errors::{CssDiagnostic, CssDiagnostics, DropKind};
 pub use crate::sheets::loader::{EmbeddedSheets, FilesystemSheets};
 pub use crate::sheets::origin::{OriginMask, SheetOrigin};
 pub use crate::sheets::set::{SheetHandle, SheetId};
+pub use zgui_css::environment::{CubicBezier, KeyboardEasing, KeyboardMotion, Spring, TextScale};
+pub use zgui_css::media::MotionPreference;

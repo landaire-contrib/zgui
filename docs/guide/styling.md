@@ -178,9 +178,37 @@ and they are the values at the end of the movement.
 root { padding-bottom: max(env(safe-area-inset-bottom), env(keyboard-inset-height)); }
 ```
 
+To move content with the keyboard, transition it with `env(keyboard-animation-duration)` and
+`env(keyboard-animation-easing)`. They are known after the first keyboard movement on a platform that
+reports it. Give a fallback for the time before that, and for a desktop.
+
+```css
+root {
+  transition: padding-bottom env(keyboard-animation-duration, 0s)
+              env(keyboard-animation-easing, ease);
+}
+```
+
 The style engine has no way to set these values, so each reference is parsed as a `var()` of a
 custom property that the framework sets on the root element (`--zgui-safe-top`, `--zgui-kb-top`
 and their siblings).
+
+## The text size setting
+
+`env(preferred-text-scale)` is the number the user's text size setting multiplies text by, as the
+platform reports it (`PlatformCx::text_scale`). One is the default size, and the value on a platform
+with no such setting. A sheet opts in where it wants text to follow the setting:
+
+```css
+:root { font-size: calc(100% * env(preferred-text-scale)); }
+```
+
+## Reduced motion
+
+`@media (prefers-reduced-motion: reduce)` matches when the platform reports that the user asked for
+less motion (`PlatformCx::motion_preference`). The engine does not know the feature, so the
+framework writes each such condition as one with the same answer before the sheet is parsed, and
+parses the sheet again when the setting changes.
 
 ## Where the boundary is
 

@@ -57,14 +57,17 @@ impl Window {
         // element's box needs the number that converts CSS pixels to device ones, and a surface
         // that moved to another monitor has changed it.
         self.host.set_scale(scale);
-        // The colour scheme, the safe area and the keyboard area are carried across. The scheme is
-        // a property of the desktop, so a window that is resized or dragged onto another monitor
-        // keeps it.
-        self.viewport = Viewport::new(CssPx(width / scale), CssPx(height / scale))
-            .at_scale(scale)
-            .in_scheme(self.color_scheme())
-            .with_safe_area(self.safe_area_at(scale))
-            .with_virtual_keyboard(self.virtual_keyboard_at(scale));
+        // The colour scheme, the safe area, the keyboard and the user's preferences are carried
+        // across. They are properties of the desktop, so a window that is resized or dragged onto
+        // another monitor keeps them. The areas are converted to the new scale.
+        self.viewport = Viewport {
+            width: CssPx(width / scale),
+            height: CssPx(height / scale),
+            scale,
+            safe_area: self.safe_area_at(scale),
+            virtual_keyboard: self.virtual_keyboard_at(scale),
+            ..self.viewport
+        };
         if moved {
             let marked = zgui_layout::tree::dirty::mark_all_dirty(&mut self.layout.borrow_mut());
             // A scroll offset is a number of *device* pixels, so it is one of the things the new

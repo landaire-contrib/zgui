@@ -7,9 +7,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use accesskit::TreeUpdate;
 use zgui_geom::{Css, CssPx, Device, DevicePx, Edges, Rect, Size};
 use zgui_platform::{
-    CursorStyle, DecorationSource, Decorations, FullscreenMode, InputSerial, LayerPatch,
-    LayerPlacement, PointerTarget, PopupPlacement, Surface, SurfaceAttributes, SurfaceId,
-    SurfaceRole, TextInput, TextSnapshot, Unsupported,
+    CursorStyle, DecorationSource, Decorations, FullscreenMode, InputSerial, KeyboardMotion,
+    LayerPatch, LayerPlacement, PointerTarget, PopupPlacement, Surface, SurfaceAttributes,
+    SurfaceId, SurfaceRole, TextInput, TextSnapshot, Unsupported,
 };
 
 /// How many accessibility nodes the surface keeps across the updates it retains.
@@ -70,6 +70,8 @@ pub struct OffscreenSurface {
     safe_area: Mutex<Edges<DevicePx>>,
     /// The part an on-screen keyboard covers, in physical pixels.
     virtual_keyboard: Mutex<Option<Rect<DevicePx, Device>>>,
+    /// How the on-screen keyboard moved last.
+    virtual_keyboard_motion: Mutex<Option<KeyboardMotion>>,
     /// How fast the output this surface is on refreshes, in thousandths of a hertz.
     ///
     /// Zero means the platform does not say, which is what a backend that knows no rate reports.
@@ -162,6 +164,7 @@ impl OffscreenSurface {
             scale_factor: Mutex::new(1.0),
             safe_area: Mutex::new(Edges::uniform(DevicePx(0.0))),
             virtual_keyboard: Mutex::new(None),
+            virtual_keyboard_motion: Mutex::new(None),
             refresh_rate_millihertz: AtomicU32::new(0),
             pending: AtomicU64::new(0),
             requested: AtomicU64::new(0),
@@ -456,6 +459,16 @@ impl OffscreenSurface {
             .expect("the keyboard area is not poisoned") = area;
     }
 
+    /// States how the on-screen keyboard moves, or that the platform does not say with `None`.
+    ///
+    /// Set before the area the motion moves the keyboard to.
+    pub fn set_virtual_keyboard_motion(&self, motion: Option<KeyboardMotion>) {
+        *self
+            .virtual_keyboard_motion
+            .lock()
+            .expect("the keyboard motion is not poisoned") = motion;
+    }
+
     /// Puts the surface on an output that refreshes at `millihertz`, or on one that does not say.
     ///
     /// Dragging a window from a seventy-five hertz panel onto a two-hundred-and-forty hertz one is
@@ -504,6 +517,13 @@ impl Surface for OffscreenSurface {
             .virtual_keyboard
             .lock()
             .expect("the keyboard area is not poisoned")
+    }
+
+    fn virtual_keyboard_motion(&self) -> Option<KeyboardMotion> {
+        *self
+            .virtual_keyboard_motion
+            .lock()
+            .expect("the keyboard motion is not poisoned")
     }
 
     fn refresh_rate_millihertz(&self) -> Option<u32> {

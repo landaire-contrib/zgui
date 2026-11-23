@@ -1,5 +1,5 @@
 //! What an application has outside its windows: the application menu, the status item, the
-//! request to show it again, and its exit.
+//! request to show it again, its lifecycle and its exit.
 //!
 //! ```no_run
 //! use zgui_runtime::desktop::{on_exit, on_menu, on_reopen};
@@ -16,7 +16,9 @@ mod hooks;
 mod menu;
 mod replay;
 
-pub use crate::desktop::hooks::{AppHookGuard, on_exit, on_menu, on_reopen, on_status_item_press};
+pub use crate::desktop::hooks::{
+    AppHookGuard, on_exit, on_lifecycle, on_menu, on_reopen, on_status_item_press,
+};
 
 pub(crate) use crate::desktop::hooks::AppHooks;
 pub(crate) use crate::desktop::menu::{MenuKeys, MenuSlot};
