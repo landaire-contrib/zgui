@@ -34,24 +34,17 @@ pub enum FocusDirection {
 /// generates no box is not on the screen and cannot be focused, and neither is one whose box is
 /// hidden. Passing [`None`] answers those two as "not laid out yet", which is what a query made
 /// before the first frame has to mean — every other part of the rule still applies.
+///
+/// An [inert](crate::inert) element, or one below an inert element, is not focusable.
 pub fn is_focusable(store: &DocumentStore, layout: Option<&LayoutStore>, node: NodeKey) -> bool {
     let Some(index) = store.index_of(node) else {
         return false;
     };
-    let record = store.core(index);
-    if record.kind() != NodeKind::Element {
+    if crate::inert::is_inert(store, node) {
         return false;
     }
-    if record.ui_state().contains(UiState::DISABLED) {
-        return false;
-    }
-    if !declares_focusable(store, index) {
-        return false;
-    }
-    match layout {
-        None => true,
-        Some(layout) => is_displayed(layout, node),
-    }
+
+    accepts_focus(store, layout, index)
 }
 
 /// This element's `tabindex`, if it has one that parses.
@@ -81,6 +74,9 @@ pub fn focusables(
     let Some(index) = store.index_of(root) else {
         return Vec::new();
     };
+    if crate::inert::is_inert(store, root) {
+        return Vec::new();
+    }
     collect(store, layout, index, &mut found);
     // A positive `tabindex` is a queue-jump: those elements come first, in increasing order, and
     // everything else keeps the order it appears in. Ties inside either group are broken by
@@ -152,20 +148,40 @@ fn is_displayed(layout: &LayoutStore, node: NodeKey) -> bool {
     })
 }
 
+/// Whether the element at `index` can be focused, leaving out whether its ancestors are inert.
+fn accepts_focus(store: &DocumentStore, layout: Option<&LayoutStore>, index: NodeIndex) -> bool {
+    let record = store.core(index);
+    if record.kind() != NodeKind::Element {
+        return false;
+    }
+    if record.ui_state().contains(UiState::DISABLED) {
+        return false;
+    }
+    if !declares_focusable(store, index) {
+        return false;
+    }
+    match layout {
+        None => true,
+        Some(layout) => is_displayed(layout, record.key()),
+    }
+}
+
 /// Collects the focusable elements of one subtree, in document order.
+///
+/// An inert element ends the walk, so nothing below it is collected.
 fn collect(
     store: &DocumentStore,
     layout: Option<&LayoutStore>,
     index: NodeIndex,
     out: &mut Vec<(i32, usize, NodeKey)>,
 ) {
+    if crate::inert::has_inert(store, index) {
+        return;
+    }
     let record = store.core(index);
-    if record.kind() == NodeKind::Element {
-        let key = record.key();
-        if is_focusable(store, layout, key) {
-            let declared = tabindex(store, index).unwrap_or(0);
-            out.push((declared, out.len(), key));
-        }
+    if accepts_focus(store, layout, index) {
+        let declared = tabindex(store, index).unwrap_or(0);
+        out.push((declared, out.len(), record.key()));
     }
     let mut child = record.first_child();
     while let Some(current) = child {

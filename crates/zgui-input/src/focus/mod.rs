@@ -11,9 +11,9 @@
 //!
 //! An element is focusable when it says so — a `tabindex` attribute — or when it is one of the
 //! vocabulary elements that are focusable by nature, and when nothing about it makes it
-//! unreachable: it is not disabled, it generates a box, and that box is visible. All four are
-//! checked by [`order::is_focusable`], and a rule that is written down is a rule a component can
-//! rely on.
+//! unreachable: it is not disabled, it is not [inert](crate::inert) and is not below an inert
+//! element, it generates a box, and that box is visible. All of these are checked by
+//! [`order::is_focusable`], and a rule that is written down is a rule a component can rely on.
 //!
 //! **Confinement is a separate question, and it is deliberately not folded into that one.** Whether
 //! a trap is in force is a property of the window rather than of the element, so

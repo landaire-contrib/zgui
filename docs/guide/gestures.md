@@ -12,6 +12,7 @@ The window reads taps, long presses, pans and pinches from the touch stream. Thi
 - A container stretches and bounces only along an axis where its content is larger than the container.
 - A touch on content that moves stops it. That touch does not click.
 - A pinch sends `pinch` events to the element under it.
+- An element with the `inert` attribute, and everything in it, gets no touch. A touch on it goes to the element below it.
 
 ## Taking a pan from the scrolling
 

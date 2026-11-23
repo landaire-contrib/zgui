@@ -42,6 +42,9 @@ pub struct Hit {
 /// resolves to whatever is on top of it. A fragment that belongs to no element does not end the
 /// search and does not answer with nothing either: an anonymous box is part of whatever element
 /// contains it, and a press on the gap between two lines of a paragraph reaches the paragraph.
+///
+/// A fragment of an [inert](crate::inert) element is passed through, so the hit lands on whatever
+/// is below it.
 pub fn at(
     document: &DocumentStore,
     layout: &LayoutStore,
@@ -54,6 +57,9 @@ pub fn at(
         let Some(node) = element_of(layout, fragment) else {
             continue;
         };
+        if crate::inert::is_inert(document, node) {
+            continue;
+        }
         let chain = HitChain::to_root(document, node);
         if chain.is_empty() {
             continue;

@@ -104,7 +104,7 @@ A person goes back with a drag toward the trailing edge, as on iOS:
 
 ## Pages that are not on top
 
-The stack hides each page below the top page with `visibility: hidden`, which removes it from pointer input and the focus order. It also sets `inert` on the page and marks it hidden for accessibility, so VoiceOver reaches only the top page. During a motion, no page takes pointer input.
+The stack sets `inert` on each page below the top page, also during a motion. An inert page gets no pointer, touch, wheel or key input. A tap on it goes to the element below it. <kbd>Tab</kbd> does not move focus into it, and a request to focus a control in it has no effect. When the page becomes inert while a control in it has focus, that control loses focus and the on-screen keyboard closes. The stack also marks the page hidden for accessibility, so VoiceOver reaches only the top page, and hides it with `visibility: hidden`. During a motion, no page takes pointer input.
 
 ## Style
 

@@ -5,6 +5,7 @@
 //! which piece of that bar. Both are properties of the *fragment*, which the index already names,
 //! so this asks the same index the same question and keeps the answer it throws away.
 
+use zgui_dom::DocumentStore;
 use zgui_dom::NodeKey;
 use zgui_geom::{Device, DevicePx, Point};
 use zgui_layout::fragment::ScrollbarPart;
@@ -56,15 +57,19 @@ impl Press {
 ///
 /// Topmost and no further: a bar covered by something else is not what was pressed, and the piece
 /// of the box behind the bar — the container's own background, which reaches across the gutter —
-/// must not be mistaken for it.
+/// must not be mistaken for it. A fragment of an [inert](crate::inert) element is passed through.
 pub fn at(
+    document: &DocumentStore,
     layout: &LayoutStore,
     index: &HitIndex,
     clips: &ClipTable,
     spatial: &SpatialTree,
     point: Point<DevicePx, Device>,
 ) -> Option<Press> {
-    let frag = index.hit(point, clips, spatial).first().copied()?;
+    let frag = index.hit(point, clips, spatial).into_iter().find(|frag| {
+        crate::hit::element_of(layout, *frag)
+            .is_none_or(|node| !crate::inert::is_inert(document, node))
+    })?;
     let fragment = layout.fragment(frag)?;
     let FragmentKind::Scrollbar { axis, part } = fragment.kind else {
         return None;

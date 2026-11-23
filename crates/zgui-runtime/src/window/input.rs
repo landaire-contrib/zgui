@@ -945,6 +945,10 @@ impl Window {
     /// Carries out the commands in the queue until none are left, for at most eight rounds.
     fn carry_out_issued(&mut self, timestamp: Timestamp) {
         for _ in 0..8u8 {
+            // A view that removed the focused element, or made it inert, leaves focus where no key
+            // may go. Focus goes back to the window, where a shortcut hears it, and the blur is
+            // announced below with every other focus move.
+            self.drop_unreachable_focus(timestamp);
             // Before the commands are taken, because a focus move made by the event that has just
             // finished has to be announced before anything that move causes is acted on — and
             // because a handler for it issues commands of its own, which this loop then drains.
@@ -1060,28 +1064,23 @@ impl Window {
         }
     }
 
-    /// Moves focus, writing the state bits that decide whether a ring is shown.
-    ///
-    /// Leaving a field that was typed into announces its value as settled, once, which is the
-    /// moment a form validates on. It is announced *after* focus has moved, so a handler that
-    /// reads what holds focus sees the answer the user's own action produced rather than the one
-    /// they were leaving.
-    /// Clears focus when the element that held it is no longer in the document.
+    /// Clears focus when the element that held it is no longer in the document, or is inert.
     ///
     /// A node a view detached is still in the arena for a while, so the flag answers rather than
     /// the slot: a key aimed at a detached node runs listeners whose scope is already gone.
-    pub(crate) fn drop_focus_that_went(&mut self, timestamp: Timestamp) {
+    fn drop_unreachable_focus(&mut self, timestamp: Timestamp) {
         let Some(node) = self.router.interaction().focus.focused() else {
             return;
         };
         let held = {
             let document = self.document.borrow();
             let store = document.store();
-            store.index_of(node).is_some_and(|index| {
+            let attached = store.index_of(node).is_some_and(|index| {
                 store
                     .core(index)
                     .has_flags(zgui_dom::NodeFlags::IN_DOCUMENT)
-            })
+            });
+            attached && !zgui_input::inert::is_inert(store, node)
         };
         if held {
             return;
@@ -1089,6 +1088,12 @@ impl Window {
         self.move_focus(None, zgui_input::FocusSource::Script, timestamp);
     }
 
+    /// Moves focus, writing the state bits that decide whether a ring is shown.
+    ///
+    /// Leaving a field that was typed into announces its value as settled, once, which is the
+    /// moment a form validates on. It is announced *after* focus has moved, so a handler that
+    /// reads what holds focus sees the answer the user's own action produced rather than the one
+    /// they were leaving.
     pub(crate) fn move_focus(
         &mut self,
         node: Option<zgui_dom::NodeKey>,

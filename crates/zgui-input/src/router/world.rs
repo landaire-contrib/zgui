@@ -67,7 +67,14 @@ impl World<'_> {
         &self,
         point: Point<DevicePx, Device>,
     ) -> Option<crate::hit::ScrollbarPress> {
-        crate::hit::scrollbar::at(self.layout, self.hit, self.clips, self.spatial, point)
+        crate::hit::scrollbar::at(
+            self.document.store(),
+            self.layout,
+            self.hit,
+            self.clips,
+            self.spatial,
+            point,
+        )
     }
 
     /// The path holding only the document's root element.

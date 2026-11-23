@@ -31,6 +31,7 @@
 //! |---|---|
 //! | [`normalize`] | what the window said, in units the document can use |
 //! | [`hit`] | which element is under a point, and its path to the root |
+//! | [`inert`] | which elements input cannot reach |
 //! | [`capture`] | which element is receiving the pointer regardless of position |
 //! | [`state`] | which interaction bits the document now carries |
 //! | [`focus`] | what can be focused, in what order, and what confines it |
@@ -87,6 +88,7 @@ pub mod focus;
 pub mod gesture;
 pub mod hit;
 pub mod ime;
+pub mod inert;
 pub mod normalize;
 pub mod router;
 pub mod state;

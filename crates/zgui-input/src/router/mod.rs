@@ -300,6 +300,8 @@ impl Router {
 
     /// Moves focus, as a default action or an application's own request asked.
     ///
+    /// A move to an [inert](crate::inert) element is refused, and focus stays where it was.
+    ///
     /// # Panics
     ///
     /// Panics if the document is poisoned by an earlier batch that unwound.
@@ -310,6 +312,9 @@ impl Router {
         source: FocusSource,
     ) -> (Option<zgui_dom::NodeKey>, Option<zgui_dom::NodeKey>) {
         let chain = match node {
+            Some(node) if crate::inert::is_inert(world.document.store(), node) => {
+                return (None, None);
+            }
             Some(node) => HitChain::to_root(world.document.store(), node),
             None => HitChain::default(),
         };
