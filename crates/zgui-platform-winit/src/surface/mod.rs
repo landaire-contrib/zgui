@@ -60,6 +60,9 @@ pub struct WinitSurface {
     /// The part of the view the on-screen keyboard covers, as of the last keyboard notification.
     #[cfg(target_os = "ios")]
     virtual_keyboard: Mutex<Option<zgui_geom::Rect<DevicePx, Device>>>,
+    /// The element under the hovering pointer, which the pointer interaction answers from.
+    #[cfg(target_os = "ios")]
+    pointer_target: Mutex<Option<zgui_platform::PointerTarget>>,
 }
 
 impl WinitSurface {
@@ -83,6 +86,8 @@ impl WinitSurface {
             safe_area: Mutex::new(zgui_geom::Edges::uniform(DevicePx(0.0))),
             #[cfg(target_os = "ios")]
             virtual_keyboard: Mutex::new(None),
+            #[cfg(target_os = "ios")]
+            pointer_target: Mutex::new(None),
         }
     }
 
@@ -150,6 +155,15 @@ impl WinitSurface {
     #[cfg(target_os = "ios")]
     pub(crate) fn report_typed(&self, event: SurfaceEvent) {
         self.waker.report_typed(self.window.id(), event);
+    }
+
+    /// The element under the hovering pointer, as of the last frame.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn pointer_target(&self) -> Option<zgui_platform::PointerTarget> {
+        *self
+            .pointer_target
+            .lock()
+            .expect("the pointer target is not poisoned")
     }
 }
 
@@ -379,6 +393,21 @@ impl Surface for WinitSurface {
             }
             None => self.window.set_cursor_visible(false),
         }
+    }
+
+    #[cfg(target_os = "ios")]
+    fn takes_pointer_target(&self) -> bool {
+        true
+    }
+
+    #[cfg(target_os = "ios")]
+    fn set_pointer_target(&self, target: Option<zgui_platform::PointerTarget>) {
+        *self
+            .pointer_target
+            .lock()
+            .expect("the pointer target is not poisoned") = target;
+        // After the lock is released, because the interaction reads the target when it asks.
+        crate::ios::pointer::invalidate(self.id);
     }
 
     fn set_pointer_passthrough(&self, passthrough: bool) -> Result<(), Unsupported> {

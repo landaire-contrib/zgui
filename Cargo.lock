@@ -1117,7 +1117,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 [[package]]
 name = "dpi"
 version = "0.1.1"
-source = "git+https://github.com/landaire-contrib/winit?branch=v0.30.x-uiscene#2a121e2b485c0ac0b34295d8f5df885b8bb0107d"
+source = "git+https://github.com/landaire-contrib/winit?branch=v0.30.x-uiscene#dee25c3f29d11b6066339efb4e3742a745cb4c34"
 
 [[package]]
 name = "dpi"
@@ -5226,7 +5226,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "winit"
 version = "0.30.13"
-source = "git+https://github.com/landaire-contrib/winit?branch=v0.30.x-uiscene#2a121e2b485c0ac0b34295d8f5df885b8bb0107d"
+source = "git+https://github.com/landaire-contrib/winit?branch=v0.30.x-uiscene#dee25c3f29d11b6066339efb4e3742a745cb4c34"
 dependencies = [
  "ahash",
  "android-activity",
@@ -6148,6 +6148,7 @@ dependencies = [
  "muda",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "objc2-ui-kit 0.3.2",

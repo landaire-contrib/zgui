@@ -84,10 +84,11 @@ objc2-app-kit.workspace = true
 objc2-core-graphics.workspace = true
 objc2-foundation.workspace = true
 
-# The safe area of the view, the frame of the on-screen keyboard, which only UIKit reports, and the
-# text input protocols of the iOS text view.
+# The safe area of the view, the frame of the on-screen keyboard, which only UIKit reports, the
+# text input protocols of the iOS text view, and the pointer interaction.
 [target.'cfg(target_os = "ios")'.dependencies]
 block2.workspace = true
+objc2-core-foundation.workspace = true
 objc2.workspace = true
 objc2-foundation = { workspace = true, features = ["NSArray", "NSRange", "objc2-core-foundation"] }
 objc2-ui-kit.workspace = true
