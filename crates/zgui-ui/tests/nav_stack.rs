@@ -6,15 +6,28 @@ use core::cell::Cell;
 use core::time::Duration;
 use std::rc::Rc;
 
+use zgui::geom::Css;
+use zgui::geom::CssPx;
+use zgui::geom::Point;
+use zgui::geom::Size;
 use zgui::prelude::*;
 use zgui::reactive::LocalStorage;
 use zgui::reactive::RwSignal;
 use zgui::view;
+use zgui::view::CustomPropertyName;
 use zgui::vocab::AnimationEvent;
 use zgui::vocab::AnimationPhase;
+use zgui::vocab::DefaultAction;
 use zgui::vocab::EventKind;
+use zgui::vocab::GesturePhase;
+use zgui::vocab::PanEvent;
 use zgui::vocab::Payload;
+use zgui::vocab::PointerKind;
+use zgui::vocab::ScrollEvent;
 use zgui::vocab::SemanticFlags;
+use zgui::vocab::TransitionEvent;
+use zgui::vocab::TransitionPhase;
+use zgui::vocab::Velocity;
 use zgui_ui::prelude::*;
 
 use crate::harness::Harness;
@@ -259,5 +272,257 @@ fn pop_to_root_slides_out_only_the_top_page() {
     assert_eq!(
         harness.window.scope.with(|| path.pop()),
         Err(PopError::AtRoot)
+    );
+}
+
+/// The width of the page area in the swipe tests, in CSS pixels.
+const WIDTH: f32 = 400.0;
+
+/// Pushes the group page and gives the page area a phone's width.
+fn pushed() -> Stack {
+    let stack = mount();
+    stack
+        .harness
+        .window
+        .scope
+        .with(|| stack.path.push(Route::Group));
+    run_out(&stack.harness);
+    let pages = stack.harness.find("zui-nav-pages");
+    stack.harness.window.place(pages, 0.0, 44.0, WIDTH, 800.0);
+    stack.harness.window.frame();
+
+    stack
+}
+
+/// Drags from `x` across by `travel` pixels on `node` and lets go at `velocity` pixels per second.
+/// Returns whether the stack took the drag.
+fn swipe(harness: &Harness, node: NodeId, x: f32, travel: f32, velocity: f32) -> bool {
+    let origin = Point::<CssPx, Css>::new(CssPx(x), CssPx(300.0));
+    let at = |phase: GesturePhase, travelled: f32, speed: f32| {
+        let pan = PanEvent {
+            phase,
+            origin,
+            position: Point::new(CssPx(x + travelled), CssPx(300.0)),
+            velocity: Velocity { x: speed, y: 0.0 },
+            kind: PointerKind::Touch,
+            edge: None,
+        };
+        let delivered =
+            harness
+                .window
+                .dispatcher()
+                .send_to(node, EventKind::HorizontalPan, Payload::Pan(pan));
+        harness.window.frame();
+        delivered.default
+    };
+    let started = at(GesturePhase::Started, 10.0, 0.0);
+    if started == DefaultAction::Prevented {
+        return false;
+    }
+    at(GesturePhase::Moved, travel / 2.0, velocity);
+    assert_eq!(
+        places(harness, "zui-nav-page"),
+        ["swipe-below", "swipe-top"]
+    );
+    at(GesturePhase::Moved, travel, velocity);
+    at(GesturePhase::Ended, travel, velocity);
+
+    true
+}
+
+#[test]
+fn an_edge_swipe_past_half_the_width_goes_back() {
+    let Stack { harness, path, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+
+    assert!(swipe(&harness, pages, 4.0, 240.0, 0.0));
+    assert_eq!(places(&harness, "zui-nav-page"), ["swipe-in", "swipe-out"]);
+    assert_eq!(harness.window.scope.with(|| path.pages()), [Route::Root]);
+
+    run_out(&harness);
+    assert_eq!(places(&harness, "zui-nav-page"), ["current"]);
+}
+
+#[test]
+fn a_fast_flick_short_of_half_the_width_goes_back() {
+    let Stack { harness, path, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+
+    assert!(swipe(&harness, pages, 4.0, 100.0, 600.0));
+    assert_eq!(harness.window.scope.with(|| path.pages()), [Route::Root]);
+    let stack = harness.only_child();
+    let ease = harness
+        .window
+        .dom
+        .tree()
+        .custom_property(stack, CustomPropertyName::new("zui-nav-swipe-ease"));
+    assert!(
+        ease.is_some_and(|ease| ease.starts_with("cubic-bezier(")),
+        "the page continues at the speed of the finger"
+    );
+}
+
+#[test]
+fn a_slow_drag_short_of_half_the_width_slides_back() {
+    let Stack { harness, path, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+
+    assert!(swipe(&harness, pages, 4.0, 100.0, 50.0));
+    assert_eq!(
+        places(&harness, "zui-nav-page"),
+        ["swipe-cover", "swipe-back"]
+    );
+    assert_eq!(
+        harness.window.scope.with(|| path.pages()),
+        [Route::Root, Route::Group]
+    );
+
+    run_out(&harness);
+    assert_eq!(places(&harness, "zui-nav-page"), ["covered", "current"]);
+}
+
+#[test]
+fn the_page_area_takes_a_drag_only_from_its_leading_edge() {
+    let Stack { harness, path, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+
+    assert!(!swipe(&harness, pages, 200.0, 240.0, 0.0));
+    assert_eq!(
+        harness.window.scope.with(|| path.pages()),
+        [Route::Root, Route::Group]
+    );
+}
+
+#[test]
+fn a_page_with_unsaved_edits_takes_no_swipe() {
+    let Stack {
+        harness,
+        path,
+        editing,
+        ..
+    } = pushed();
+    harness.window.scope.with(|| path.push(Route::Entry));
+    run_out(&harness);
+    editing.set(true);
+    harness.window.frame();
+    let pages = harness.find("zui-nav-pages");
+
+    assert!(!swipe(&harness, pages, 4.0, 240.0, 600.0));
+    assert_eq!(
+        places(&harness, "zui-nav-page"),
+        ["covered", "covered", "current"]
+    );
+    assert_eq!(harness.window.scope.with(|| path.count()), 3);
+}
+
+#[test]
+fn a_large_title_moves_into_the_bar_once_it_scrolls_under_it() {
+    let harness = Harness::open();
+    let path = harness.window.scope.with(|| NavPath::new(Route::Root));
+    harness.mount(move || {
+        view! {
+            NavStack(path = path, page = move |route: Route| view! {
+                NavPage(title = route.title(), large_title = true) {
+                    text {"Bank"}
+                }
+            })
+        }
+    });
+    let title = harness.find("zui-nav-bar__title");
+    let content = harness.find("zui-nav-content");
+    assert_eq!(harness.find_all("zui-nav-large-title").len(), 1);
+    assert_eq!(harness.attribute(title, "data-hidden").as_deref(), Some(""));
+
+    let scroll = |y: f32| {
+        harness.window.dispatcher().send_to(
+            content,
+            EventKind::Scroll,
+            Payload::Scroll(ScrollEvent {
+                offset: Point::new(CssPx(0.0), CssPx(y)),
+                content_size: Size::new(CssPx(WIDTH), CssPx(2000.0)),
+                scrollport: Size::new(CssPx(WIDTH), CssPx(800.0)),
+            }),
+        );
+        harness.window.frame();
+    };
+    scroll(60.0);
+    assert_eq!(harness.attribute(title, "data-hidden"), None);
+    scroll(0.0);
+    assert_eq!(harness.attribute(title, "data-hidden").as_deref(), Some(""));
+}
+
+/// Sends one pan event to `node` and runs a frame.
+fn pan(harness: &Harness, node: NodeId, phase: GesturePhase, travel: f32) {
+    let event = PanEvent {
+        phase,
+        origin: Point::new(CssPx(4.0), CssPx(300.0)),
+        position: Point::new(CssPx(4.0 + travel), CssPx(300.0)),
+        velocity: Velocity::default(),
+        kind: PointerKind::Touch,
+        edge: None,
+    };
+    harness
+        .window
+        .dispatcher()
+        .send_to(node, EventKind::HorizontalPan, Payload::Pan(event));
+    harness.window.frame();
+}
+
+#[test]
+fn the_end_of_the_slide_out_ends_a_completed_swipe() {
+    let Stack { harness, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+    assert!(swipe(&harness, pages, 4.0, 240.0, 0.0));
+    let out = harness.find_all("zui-nav-page")[1];
+
+    harness.window.dispatcher().send_to(
+        out,
+        EventKind::TransitionEnd,
+        Payload::Transition(TransitionEvent {
+            property: zgui::view::Ident::new("transform"),
+            elapsed: Duration::from_millis(500),
+            phase: TransitionPhase::Ended,
+            pseudo: None,
+        }),
+    );
+    harness.window.frame();
+    assert_eq!(places(&harness, "zui-nav-page"), ["current"]);
+}
+
+#[test]
+fn a_cancelled_touch_at_rest_ends_the_swipe_at_once() {
+    let Stack { harness, path, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+
+    pan(&harness, pages, GesturePhase::Started, 10.0);
+    assert_eq!(
+        places(&harness, "zui-nav-page"),
+        ["swipe-below", "swipe-top"]
+    );
+    pan(&harness, pages, GesturePhase::Cancelled, 10.0);
+    assert_eq!(places(&harness, "zui-nav-page"), ["covered", "current"]);
+    assert_eq!(harness.window.scope.with(|| path.count()), 2);
+}
+
+#[test]
+fn a_push_during_a_swipe_keeps_its_motion_when_the_finger_lifts() {
+    let Stack { harness, path, .. } = pushed();
+    let pages = harness.find("zui-nav-pages");
+
+    pan(&harness, pages, GesturePhase::Started, 10.0);
+    harness.window.scope.with(|| path.push(Route::Entry));
+    harness.window.frame();
+    pan(&harness, pages, GesturePhase::Ended, 0.0);
+    assert_eq!(
+        places(&harness, "zui-nav-page"),
+        ["covered", "push-out", "push-in"]
+    );
+
+    // A later swipe starts.
+    run_out(&harness);
+    pan(&harness, pages, GesturePhase::Started, 10.0);
+    assert_eq!(
+        places(&harness, "zui-nav-page"),
+        ["covered", "swipe-below", "swipe-top"]
     );
 }

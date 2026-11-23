@@ -307,6 +307,37 @@ impl Stage {
         ));
     }
 
+    /// Puts a finger down at `from`, moves it to `to` in steps of `step` CSS pixels 10 ms apart,
+    /// and lifts it, all in CSS pixels. A gesture measures the speed of the finger from the stamps.
+    pub fn pan(&mut self, from: Point<CssPx, Css>, to: Point<CssPx, Css>, step: f32) {
+        const BETWEEN: Duration = Duration::from_millis(10);
+
+        let mut stamp = Duration::from_secs(1);
+        let mut send = |stage: &mut Self, action: PointerAction, at: Point<CssPx, Css>| {
+            stamp += BETWEEN;
+            stage.harness.touch(
+                action,
+                zgui::vocab::PointerId::new(1),
+                at,
+                Timestamp::from_origin(stamp),
+            );
+            stage.harness.settle(16);
+        };
+        send(self, PointerAction::Pressed, from);
+        let distance = (to.x.0 - from.x.0).hypot(to.y.0 - from.y.0);
+        let steps = (distance / step).ceil().max(1.0) as u32;
+        for index in 1..=steps {
+            let part = index as f32 / steps as f32;
+            let at = Point::new(
+                CssPx(from.x.0 + (to.x.0 - from.x.0) * part),
+                CssPx(from.y.0 + (to.y.0 - from.y.0) * part),
+            );
+            send(self, PointerAction::Moved, at);
+        }
+        send(self, PointerAction::Released, to);
+        self.finger = to;
+    }
+
     /// The middle of the control that says `text`.
     fn centre_of(&self, text: &str) -> Point<DevicePx, Device> {
         self.census()

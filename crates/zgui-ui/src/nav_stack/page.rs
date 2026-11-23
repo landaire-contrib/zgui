@@ -6,6 +6,7 @@ use zgui::reactive::LocalStorage;
 use zgui::reactive::RwSignal;
 use zgui::slot;
 use zgui::view;
+use zgui::view::AttrName;
 
 use crate::nav_stack::NAV_NAME;
 use crate::nav_stack::style::NavStackStyle;
@@ -21,6 +22,10 @@ pub(crate) struct PageBar {
     trailing: RwSignal<Option<ChildrenFn>, LocalStorage>,
     /// Whether the page blocks back.
     back_blocked: RwSignal<Option<Signal<bool, LocalStorage>>, LocalStorage>,
+    /// Whether the page shows its title large at the top of its content.
+    large: RwSignal<bool, LocalStorage>,
+    /// Whether the content has scrolled the large title under the bar.
+    collapsed: RwSignal<bool, LocalStorage>,
 }
 
 impl PageBar {
@@ -30,6 +35,8 @@ impl PageBar {
             leading: RwSignal::new_local(None),
             trailing: RwSignal::new_local(None),
             back_blocked: RwSignal::new_local(None),
+            large: RwSignal::new_local(false),
+            collapsed: RwSignal::new_local(false),
         }
     }
 
@@ -61,6 +68,12 @@ impl PageBar {
         self.back_blocked
             .get_untracked()
             .is_some_and(|blocked| blocked.get_untracked())
+    }
+
+    /// Whether the bar shows the title, subscribing to it. A page with a large title shows it in
+    /// the bar only once the large title has scrolled under the bar.
+    pub(crate) fn shows_title(self) -> bool {
+        !self.large.get() || self.collapsed.get()
     }
 }
 
@@ -104,6 +117,10 @@ pub struct NavTrailing {
 /// the title of this page, and the controls of [`NavLeading`] and [`NavTrailing`]. Outside a stack,
 /// a page shows only its content.
 ///
+/// With `large_title`, the content is a scroll container that starts with the title in large type.
+/// The bar shows the title when the large title scrolls under the bar. Put the content of such a
+/// page directly in it, without a scroll container of its own.
+///
 /// ```
 /// use zgui::prelude::*;
 /// use zgui::reactive::RwSignal;
@@ -133,6 +150,9 @@ pub fn NavPage(
     /// [`NavPath::pop`](crate::nav_stack::NavPath::pop) refuses.
     #[prop(into, default = Signal::stored_local(false))]
     back_blocked: Signal<bool, LocalStorage>,
+    /// Whether the content starts with the title in large type, as on the top page of an iOS app.
+    #[prop(default = false)]
+    large_title: bool,
     /// The controls at the leading end of the bar, after the back button.
     #[prop(optional)]
     nav_leading: Option<NavLeading>,
@@ -149,13 +169,15 @@ pub fn NavPage(
     children: Children,
 ) -> impl IntoView {
     install_stylesheet(NAV_NAME, NavStackStyle::CSS);
-    if let Some(page) = PageCx::current() {
+    let page = PageCx::current();
+    if let Some(page) = page {
         let bar = page.bar;
         bar.title.set(Some(title));
         bar.back_blocked.set(Some(back_blocked));
         bar.leading.set(nav_leading.map(|leading| leading.children));
         bar.trailing
             .set(nav_trailing.map(|trailing| trailing.children));
+        bar.large.set(large_title);
 
         // The signals belong to this scope, so the bar forgets them when it ends.
         on_cleanup_local(move || {
@@ -163,11 +185,42 @@ pub fn NavPage(
             bar.back_blocked.try_set(None);
             bar.leading.try_set(None);
             bar.trailing.try_set(None);
+            bar.large.try_set(false);
+            bar.collapsed.try_set(false);
         });
     }
 
+    let own = Attrs::new().attribute(AttrName::new("data-large-title"), move || {
+        large_title.then(String::new)
+    });
     view! {
-        column(class = "zui-nav-content", {..attrs}, class = class) {
+        column(
+            class = "zui-nav-content",
+            on:scroll = move |ev| {
+                // How far the content scrolls before the large title is under the bar.
+                const COLLAPSE: f32 = 41.0;
+
+                if let Some(page) = page
+                    && ev.target == ev.current
+                {
+                    let collapsed = ev.offset.y.0 >= COLLAPSE;
+                    if page.bar.collapsed.get_untracked() != collapsed {
+                        page.bar.collapsed.set(collapsed);
+                    }
+                }
+            },
+            {..own},
+            {..attrs},
+            class = class
+        ) {
+            if move || large_title {
+                text(
+                    class = "zui-nav-large-title",
+                    {..Attrs::new().a11y_from(A11yBinding::new(Role::Heading).level(1_usize))}
+                ) {
+                    {move || title.get()}
+                }
+            } else {}
             {children.into_view_once()}
         }
     }

@@ -42,6 +42,24 @@ pub(crate) enum Motion {
         /// The page that becomes the top page.
         to: PageId,
     },
+    /// A finger drags `from` aside to show `to`, or has let go of it.
+    Swipe {
+        /// The top page.
+        from: PageId,
+        /// The page below it.
+        to: PageId,
+        /// How the swipe ends, once the finger has let go.
+        end: Option<SwipeEnd>,
+    },
+}
+
+/// How a swipe back ends.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub(crate) enum SwipeEnd {
+    /// The top page slides out, as in a pop.
+    Complete,
+    /// The top page slides back.
+    Cancel,
 }
 
 /// Where one mounted page is drawn.
@@ -59,6 +77,18 @@ pub(crate) enum PagePlace {
     Leaving,
     /// The page that the popped page shows.
     Returning,
+    /// The top page, which a finger drags aside.
+    Swiped,
+    /// The page below a dragged page.
+    Uncovered,
+    /// The top page, which slides out after a swipe.
+    SwipedOut,
+    /// The page that a completed swipe shows.
+    SwipedIn,
+    /// The top page, which slides back after a cancelled swipe.
+    SwipedBack,
+    /// The page below the top page, which a cancelled swipe covers again.
+    Recovered,
 }
 
 impl PagePlace {
@@ -71,17 +101,34 @@ impl PagePlace {
             Self::Departing => "push-out",
             Self::Leaving => "pop-out",
             Self::Returning => "pop-in",
+            Self::Swiped => "swipe-top",
+            Self::Uncovered => "swipe-below",
+            Self::SwipedOut => "swipe-out",
+            Self::SwipedIn => "swipe-in",
+            Self::SwipedBack => "swipe-back",
+            Self::Recovered => "swipe-cover",
         }
     }
 
     /// Whether the page is the top page, or becomes it when the motion ends.
     pub(crate) const fn is_active(self) -> bool {
-        matches!(self, Self::Current | Self::Entering | Self::Returning)
+        matches!(
+            self,
+            Self::Current
+                | Self::Entering
+                | Self::Returning
+                | Self::Swiped
+                | Self::SwipedIn
+                | Self::SwipedBack
+        )
     }
 
-    /// Whether the end of this page's animation ends the motion.
+    /// Whether the end of this page's animation or transition ends the motion.
     pub(crate) const fn ends_motion(self) -> bool {
-        matches!(self, Self::Entering | Self::Leaving)
+        matches!(
+            self,
+            Self::Entering | Self::Leaving | Self::SwipedOut | Self::SwipedBack
+        )
     }
 }
 
@@ -94,6 +141,10 @@ pub(crate) struct NavCore {
     motion: RwSignal<Motion, LocalStorage>,
     /// The bar of each mounted page that declared one.
     bars: RwSignal<Vec<(PageId, PageBar)>, LocalStorage>,
+    /// How far a swipe has dragged the top page, from 0 to 1 of the width.
+    progress: RwSignal<f32, LocalStorage>,
+    /// The curve of the motion after a swipe, which starts at the speed of the finger.
+    ease: RwSignal<Option<String>, LocalStorage>,
     /// The next identity to give out.
     next: StoredValue<u64, LocalStorage>,
 }
@@ -104,6 +155,8 @@ impl NavCore {
             order: RwSignal::new_local(Vec::new()),
             motion: RwSignal::new_local(Motion::Still),
             bars: RwSignal::new_local(Vec::new()),
+            progress: RwSignal::new_local(0.0),
+            ease: RwSignal::new_local(None),
             next: StoredValue::new_local(0),
         }
     }
@@ -115,9 +168,38 @@ impl NavCore {
         PageId(id)
     }
 
+    fn dispose(self) {
+        self.order.dispose();
+        self.motion.dispose();
+        self.bars.dispose();
+        self.progress.dispose();
+        self.ease.dispose();
+        self.next.dispose();
+    }
+
     /// The motion in progress, subscribing to it.
     pub(crate) fn motion(self) -> Motion {
         self.motion.get()
+    }
+
+    /// How far a swipe has dragged the top page, subscribing to it.
+    pub(crate) fn progress(self) -> f32 {
+        self.progress.get()
+    }
+
+    /// Moves the page that a finger drags to `progress` of the width.
+    pub(crate) fn drag_to(self, progress: f32) {
+        self.progress.set(progress.clamp(0.0, 1.0));
+    }
+
+    /// The curve of the motion after a swipe, subscribing to it.
+    pub(crate) fn ease(self) -> Option<String> {
+        self.ease.get()
+    }
+
+    /// How far a swipe has dragged the top page.
+    pub(crate) fn progress_untracked(self) -> f32 {
+        self.progress.get_untracked()
     }
 
     /// Where the page `id` is drawn, subscribing to the stack.
@@ -137,6 +219,20 @@ impl NavCore {
                     PagePlace::Leaving
                 } else if id == to {
                     PagePlace::Returning
+                } else {
+                    PagePlace::Covered
+                }
+            }
+            Motion::Swipe { from, to, end } => {
+                let (top, below) = match end {
+                    None => (PagePlace::Swiped, PagePlace::Uncovered),
+                    Some(SwipeEnd::Complete) => (PagePlace::SwipedOut, PagePlace::SwipedIn),
+                    Some(SwipeEnd::Cancel) => (PagePlace::SwipedBack, PagePlace::Recovered),
+                };
+                if id == from {
+                    top
+                } else if id == to {
+                    below
                 } else {
                     PagePlace::Covered
                 }
@@ -331,6 +427,21 @@ where
             .with(|entries| entries.iter().map(|entry| entry.page.clone()).collect())
     }
 
+    /// The routes in the stack, bottom first.
+    #[must_use]
+    pub fn pages_untracked(self) -> Vec<P> {
+        self.entries
+            .with_untracked(|entries| entries.iter().map(|entry| entry.page.clone()).collect())
+    }
+
+    /// Frees the path, for a path made outside a scope that ends with the stack. Any later use
+    /// panics.
+    pub fn dispose(self) {
+        self.entries.dispose();
+        self.leaving.dispose();
+        self.core.dispose();
+    }
+
     /// How many pages the stack holds, the root page included. Subscribes to the stack.
     #[must_use]
     pub fn count(self) -> usize {
@@ -341,6 +452,64 @@ where
     #[must_use]
     pub fn is_at_root(self) -> bool {
         self.count() == 1
+    }
+
+    /// Starts a swipe back: a finger drags the top page aside. Returns whether it started.
+    ///
+    /// Refused when [`NavPath::pop`] would refuse.
+    pub(crate) fn begin_swipe(self) -> bool {
+        if self.check_pop().is_err() {
+            return false;
+        }
+        self.settle();
+
+        let Some((to, from)) = self.entries.with_untracked(|entries| {
+            let [.., below, top] = entries.as_slice() else {
+                return None;
+            };
+            Some((below.id, top.id))
+        }) else {
+            return false;
+        };
+        self.core.progress.set(0.0);
+        self.core.ease.set(None);
+        self.core.motion.set(Motion::Swipe {
+            from,
+            to,
+            end: None,
+        });
+
+        true
+    }
+
+    /// Lets go of a swipe back. A completed swipe pops the top page. Returns false when no swipe
+    /// was in progress, for example after a push during the drag.
+    ///
+    /// `ease` is the curve of the motion that follows, when it carries the speed of the finger.
+    pub(crate) fn end_swipe(self, end: SwipeEnd, ease: Option<String>) -> bool {
+        let Motion::Swipe {
+            from,
+            to,
+            end: None,
+        } = self.core.motion.get_untracked()
+        else {
+            return false;
+        };
+
+        if end == SwipeEnd::Complete {
+            let mut entries = self.entries.get_untracked();
+            let popped = entries.pop();
+            self.entries.set(entries);
+            self.leaving.set(popped);
+        }
+        self.core.ease.set(ease);
+        self.core.motion.set(Motion::Swipe {
+            from,
+            to,
+            end: Some(end),
+        });
+
+        true
     }
 
     /// The pages to mount: the stack, then a popped page that still moves.
@@ -494,6 +663,55 @@ mod tests {
             path.push("b");
 
             assert_eq!(ids(path), ["root", "b"]);
+        });
+    }
+
+    #[test]
+    fn a_completed_swipe_pops_the_top_page_once_it_has_slid_out() {
+        mounted(|| {
+            let path = NavPath::new("root");
+            path.push("group");
+            assert!(path.begin_swipe(), "a swipe ends the push first");
+            let core = path.core();
+            let [root, group] = [path.mounted()[0].id, path.mounted()[1].id];
+            assert_eq!(core.place(group), PagePlace::Swiped);
+            assert_eq!(core.place(root), PagePlace::Uncovered);
+
+            path.end_swipe(SwipeEnd::Complete, None);
+            assert_eq!(path.pages(), ["root"]);
+            assert_eq!(ids(path), ["root", "group"]);
+            assert_eq!(core.place(group), PagePlace::SwipedOut);
+
+            path.settle();
+            assert_eq!(ids(path), ["root"]);
+            assert_eq!(core.place(root), PagePlace::Current);
+        });
+    }
+
+    #[test]
+    fn a_cancelled_swipe_keeps_the_stack() {
+        mounted(|| {
+            let path = NavPath::new("root");
+            path.push("group");
+            assert!(path.begin_swipe());
+            path.end_swipe(SwipeEnd::Cancel, None);
+            assert_eq!(path.pages(), ["root", "group"]);
+            assert_eq!(
+                path.core().place(path.mounted()[1].id),
+                PagePlace::SwipedBack
+            );
+
+            path.settle();
+            assert_eq!(path.core().place(path.mounted()[1].id), PagePlace::Current);
+        });
+    }
+
+    #[test]
+    fn the_root_page_cannot_be_swiped_away() {
+        mounted(|| {
+            let path = NavPath::new("root");
+            assert!(!path.begin_swipe());
+            assert_eq!(path.core().motion.get_untracked(), Motion::Still);
         });
     }
 

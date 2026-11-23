@@ -31,7 +31,8 @@ A page below the top page stays mounted. Thus it keeps its signals and its scrol
 - `path.push(route)` slides a new page in.
 - `path.pop()` slides the top page out.
 - `path.pop_to_root()` slides the top page out and removes the pages between it and the root page at once.
-- `path.top()`, `path.pages()`, `path.count()` and `path.is_at_root()` read the stack and subscribe to it.
+- `path.top()`, `path.pages()`, `path.count()` and `path.is_at_root()` read the stack and subscribe to it. `path.pages_untracked()` reads it without a subscription.
+- `path.dispose()` frees a path that you made outside the scope of the stack.
 
 `pop` and `pop_to_root` return `Err(PopError::AtRoot)` when only the root page is left, and `Err(PopError::Blocked)` while the top page blocks back.
 
@@ -53,6 +54,10 @@ view! {
 - `NavLeading` holds the controls at the leading end, after the back button.
 
 The page owns its scroll container. The stack gives the page the height below the bar.
+
+## Large titles
+
+Set `large_title = true` to start the page with its title in large type, as the top page of an iOS app does. The content of the page is then the scroll container, and the large title scrolls with it. When the large title goes under the bar, the bar shows the title. When the content scrolls back to the top, the bar title goes again. Put the rows directly in such a page, without a scroll container of their own.
 
 ## Block back for unsaved edits
 
@@ -83,7 +88,19 @@ A push slides the new page in from the trailing edge. The page below moves 30 pe
 
 When the person turns on Reduce Motion, the pages cross-fade in place.
 
-The motion ends when the animation of the moving page ends. If no animation ends it, the motion ends after 0.9 s.
+The motion ends when the animation or transition of the moving page ends. If none ends it, the motion ends after 0.9 s.
+
+## Swipe back
+
+A person goes back with a drag toward the trailing edge, as on iOS:
+
+- The drag starts at the leading edge of the page area, before the scroll containers in the page get it.
+- The drag also starts anywhere on the top page where no scroll container under the finger can scroll sideways.
+- A vertical drag scrolls, and never starts a swipe.
+- The top page follows the finger. The page below follows with parallax, and its dim and the bar titles follow too.
+- On release, the swipe completes past half the width, or when the finger moves toward the trailing edge faster than 300 CSS pixels per second. Otherwise the page slides back. Either motion starts at the speed of the finger.
+- While back is blocked, the stack takes no swipe.
+- With Reduce Motion, the page follows the finger also.
 
 ## Pages that are not on top
 
@@ -102,4 +119,4 @@ The stack is a flex column that fills its parent. The elements carry these class
 | `zui-nav-pages` | the area below the bar |
 | `zui-nav-page` | one page, with `data-place` |
 
-`data-place` is `current`, `covered`, `push-in`, `push-out`, `pop-in` or `pop-out`. Set `--zui-nav-ease` on the stack to change the curve of the motion.
+`data-place` is `current`, `covered`, `push-in`, `push-out`, `pop-in` or `pop-out`. During a swipe, it is `swipe-top` and `swipe-below`. After the release, it is `swipe-out` and `swipe-in` for a completed swipe, or `swipe-back` and `swipe-cover` for a cancelled one. A page with a large title has `zui-nav-large-title` on its large title. Set `--zui-nav-ease` on the stack to change the curve of the motion.

@@ -1,6 +1,7 @@
 //! What every component here does the same way.
 
 mod edit;
+pub(crate) mod fling;
 mod label;
 mod press;
 mod value;
