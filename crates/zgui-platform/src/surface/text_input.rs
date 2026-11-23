@@ -1,6 +1,8 @@
 //! Telling the platform where text is being typed, and what kind.
 
-use zgui_geom::{Css, CssPx, Point, Size};
+use core::ops::Range;
+
+use zgui_geom::{Css, CssPx, Point, Rect, Size};
 
 /// What kind of text a field expects, so the platform can offer the right keyboard.
 ///
@@ -252,6 +254,62 @@ impl TextInput {
         self.hints = hints;
         self
     }
+}
+
+/// A selection in a field's text, in byte offsets. A caret has both ends at one offset.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct TextSelection {
+    /// The end that stays in place as the selection is extended.
+    pub anchor: usize,
+    /// The end the caret is at.
+    pub focus: usize,
+}
+
+impl TextSelection {
+    /// A selection from `anchor` to `focus`.
+    pub const fn new(anchor: usize, focus: usize) -> Self {
+        Self { anchor, focus }
+    }
+
+    /// A caret at `offset`.
+    pub const fn caret(offset: usize) -> Self {
+        Self::new(offset, offset)
+    }
+
+    /// The selected bytes, lower end first.
+    pub fn range(self) -> Range<usize> {
+        self.anchor.min(self.focus)..self.anchor.max(self.focus)
+    }
+}
+
+/// Where a caret at one offset of a field's text is drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CaretStop {
+    /// The byte offset in the text.
+    pub offset: usize,
+    /// The laid-out line the caret is on, counted from the first.
+    pub line: u32,
+    /// The caret, in CSS pixels from the surface's top-left corner.
+    pub rect: Rect<CssPx, Css>,
+}
+
+/// The text of the field being typed into, its selection, and where its text is drawn.
+///
+/// A platform whose input method reads and edits the text itself uses this, for example the
+/// `UITextInput` protocol of UIKit. All offsets are byte offsets into [`text`](TextSnapshot::text).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TextSnapshot {
+    /// The text the field shows. A secure field shows its mask.
+    pub text: String,
+    /// What is selected.
+    pub selection: TextSelection,
+    /// The text an input method is composing, when it composes.
+    pub composition: Option<Range<usize>>,
+    /// The box the text is laid out in, in CSS pixels from the surface's top-left corner.
+    pub bounds: Rect<CssPx, Css>,
+    /// One caret at each boundary between characters a person sees, in the order of the text. A
+    /// boundary at a line wrap has one caret on each of the two lines.
+    pub carets: Vec<CaretStop>,
 }
 
 #[cfg(test)]

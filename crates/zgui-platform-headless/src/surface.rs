@@ -9,7 +9,7 @@ use zgui_geom::{Css, CssPx, Device, DevicePx, Edges, Rect, Size};
 use zgui_platform::{
     CursorStyle, DecorationSource, Decorations, FullscreenMode, InputSerial, LayerPatch,
     LayerPlacement, PopupPlacement, Surface, SurfaceAttributes, SurfaceId, SurfaceRole, TextInput,
-    Unsupported,
+    TextSnapshot, Unsupported,
 };
 
 /// How many accessibility nodes the surface keeps across the updates it retains.
@@ -107,6 +107,10 @@ pub struct OffscreenSurface {
     /// was said cannot tell a window that reports the caret from one that reports nothing and
     /// leaves every Japanese keyboard unable to type into it.
     text_input_log: Mutex<Vec<Option<TextInput>>>,
+    /// Whether the surface asks for snapshots of the field being typed into. The default is no.
+    text_snapshot_listener: AtomicBool,
+    /// The last snapshot of the field being typed into, while the surface asks for them.
+    text_snapshot: Mutex<Option<TextSnapshot>>,
     /// Every cursor the surface was told to show, in order.
     ///
     /// Which cursor is over a window is a state the surface is *told*, exactly as text input is:
@@ -163,6 +167,8 @@ impl OffscreenSurface {
             a11y_log: Mutex::new(A11yLog::default()),
             a11y_listener: AtomicBool::new(true),
             text_input_log: Mutex::new(Vec::new()),
+            text_snapshot_listener: AtomicBool::new(false),
+            text_snapshot: Mutex::new(None),
             cursor_log: Mutex::new(Vec::new()),
             layer_log: Mutex::new(Vec::new()),
             input_region_log: Mutex::new(Vec::new()),
@@ -253,6 +259,21 @@ impl OffscreenSurface {
     /// technology has connected.
     pub fn set_a11y_listener(&self, listening: bool) {
         self.a11y_listener.store(listening, Ordering::Relaxed);
+    }
+
+    /// Sets whether the surface asks for snapshots of the field being typed into, as a platform
+    /// whose input method edits the text itself does. The default is no.
+    pub fn set_text_snapshot_listener(&self, listening: bool) {
+        self.text_snapshot_listener
+            .store(listening, Ordering::Relaxed);
+    }
+
+    /// The last snapshot of the field being typed into, if one was built.
+    pub fn last_text_snapshot(&self) -> Option<TextSnapshot> {
+        self.text_snapshot
+            .lock()
+            .expect("the snapshot is not poisoned")
+            .clone()
     }
 
     /// How many accessibility updates have been published.
@@ -586,6 +607,18 @@ impl Surface for OffscreenSurface {
             .lock()
             .expect("the log is not poisoned")
             .push(state);
+    }
+
+    fn set_text_snapshot(&self, build: &mut dyn FnMut() -> Option<TextSnapshot>) {
+        if !self.text_snapshot_listener.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Some(snapshot) = build() {
+            *self
+                .text_snapshot
+                .lock()
+                .expect("the snapshot is not poisoned") = Some(snapshot);
+        }
     }
 
     fn push_a11y_update(&self, build: &mut dyn FnMut() -> TreeUpdate) {

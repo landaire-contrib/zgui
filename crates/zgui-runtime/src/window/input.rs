@@ -227,6 +227,12 @@ impl Window {
             self.surface_focus_changed(focused, timestamp);
             return;
         }
+        // A selection an input method made reaches no listener. It moves the caret of the focused
+        // field as a click in its text does.
+        if let SurfaceEvent::SelectText(selection) = event {
+            self.select_text(*selection);
+            return;
+        }
         let modifiers = event.modifiers().unwrap_or(Modifiers::NONE);
         // How the user is interacting right now, remembered for the focus moves scripts make: a
         // surface opened by a click that focuses its first field is acting for the pointer, and
@@ -594,6 +600,35 @@ impl Window {
         }
         if let Some(value) = edited.value {
             self.report_input(node, value, edited.selection, timestamp);
+        }
+    }
+
+    /// Selects text in the focused element, as an input method asked.
+    ///
+    /// The offsets are into the text the document holds, which is the bullets of a secure field.
+    fn select_text(&mut self, selection: zgui_platform::TextSelection) {
+        let Some(node) = self.router.interaction().focus.focused() else {
+            return;
+        };
+        let anchor = self.editors.to_model(node, selection.anchor);
+        let focus = self.editors.to_model(node, selection.focus);
+        let edited = {
+            let document = self.document.borrow();
+            self.editors.place(
+                &document,
+                node,
+                anchor,
+                focus,
+                zgui_edit::Affinity::Downstream,
+            )
+        };
+        if let Some(selection) = edited.selection {
+            self.host.write_selection(node, selection);
+        }
+        if edited.handled {
+            self.vertical_goal = None;
+            self.carets.restart(self.clock.now());
+            self.report_caret();
         }
     }
 

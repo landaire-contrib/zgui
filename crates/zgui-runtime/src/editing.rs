@@ -315,6 +315,35 @@ impl Editors {
         })
     }
 
+    /// The text the document holds for an element's model: the model's text for a plain element,
+    /// and the bullets for a masked one.
+    pub(crate) fn shown_text(&self, node: NodeKey) -> Option<String> {
+        let held = self.attached.get(&node)?;
+        let buffer = held.editor.buffer();
+        if !held.projection.is_masked() {
+            return Some(held.editor.text());
+        }
+
+        Some(
+            (0..buffer.paragraphs().len())
+                .filter_map(|paragraph| held.projection.content(buffer, paragraph))
+                .collect(),
+        )
+    }
+
+    /// The text an input method is composing in an element, in offsets into the text the
+    /// document holds.
+    pub(crate) fn shown_composition(&self, node: NodeKey) -> Option<core::ops::Range<usize>> {
+        let held = self.attached.get(&node)?;
+        let range = held.editor.composition()?.range.clone();
+        let buffer = held.editor.buffer();
+
+        Some(
+            held.projection.to_shown(buffer, range.start)
+                ..held.projection.to_shown(buffer, range.end),
+        )
+    }
+
     /// The model offset an offset into the text the document holds names.
     ///
     /// The same offset for a plain element or one with no model.

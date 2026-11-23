@@ -8,6 +8,7 @@ use zgui_vocab::{
 
 use crate::surface::chrome::DecorationSource;
 use crate::surface::drag::DragEvent;
+use crate::surface::text_input::TextSelection;
 use crate::theme::ColorScheme;
 
 /// Something that happened to a surface.
@@ -155,6 +156,11 @@ pub enum SurfaceEvent {
     ModifiersChanged(Modifiers),
     /// An input method did something to the text being composed.
     Ime(ImeEvent),
+    /// An input method put the selection of the field being typed into here.
+    ///
+    /// The offsets are byte offsets into the [`TextSnapshot`](crate::TextSnapshot) text the
+    /// platform was last given. A platform sends this only after it was given a snapshot.
+    SelectText(TextSelection),
     /// Content from outside the application was dragged over or dropped on the surface.
     Drag(DragEvent),
 }
@@ -172,6 +178,7 @@ impl SurfaceEvent {
                 | Self::Key { .. }
                 | Self::ModifiersChanged(_)
                 | Self::Ime(_)
+                | Self::SelectText(_)
                 | Self::Drag(_)
         )
     }

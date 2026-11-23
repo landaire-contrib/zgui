@@ -74,6 +74,7 @@ impl Window {
         // This reports the full text input state. A field that gets focus before it has a box
         // cannot enable text input when focus moves, and this is the first moment it can.
         self.report_text_input();
+        self.surface.set_text_snapshot(&mut || self.text_snapshot());
     }
 
     /// This frame's plan, and the absolute rectangles it will draw.
@@ -156,6 +157,122 @@ impl Window {
             );
         }
         out
+    }
+
+    /// The text of the element text input is on, its selection, and where each caret goes.
+    ///
+    /// Everything is in the text the document holds, which is the bullets of a secure field, and
+    /// in the platform's CSS pixels. Nothing when text input is off or the element has no layout
+    /// yet.
+    fn text_snapshot(&self) -> Option<zgui_platform::TextSnapshot> {
+        let node = self.ime.target()?;
+        let text = self.editors.shown_text(node)?;
+        let selection = self.editors.shown_selection(node)?;
+        let layout = self.layout.borrow();
+        let located = Located::of(&layout, &self.text, node)?;
+        let box_ = crate::caret::place::text_box(&layout, node)?;
+        let placements = self.host.placements();
+        let factor = self.platform_scale.max(f32::MIN_POSITIVE);
+        let to_css = |rect: Rect<DevicePx, Device>| {
+            zgui_geom::Rect::new(
+                zgui_geom::Point::new(
+                    zgui_geom::CssPx(rect.origin.x.0 / factor),
+                    zgui_geom::CssPx(rect.origin.y.0 / factor),
+                ),
+                zgui_geom::Size::new(
+                    zgui_geom::CssPx(rect.size.width.0 / factor),
+                    zgui_geom::CssPx(rect.size.height.0 / factor),
+                ),
+            )
+        };
+
+        // Where each line of the element's text was placed, and in which coordinate system.
+        let lines: Vec<_> = layout
+            .fragments_of_box(box_)
+            .iter()
+            .filter_map(|frag| layout.fragment(*frag))
+            .filter_map(|fragment| match fragment.kind {
+                FragmentKind::Line { paragraph, line } if paragraph == located.paragraph => {
+                    Some((line, fragment.border_box.origin, fragment.transform))
+                }
+                _ => None,
+            })
+            .collect();
+        let element = layout.boxes_of(node).first().copied().unwrap_or(box_);
+        let bounds = layout
+            .fragments_of_box(element)
+            .iter()
+            .filter_map(|frag| layout.fragment(*frag))
+            .find(|fragment| fragment.kind == FragmentKind::Box)
+            .map(|fragment| {
+                zgui_layout::fragment::transform::placed::onto_device(
+                    fragment.border_box,
+                    fragment.transform,
+                    &placements,
+                )
+            })?;
+
+        let width = crate::caret::caret_width(self.scale);
+        let mut carets: Vec<zgui_platform::CaretStop> = Vec::new();
+        let mut offset = 0;
+        loop {
+            // A boundary at a line wrap has a caret at the end of one line and at the start of the
+            // next. The two readings give both, and they agree everywhere else.
+            for affinity in [
+                zgui_edit::Affinity::Upstream,
+                zgui_edit::Affinity::Downstream,
+            ] {
+                let Some(caret) = located.caret(offset, affinity) else {
+                    continue;
+                };
+                let line = caret.line as u32;
+                if carets
+                    .last()
+                    .is_some_and(|last| last.offset == offset && last.line == line)
+                {
+                    continue;
+                }
+                let Some(line_origin) = located.line_origin(caret.line) else {
+                    continue;
+                };
+                let Some((_, origin, transform)) = lines
+                    .iter()
+                    .find(|(placed, _, _)| usize::from(*placed) == caret.line)
+                else {
+                    continue;
+                };
+                let rect = Rect::new(
+                    Point::new(
+                        DevicePx(origin.x.0 + caret.origin.x.0 - line_origin.x.0),
+                        DevicePx(origin.y.0 + caret.origin.y.0 - line_origin.y.0),
+                    ),
+                    zgui_geom::Size::new(DevicePx(width), DevicePx(caret.height.0)),
+                );
+                let rect = zgui_layout::fragment::transform::placed::onto_device(
+                    rect,
+                    *transform,
+                    &placements,
+                );
+                carets.push(zgui_platform::CaretStop {
+                    offset,
+                    line,
+                    rect: to_css(rect),
+                });
+            }
+            let next = zgui_edit::select::grapheme::next(&text, offset);
+            if next <= offset {
+                break;
+            }
+            offset = next;
+        }
+
+        Some(zgui_platform::TextSnapshot {
+            selection: zgui_platform::TextSelection::new(selection.anchor, selection.focus),
+            composition: self.editors.shown_composition(node),
+            bounds: to_css(bounds),
+            carets,
+            text,
+        })
     }
 
     /// The colour this frame's caret is being drawn in, if one is planned.

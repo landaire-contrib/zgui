@@ -100,12 +100,13 @@ pub use crate::monitor::{
 };
 pub use crate::scroll::ScrollSettings;
 pub use crate::surface::{
-    Anchor, Autocapitalize, BadIcon, CloseReason, ComposeAhead, Constrain, CursorStyle,
+    Anchor, Autocapitalize, BadIcon, CaretStop, CloseReason, ComposeAhead, Constrain, CursorStyle,
     DecorationSource, Decorations, DragEvent, EnterKeyHint, ExclusiveZone, FullscreenMode,
     GpuSurface, InputSerial, KeyboardInteractivity, Layer, LayerPatch, LayerPlacement,
     PopupPlacement, PresentPacing, PresentationTiming, ResizeEdge, SubpixelLayout, Surface,
     SurfaceAttributes, SurfaceEvent, SurfaceId, SurfaceRole, TextContentType, TextInput,
-    TextInputHints, TextInputPurpose, TitleButtons, Watchdog, WindowIcon, WindowLevel,
+    TextInputHints, TextInputPurpose, TextSelection, TextSnapshot, TitleButtons, Watchdog,
+    WindowIcon, WindowLevel,
 };
 pub use crate::theme::ColorScheme;
 pub use crate::waker::Waker;

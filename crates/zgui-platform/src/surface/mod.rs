@@ -30,7 +30,8 @@ pub use crate::surface::role::{
 pub use crate::surface::serial::InputSerial;
 pub use crate::surface::subpixel::SubpixelLayout;
 pub use crate::surface::text_input::{
-    Autocapitalize, EnterKeyHint, TextContentType, TextInput, TextInputHints, TextInputPurpose,
+    Autocapitalize, CaretStop, EnterKeyHint, TextContentType, TextInput, TextInputHints,
+    TextInputPurpose, TextSelection, TextSnapshot,
 };
 pub use crate::surface::timing::{ComposeAhead, PresentPacing, PresentationTiming};
 pub use crate::surface::watchdog::Watchdog;
@@ -382,6 +383,17 @@ pub trait Surface: Send + Sync + 'static {
     /// told a caret moved but not that the field is still active places its candidate window over
     /// the text being composed.
     fn set_text_input(&self, state: Option<TextInput>);
+
+    /// Tells the platform the text of the field being typed into, after a frame laid it out.
+    ///
+    /// A platform whose input method reads and edits the text itself calls `build`, and gives the
+    /// snapshot to that input method. `build` answers `None` when no field is being typed into or
+    /// the field has no layout yet. The edits come back as [`SurfaceEvent::Ime`],
+    /// [`SurfaceEvent::Key`] and [`SurfaceEvent::SelectText`]. A platform that has no use for the
+    /// text does not call `build`, so the snapshot costs nothing there.
+    fn set_text_snapshot(&self, build: &mut dyn FnMut() -> Option<TextSnapshot>) {
+        let _ = build;
+    }
 
     /// Abandons any half-composed accent so the next key stands alone.
     fn reset_dead_keys(&self) {}
