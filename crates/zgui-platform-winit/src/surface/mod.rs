@@ -145,6 +145,12 @@ impl WinitSurface {
                 .report(self.window.id(), SurfaceEvent::Resized(Surface::size(self)));
         }
     }
+
+    /// Gives the window an edit the iOS text view made.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn report_typed(&self, event: SurfaceEvent) {
+        self.waker.report_typed(self.window.id(), event);
+    }
 }
 
 impl core::fmt::Debug for WinitSurface {
@@ -382,18 +388,35 @@ impl Surface for WinitSurface {
     }
 
     fn set_text_input(&self, state: Option<TextInput>) {
-        // The order matters in one direction only: an input method told where the caret is while
-        // it believes the field is closed places its candidate window over the text being composed.
-        // Setting the area first and the flag second is the order that cannot produce that.
-        if let Some(state) = state {
-            self.window.set_ime_cursor_area(
-                winit::dpi::LogicalPosition::new(state.caret_origin.x.0, state.caret_origin.y.0),
-                LogicalSize::new(state.caret_size.width.0, state.caret_size.height.0),
-            );
-            self.window
-                .set_ime_purpose(crate::input::ime::purpose(state.purpose));
+        // On iOS the text view of the surface takes the keyboard, in place of winit's view.
+        #[cfg(target_os = "ios")]
+        {
+            crate::ios::text_view::set_text_input(self.id, state);
         }
-        self.window.set_ime_allowed(state.is_some());
+        #[cfg(not(target_os = "ios"))]
+        {
+            // The order matters in one direction only: an input method told where the caret is
+            // while it believes the field is closed places its candidate window over the text
+            // being composed. Setting the area first and the flag second is the order that cannot
+            // produce that.
+            if let Some(state) = state {
+                self.window.set_ime_cursor_area(
+                    winit::dpi::LogicalPosition::new(
+                        state.caret_origin.x.0,
+                        state.caret_origin.y.0,
+                    ),
+                    LogicalSize::new(state.caret_size.width.0, state.caret_size.height.0),
+                );
+                self.window
+                    .set_ime_purpose(crate::input::ime::purpose(state.purpose));
+            }
+            self.window.set_ime_allowed(state.is_some());
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    fn set_text_snapshot(&self, build: &mut dyn FnMut() -> Option<zgui_platform::TextSnapshot>) {
+        crate::ios::text_view::set_text_snapshot(self.id, build);
     }
 
     fn reset_dead_keys(&self) {

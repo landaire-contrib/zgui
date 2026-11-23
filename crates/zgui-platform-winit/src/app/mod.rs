@@ -274,6 +274,31 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
                 }
                 None
             }
+            #[cfg(target_os = "ios")]
+            UserEvent::Typed(window, event) => {
+                if let Some(surface) = self.shared.by_window(window) {
+                    let id = Surface::id(surface.as_ref());
+                    // Stamped as it is delivered, as the events winit reports are.
+                    let event = match event {
+                        SurfaceEvent::Key {
+                            state,
+                            event,
+                            modifiers,
+                            ..
+                        } => SurfaceEvent::Key {
+                            state,
+                            event,
+                            modifiers,
+                            timestamp: self.shared.clock().timestamp(),
+                        },
+                        other => other,
+                    };
+                    let cx = WinitCx::new(&self.shared, event_loop);
+                    self.handler.surface_event(&cx, id, event);
+                    crate::ios::text_view::delivered(id);
+                }
+                None
+            }
         };
         let Some(reason) = reason else { return };
         // The desktop lays the title bar out once more as a change of full screen ends.

@@ -164,9 +164,9 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow", "NSView", "NSResponder", "NSButton", "NSControl", "NSGraphics", "NSRunningApplication", "NSEvent", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSMenu", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSCell", "NSScreen", "objc2-core-foundation", "block2"] }
 # The height of the main display, which winit measures window positions from on macOS.
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGDirectDisplay"] }
-# The safe area of the view winit draws into on iOS and the frame of the on-screen keyboard, which
-# winit does not report.
-objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "UIResponder", "UIView", "UIWindow", "UIGeometry", "objc2-core-foundation"] }
+# The safe area of the view winit draws into on iOS, the frame of the on-screen keyboard, which
+# winit does not report, and the text input protocols the iOS text view conforms to.
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "UIResponder", "UIView", "UIWindow", "UIGeometry", "UITextInput", "UITextInputTraits", "UITextInteraction", "UIInteraction", "UIPasteboard", "NSText", "objc2-core-foundation"] }
 zbus = "5.18"
 # The native handles a surface hands a graphics API, named by the platform contract and by both
 # backends that implement it.

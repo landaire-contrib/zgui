@@ -22,7 +22,11 @@
 pub mod clicks;
 pub mod ime;
 pub mod keyboard;
+#[cfg(any(target_os = "ios", test))]
+pub(crate) mod keyboard_traits;
 pub mod pinch;
 pub mod pointer;
 pub mod scrolling;
+#[cfg(any(target_os = "ios", test))]
+pub(crate) mod text_mirror;
 pub mod wheel;

@@ -8,9 +8,10 @@ use zgui_platform::{SurfaceEvent, WakeReason, Waker};
 
 /// Something delivered to the loop from outside its own event stream.
 ///
-/// Four things arrive this way and they are unrelated: work finishing on another thread, the
+/// The things that arrive this way are unrelated: work finishing on another thread, the
 /// accessibility channel's own connection asking for something, a frame for a window the platform
-/// does not paint, and a change to a window that winit reports no event for. They share this type because the loop has exactly one way in for
+/// does not paint, a change to a window that winit reports no event for, and an edit of the iOS
+/// text view. They share this type because the loop has exactly one way in for
 /// anything the platform does not report itself, and keeping that to one channel is what makes the
 /// wake path auditable.
 #[derive(Debug)]
@@ -26,6 +27,12 @@ pub enum UserEvent {
     Redraw(WindowId),
     /// A window changed in a way winit reports no event for.
     Surface(WindowId, SurfaceEvent),
+    /// An edit the iOS text view of a window made.
+    ///
+    /// It is counted as it is delivered, so the text view drops the snapshots made before the
+    /// window had the edit.
+    #[cfg(target_os = "ios")]
+    Typed(WindowId, SurfaceEvent),
 }
 
 impl From<accesskit_winit::Event> for UserEvent {
@@ -71,6 +78,15 @@ impl ProxyWaker {
         let proxy = self.proxy.lock().expect("the channel is not poisoned");
         if proxy.send_event(UserEvent::Surface(window, event)).is_err() {
             tracing::debug!(target: "zgui::platform", "a surface event arrived after the loop had finished");
+        }
+    }
+
+    /// Delivers an edit the iOS text view of `window` made, on the loop's own thread.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn report_typed(&self, window: WindowId, event: SurfaceEvent) {
+        let proxy = self.proxy.lock().expect("the channel is not poisoned");
+        if proxy.send_event(UserEvent::Typed(window, event)).is_err() {
+            tracing::debug!(target: "zgui::platform", "an edit arrived after the loop had finished");
         }
     }
 }

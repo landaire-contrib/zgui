@@ -152,7 +152,10 @@ impl Shared {
                 #[cfg(target_os = "macos")]
                 crate::macos::forget_surface(surface.id());
                 #[cfg(target_os = "ios")]
-                crate::ios::forget_keyboard(surface.id());
+                {
+                    crate::ios::forget_keyboard(surface.id());
+                    crate::ios::text_view::forget(surface.id());
+                }
                 drop(surface);
                 id
             })
@@ -169,7 +172,10 @@ impl Shared {
                 #[cfg(target_os = "macos")]
                 crate::macos::forget_surface(surface.id());
                 #[cfg(target_os = "ios")]
-                crate::ios::forget_keyboard(surface.id());
+                {
+                    crate::ios::forget_keyboard(surface.id());
+                    crate::ios::text_view::forget(surface.id());
+                }
             }
             kept
         });
@@ -180,7 +186,10 @@ impl Shared {
         for surface in self.surfaces.borrow_mut().drain(..) {
             a11y::release(surface.id());
             #[cfg(target_os = "ios")]
-            crate::ios::forget_keyboard(surface.id());
+            {
+                crate::ios::forget_keyboard(surface.id());
+                crate::ios::text_view::forget(surface.id());
+            }
         }
     }
 
@@ -234,7 +243,10 @@ impl PlatformCx for WinitCx<'_> {
         surface.place_title_buttons();
         surface.observe_safe_area();
         #[cfg(target_os = "ios")]
-        crate::ios::observe_keyboard(&surface);
+        {
+            crate::ios::observe_keyboard(&surface);
+            crate::ios::text_view::attach(&surface);
+        }
         #[cfg(target_os = "macos")]
         {
             if let Some(view) = crate::macos::ns_view(&window) {

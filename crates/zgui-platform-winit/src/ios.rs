@@ -1,5 +1,7 @@
 //! The UIKit values winit does not expose.
 
+pub(crate) mod text_view;
+
 use core::ptr::NonNull;
 use std::cell::RefCell;
 use std::collections::HashMap;
