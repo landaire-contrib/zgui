@@ -241,6 +241,14 @@ impl Gestures {
         read
     }
 
+    /// Records that an element took the long press of `pointer`, such as a context menu that
+    /// opened. The contact then does not pan, so that it can move onto the menu.
+    pub fn claim(&mut self, pointer: PointerId) {
+        if let Some(track) = self.contacts.get_mut(&pointer) {
+            track.claim();
+        }
+    }
+
     /// When the earliest pending long press comes due.
     pub fn next_deadline(&self, now: Timestamp) -> Option<Duration> {
         self.contacts

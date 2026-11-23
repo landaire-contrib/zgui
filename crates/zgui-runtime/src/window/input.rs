@@ -992,7 +992,9 @@ impl Window {
             }
             Command::InstallStylesheet { name, css } => self.install_view_sheet(&name, &css),
             Command::RemoveStylesheet { name } => self.remove_view_sheet(&name),
-            Command::Synthesize { node, event } => self.synthesize(node, event, timestamp),
+            Command::Synthesize { node, event } => {
+                self.synthesize(node, event, timestamp);
+            }
             Command::Scroll {
                 node,
                 target,
@@ -1191,13 +1193,15 @@ impl Window {
     }
 
     /// Dispatches an event on a node through the ordinary capture, target and bubble path.
+    ///
+    /// Returns what the dispatch did, or `None` when the node is gone.
     pub(crate) fn synthesize(
         &mut self,
         node: zgui_view::NodeId,
         event: EventKind,
         timestamp: Timestamp,
-    ) {
-        self.synthesize_pointer(node, event, Modifiers::NONE, None, timestamp);
+    ) -> Option<dispatch::Dispatched> {
+        self.synthesize_pointer(node, event, Modifiers::NONE, None, timestamp)
     }
 
     /// The same, with the modifiers and the button of the interaction that asked for it.
@@ -1211,10 +1215,8 @@ impl Window {
         modifiers: Modifiers,
         button: Option<zgui_vocab::PointerButton>,
         timestamp: Timestamp,
-    ) {
-        let Some(key) = zgui_view_dom::id::to_document(node) else {
-            return;
-        };
+    ) -> Option<dispatch::Dispatched> {
+        let key = zgui_view_dom::id::to_document(node)?;
         // A synthesised activation is a pointer event at wherever the pointer is, because that is
         // what a handler reads off it. With no pointer on the surface it is at the origin.
         let position = self
@@ -1235,7 +1237,7 @@ impl Window {
         let mut pointer = zgui_vocab::PointerEvent::mouse(position);
         pointer.button = button;
         let payload = Payload::Pointer(pointer);
-        self.dispatch_with(key, event, payload, modifiers, timestamp);
+        self.dispatch_with(key, event, payload, modifiers, timestamp)
     }
 
     /// Dispatches an event this process produced, down the path a real one would have taken.
@@ -1254,7 +1256,8 @@ impl Window {
         self.dispatch_with(key, event, payload, Modifiers::NONE, timestamp);
     }
 
-    /// The same, with the modifiers a handler reads off the event.
+    /// The same, with the modifiers a handler reads off the event. Returns what the dispatch did,
+    /// or `None` when the node is gone.
     pub(crate) fn dispatch_with(
         &mut self,
         key: zgui_dom::NodeKey,
@@ -1262,7 +1265,7 @@ impl Window {
         payload: Payload,
         modifiers: Modifiers,
         timestamp: Timestamp,
-    ) {
+    ) -> Option<dispatch::Dispatched> {
         let steps = {
             let document = self.document.borrow();
             // An element that left the document between the ask and the dispatch has nothing left
@@ -1270,14 +1273,14 @@ impl Window {
             // is gone with it. A press that asked for a click, then set off a rebuild, is the
             // common case.
             if !is_connected(document.store(), document.document_index(), key) {
-                return;
+                return None;
             }
             let chain = zgui_input::HitChain::to_root(document.store(), key);
             let mut plan = zgui_input::dispatch::Plan::default();
             zgui_input::dispatch::resolve(document.store(), &chain, event, &mut plan);
             plan.steps().to_vec()
         };
-        dispatch::run_discarding(
+        Some(dispatch::run_discarding(
             self,
             &steps,
             event,
@@ -1285,7 +1288,7 @@ impl Window {
             &payload,
             modifiers,
             timestamp,
-        );
+        ))
     }
 }
 

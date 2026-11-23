@@ -40,6 +40,8 @@ pub struct Track {
     panning: bool,
     /// Whether it has already produced something that rules a tap out.
     spent: bool,
+    /// Whether an element took its long press, so that its later travel does not pan.
+    claimed: bool,
 }
 
 impl Track {
@@ -52,6 +54,7 @@ impl Track {
             reference: (at, when),
             panning: false,
             spent: false,
+            claimed: false,
         }
     }
 
@@ -80,6 +83,11 @@ impl Track {
         !self.panning && !self.spent
     }
 
+    /// Records that an element took its long press. It then does not become a pan.
+    pub fn claim(&mut self) {
+        self.claimed = true;
+    }
+
     /// Records that it moved to `to`.
     pub fn moved(&mut self, to: Point<CssPx, Css>, when: Timestamp) -> Movement {
         let by = Size::new(CssPx(to.x.0 - self.at.x.0), CssPx(to.y.0 - self.at.y.0));
@@ -90,7 +98,7 @@ impl Track {
         if when.saturating_since(self.reference.1) > VELOCITY_WINDOW {
             self.reference = (to, when);
         }
-        let began_panning = !self.panning && travelled(self.origin, to);
+        let began_panning = !self.panning && !self.claimed && travelled(self.origin, to);
         if began_panning {
             self.panning = true;
             self.spent = true;
@@ -160,6 +168,22 @@ mod tests {
             "a pan begins once, or every move of a drag opens a new drag"
         );
         assert!(track.is_panning());
+    }
+
+    #[test]
+    fn a_claimed_long_press_does_not_become_a_pan() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        assert!(track.becomes_long_press(stamp(1000)));
+        track.claim();
+        assert!(!track.moved(at(0.0, 80.0), stamp(1016)).began_panning);
+        assert!(!track.is_panning());
+    }
+
+    #[test]
+    fn an_unclaimed_long_press_can_still_pan() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        assert!(track.becomes_long_press(stamp(1000)));
+        assert!(track.moved(at(0.0, 80.0), stamp(1016)).began_panning);
     }
 
     #[test]

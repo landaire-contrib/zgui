@@ -471,17 +471,22 @@ impl Window {
         // The two clocks are reconciled here because this is the one place that holds both.
         self.long_press_due = self.gestures.next_deadline(now).map(|left| wall + left);
         for gesture in read {
-            let zgui_input::Gesture::LongPress { at, .. } = gesture else {
+            let zgui_input::Gesture::LongPress { pointer, at } = gesture else {
                 continue;
             };
             let Some(node) = self.node_at(at) else {
                 continue;
             };
-            self.synthesize(
+            let dispatched = self.synthesize(
                 zgui_view_dom::id::to_view(node),
                 zgui_vocab::EventKind::ContextMenu,
                 now,
             );
+            // A listener that refused the default opened its own menu. The finger then moves
+            // onto that menu, so its travel does not pan.
+            if dispatched.is_some_and(|dispatched| !dispatched.default_allowed) {
+                self.gestures.claim(pointer);
+            }
         }
     }
 

@@ -5,7 +5,7 @@ The window reads taps, long presses, pans and pinches from the touch stream. Thi
 ## What the window does with a touch
 
 - A tap is a press and a release that did not travel past the slop. It clicks the element.
-- A long press is a contact that stays still for half a second. It sends `context_menu` to the element under it.
+- A long press is a contact that stays still for half a second. It sends `context_menu` to the element under it. If a listener calls `prevent_default` on that event, the contact does not pan, so the finger can move onto the menu that the listener opened.
 - A pan is a contact that travels past the slop. It scrolls the scroll containers under the point where it started. A pan never clicks.
 - A pinch sends `pinch` events to the element under it.
 
