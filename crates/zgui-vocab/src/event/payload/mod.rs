@@ -28,7 +28,7 @@ pub use crate::event::payload::key::{
     Key, KeyCode, KeyEvent, KeyLocation, KeyState, NamedKey, PhysicalKey, UnknownKeyCode,
     UnknownNamedKey,
 };
-pub use crate::event::payload::pan::{PanEvent, Velocity};
+pub use crate::event::payload::pan::{PanEvent, ScreenEdge, Velocity};
 pub use crate::event::payload::pinch::{GesturePhase, PinchEvent};
 pub use crate::event::payload::pointer::{
     PointerAction, PointerButton, PointerEvent, PointerId, PointerKind, PointerSample,

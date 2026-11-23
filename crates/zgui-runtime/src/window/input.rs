@@ -1346,6 +1346,36 @@ impl Window {
             timestamp,
         ))
     }
+
+    /// Dispatches an event to the listeners of `key` alone, with no capture or bubble phase
+    /// through its ancestors. Returns what the dispatch did, or `None` when the node is gone.
+    pub(crate) fn dispatch_alone(
+        &mut self,
+        key: zgui_dom::NodeKey,
+        event: EventKind,
+        payload: Payload,
+        timestamp: Timestamp,
+    ) -> Option<dispatch::Dispatched> {
+        let steps = {
+            let document = self.document.borrow();
+            if !is_connected(document.store(), document.document_index(), key) {
+                return None;
+            }
+            let chain = zgui_input::HitChain::from_path([key]);
+            let mut plan = zgui_input::dispatch::Plan::default();
+            zgui_input::dispatch::resolve(document.store(), &chain, event, &mut plan);
+            plan.steps().to_vec()
+        };
+        Some(dispatch::run_discarding(
+            self,
+            &steps,
+            event,
+            Some(key),
+            &payload,
+            Modifiers::NONE,
+            timestamp,
+        ))
+    }
 }
 
 /// Whether `key` still hangs, through its ancestors, from the document node `document`.

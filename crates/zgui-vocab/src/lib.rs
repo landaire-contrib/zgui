@@ -70,9 +70,9 @@ pub use crate::event::payload::{
     AnimationEvent, AnimationPhase, DragData, DragLeaveEvent, DropEvent, FocusCause, FocusEvent,
     GesturePhase, ImeEvent, Key, KeyCode, KeyEvent, KeyLocation, KeyState, NamedKey, PanEvent,
     PhysicalKey, PinchEvent, PointerAction, PointerButton, PointerEvent, PointerId, PointerKind,
-    PointerSample, Pseudo, ScrollDelta, ScrollEvent, ScrollPhase, TextEvent, TransitionEvent,
-    TransitionPhase, UnknownKeyCode, UnknownNamedKey, ValueChange, ValueEvent, Velocity,
-    WheelEvent,
+    PointerSample, Pseudo, ScreenEdge, ScrollDelta, ScrollEvent, ScrollPhase, TextEvent,
+    TransitionEvent, TransitionPhase, UnknownKeyCode, UnknownNamedKey, ValueChange, ValueEvent,
+    Velocity, WheelEvent,
 };
 pub use crate::event::{
     ClickSettings, DefaultAction, EventKind, ListenerOptions, Listeners, Path, Payload,

@@ -5,6 +5,7 @@ The window reads taps, long presses, pans and pinches from the touch stream. Thi
 ## What the window does with a touch
 
 - A tap is a press and a release that did not travel past the slop. It clicks the element.
+- A touch shows as pressed (`:active`) after the finger is held for 100 ms. A pan that starts before then cancels it, so rows do not light up under a scroll. A tap that lifts before then shows as pressed for 100 ms after the lift.
 - A long press is a contact that stays still for half a second. It sends `context_menu` to the element under it. If a listener calls `prevent_default` on that event, the contact does not pan, so the finger can move onto the menu that the listener opened.
 - A pan is a contact that travels past the slop. It scrolls the scroll containers under the point where it started. A pan never clicks.
 - The scroll moves as a scroll view on iOS does. The content follows the finger and stretches past an end. When the finger lifts, the content keeps its speed and slows down, and it bounces at an end that it reaches.
@@ -27,24 +28,25 @@ view! {
 }
 ```
 
-When a pan starts, the window compares how far the contact travelled across and down. The larger distance gives the axis of the pan. A diagonal pan is vertical. Then the window examines the element under the start point and each of its ancestors, from the innermost outwards:
+When a pan starts, the window compares how far the contact travelled across and down. The larger distance gives the axis of the pan. A diagonal pan is vertical. Then the window examines the element under the start point and each of its ancestors, from the innermost outwards, and offers the pan to each element that listens for pans along the axis:
 
-- If the element listens for pans along the axis, it gets the pan.
-- If the element is a scroll container that can scroll in the direction the contact moves, the pan scrolls.
+- A listener in the bubble phase (`on:vertical_pan`) is offered the pan only if no scroll container between it and the start point can scroll in the direction the contact moves.
+- A listener in the capture phase (`on:vertical_pan:capture`) is offered the pan before the scroll containers inside it.
+- The offer is the `Started` event. Call `prevent_default` on it to refuse the pan. The window then offers the pan to the next listener outwards.
+- A pan that no listener takes scrolls.
 
-The decision stays until the contact lifts. Thus a row in a vertical list gets the sideways pans that start on it, and the list keeps the vertical pans. A horizontal carousel between the row and the list keeps the sideways pans until it reaches its end.
+The decision stays until the contact lifts. Thus a row in a vertical list gets the sideways pans that start on it, and the list keeps the vertical pans. A horizontal carousel between the row and the list keeps the sideways pans until it reaches its end. A sheet that listens for vertical pans gets a downward pan on its list when the list is at its top. To expand the sheet with an upward pan on its list, listen in the capture phase, and refuse the pan when the sheet is at its largest size.
 
 ## The pan events
 
-The window sends each event of a pan to the element under the start point, and the event bubbles to your listener. If that element moves out of your listener or out of the document during the pan, the window sends the remaining events directly to your listener. A `PanEvent` holds:
+The window sends each event of a pan to the listener that took it, and to no other element. A `PanEvent` holds:
 
 - `phase`: `Started`, `Moved`, `Ended` or `Cancelled`. A pan ends with `Cancelled` when the platform cancels the contact or an element captures the pointer.
 - `origin`: where the contact went down.
 - `position`: where the contact is now. `translation()` gives the distance from `origin`.
 - `velocity`: the speed of the contact in CSS pixels per second. On `Ended`, it is the speed of the lift. Use it to tell a flick from a slow release.
 - `kind`: the kind of pointer.
-
-A listener on an ancestor can stop the propagation of an event. For example, a pane that opens from its left edge can listen in the capture phase, take the pans that start near the edge, and let the other pans reach the rows inside it.
+- `edge`: the edge of the window that `origin` is within 20 CSS pixels of, if any. A pan from the left edge is how a person goes back on iOS.
 
 ## Trackpads
 
