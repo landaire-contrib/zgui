@@ -118,12 +118,83 @@ impl Window {
             // Each event and the events it causes carry the moment the platform stamped it. Events
             // without a stamp carry the frame's moment.
             let stamp = queued.event.timestamp().unwrap_or(timestamp);
-            self.dispatch_one(&queued.event, &queued.samples, stamp);
+            match self.line_breaks_as_enter(&queued.event, stamp) {
+                Some(pieces) => {
+                    let last_piece = pieces.len().saturating_sub(1);
+                    for (index, piece) in pieces.iter().enumerate() {
+                        self.dispatch_one(piece, &[], stamp);
+                        if index < last_piece {
+                            owed |= self.settle_between_events(stamp);
+                        }
+                    }
+                }
+                None => self.dispatch_one(&queued.event, &queued.samples, stamp),
+            }
             if position < last {
                 owed |= self.settle_between_events(stamp);
             }
         }
         owed
+    }
+
+    /// The events a commit with line breaks in it stands for, when it is aimed at a single-line
+    /// field.
+    ///
+    /// A single-line field holds no line break. Each one an input method commits into it is a
+    /// press and a release of <kbd>Enter</kbd>, so the field's handlers and its form get the key a
+    /// hardware keyboard gives them. The on-screen keyboard of iOS commits its return key as a
+    /// line break.
+    fn line_breaks_as_enter(
+        &self,
+        event: &SurfaceEvent,
+        timestamp: Timestamp,
+    ) -> Option<Vec<SurfaceEvent>> {
+        use crate::editing::{Committed, Editors};
+
+        let SurfaceEvent::Ime(zgui_vocab::ImeEvent::Commit(text)) = event else {
+            return None;
+        };
+        if !text.contains(['\r', '\n']) {
+            return None;
+        }
+        let node = self.router.interaction().focus.focused()?;
+        {
+            let document = self.document.borrow();
+            if !Editors::holds_text(&document, node) || Editors::takes_line_breaks(&document, node)
+            {
+                return None;
+            }
+        }
+
+        let key = |state| SurfaceEvent::Key {
+            state,
+            event: zgui_vocab::KeyEvent::named(
+                zgui_vocab::NamedKey::Enter,
+                zgui_vocab::PhysicalKey::Code(zgui_vocab::KeyCode::Enter),
+            ),
+            modifiers: Modifiers::NONE,
+            timestamp,
+        };
+        let pieces = Editors::split_line_breaks(text.as_str());
+        let mut events = Vec::with_capacity(pieces.len() * 2 + 1);
+        // A composition that ends on a break ends with an empty commit. Without it the composition
+        // stays open and holds the key.
+        if pieces.first() == Some(&Committed::Break) && self.ime.is_composing() {
+            events.push(SurfaceEvent::Ime(zgui_vocab::ImeEvent::Commit("".into())));
+        }
+        for piece in pieces {
+            match piece {
+                Committed::Text(run) => {
+                    events.push(SurfaceEvent::Ime(zgui_vocab::ImeEvent::Commit(run.into())));
+                }
+                Committed::Break => {
+                    events.push(key(zgui_vocab::KeyState::Pressed));
+                    events.push(key(zgui_vocab::KeyState::Released));
+                }
+            }
+        }
+
+        Some(events)
     }
 
     /// Runs what the event just dispatched asked for, before the next one is routed.

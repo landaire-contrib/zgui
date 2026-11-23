@@ -17,9 +17,15 @@ use zgui_vocab::{Key, NamedKey};
 /// enter was pressed would look correct in every test written against key names and would be
 /// unusable. So a named key stays named, and what a named key inserts — nothing, for all of them
 /// but the space bar — is decided once, in the vocabulary, rather than here.
+///
+/// A line break that arrives as a character is the return key. The on-screen keyboard of iOS
+/// reports its return key that way.
 pub(crate) fn key(logical: &WinitKey, text: Option<&str>) -> Key {
     match logical {
         WinitKey::Named(named) => named_key(*named),
+        WinitKey::Character(character) if matches!(character.as_str(), "\n" | "\r" | "\r\n") => {
+            Key::Named(NamedKey::Enter)
+        }
         WinitKey::Character(character) => Key::Character(text.unwrap_or(character.as_str()).into()),
         WinitKey::Dead(character) => Key::Dead(*character),
         WinitKey::Unidentified(_) => Key::Unidentified,
@@ -102,6 +108,21 @@ mod tests {
         );
         assert_eq!(named_key(WinitNamed::Enter).inserted_text(), None);
         assert_eq!(named_key(WinitNamed::Tab).inserted_text(), None);
+    }
+
+    #[test]
+    fn a_line_break_typed_as_a_character_is_the_return_key() {
+        for line_break in ["\n", "\r", "\r\n"] {
+            assert_eq!(
+                key(&WinitKey::Character(line_break.into()), Some(line_break)),
+                Key::Named(NamedKey::Enter),
+                "{line_break:?}"
+            );
+        }
+        assert_eq!(
+            key(&WinitKey::Character("a".into()), Some("a")),
+            Key::Character("a".into())
+        );
     }
 
     #[test]

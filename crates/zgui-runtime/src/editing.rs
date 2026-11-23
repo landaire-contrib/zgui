@@ -127,6 +127,15 @@ pub struct Loaded {
     pub selection: Option<core::ops::Range<usize>>,
 }
 
+/// One piece of text an input method committed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Committed<'a> {
+    /// A run of text with no line break in it.
+    Text(&'a str),
+    /// One line break.
+    Break,
+}
+
 impl Editors {
     /// Nothing attached to anything.
     pub fn new() -> Self {
@@ -433,11 +442,32 @@ impl Editors {
     }
 
     /// Whether an element is one a line break can be typed into.
-    fn takes_line_breaks(document: &Document, node: NodeKey) -> bool {
+    pub(crate) fn takes_line_breaks(document: &Document, node: NodeKey) -> bool {
         let Some(index) = document.store().index_of(node) else {
             return false;
         };
         document.store().core(index).local_name().as_str() == TAKES_LINE_BREAKS
+    }
+
+    /// Splits committed text into its runs of text and its line breaks.
+    ///
+    /// A carriage return followed by a line feed is one break. Empty runs are left out.
+    pub(crate) fn split_line_breaks(text: &str) -> Vec<Committed<'_>> {
+        let mut pieces = Vec::new();
+        let mut rest = text;
+        while let Some(at) = rest.find(['\r', '\n']) {
+            if at > 0 {
+                pieces.push(Committed::Text(&rest[..at]));
+            }
+            pieces.push(Committed::Break);
+            let width = if rest[at..].starts_with("\r\n") { 2 } else { 1 };
+            rest = &rest[at + width..];
+        }
+        if !rest.is_empty() {
+            pieces.push(Committed::Text(rest));
+        }
+
+        pieces
     }
 
     /// Advances an element's composition, writing whatever changed into the document.
@@ -1335,5 +1365,18 @@ mod tests {
             editors.shown_selection(key).map(|held| held.range()),
             Some(6..6)
         );
+    }
+
+    #[test]
+    fn committed_text_splits_into_runs_and_line_breaks() {
+        use super::Committed::{Break, Text};
+
+        assert_eq!(Editors::split_line_breaks("ab"), vec![Text("ab")]);
+        assert_eq!(Editors::split_line_breaks("\n"), vec![Break]);
+        assert_eq!(
+            Editors::split_line_breaks("ab\r\ncd\n\ref"),
+            vec![Text("ab"), Break, Text("cd"), Break, Break, Text("ef")]
+        );
+        assert_eq!(Editors::split_line_breaks(""), vec![]);
     }
 }
