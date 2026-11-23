@@ -104,7 +104,10 @@ mod tests {
 
     #[test]
     fn a_fling_reads_the_offset_it_is_given_rather_than_one_it_remembered() {
-        let mut motion = Motion::Fling(Momentum::new(Size::new(DevicePx(0.0), DevicePx(1_000.0))));
+        let mut motion = Motion::Fling(Momentum::new(
+            Size::new(DevicePx(0.0), DevicePx(1_000.0)),
+            crate::stretch::Stretch::Permitted,
+        ));
         // Something else moved the container between ticks — a wheel event, or a clamp.
         let moved = Point::new(DevicePx(0.0), DevicePx(400.0));
         let step = motion.advance(moved, Duration::from_millis(16));

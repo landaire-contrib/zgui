@@ -19,6 +19,7 @@ pub mod extent;
 mod gesture;
 mod glide;
 mod motion;
+mod touch;
 
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
@@ -46,7 +47,7 @@ use crate::report::Scrolled;
 /// let scroller = Scroller::new();
 /// assert!(scroller.composed().is_empty(), "an untouched document is at the origin throughout");
 /// ```
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Scroller {
     /// Where each container is scrolled to, clamped to what its content allows.
     offsets: ScrollOffsets,
@@ -58,14 +59,35 @@ pub struct Scroller {
     motions: FxHashMap<NodeKey, Motion>,
     /// What has moved since the last drain.
     moved: Vec<Scrolled>,
-    /// The touchpad gesture in progress, if one is.
+    /// The touchpad or touch screen gesture in progress, if one is.
     gesture: Option<gesture::Gesture>,
+    /// How many device pixels there are to a CSS pixel.
+    scale: f32,
+}
+
+impl Default for Scroller {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Scroller {
-    /// Nothing scrolled, nothing moving.
+    /// Nothing scrolled, nothing moving, on a surface with one device pixel to a CSS pixel.
     pub fn new() -> Self {
-        Self::default()
+        Self::at_scale(1.0)
+    }
+
+    /// Nothing scrolled, nothing moving, on a surface with `scale` device pixels to a CSS pixel.
+    pub fn at_scale(scale: f32) -> Self {
+        Self {
+            offsets: ScrollOffsets::default(),
+            composed: ScrollOffsets::default(),
+            elastic: FxHashMap::default(),
+            motions: FxHashMap::default(),
+            moved: Vec::new(),
+            gesture: None,
+            scale,
+        }
     }
 
     /// What the fragment pass composes positions against.
@@ -210,6 +232,34 @@ impl Scroller {
             .unwrap_or(Size::new(DevicePx(0.0), DevicePx(0.0)))
     }
 
+    /// Whether a container with `limit` overflows its scrollport on each axis, and so may be
+    /// stretched past its end there.
+    ///
+    /// UIScrollView bounces an axis only when its content is larger than the view on that axis:
+    /// `bounces` is true by default and `alwaysBounceHorizontal` and `alwaysBounceVertical` are
+    /// false. Both axes follow that rule here. A range of [`STRAY_RANGE`] or less is a residue of
+    /// rounding, and the content does not overflow.
+    fn overflows(&self, limit: Point<DevicePx, Device>) -> Overflow {
+        let stray = STRAY_RANGE * self.scale;
+        Overflow {
+            across: limit.x.0 > stray,
+            down: limit.y.0 > stray,
+        }
+    }
+
+    /// The part of `past` that may stretch a container with `limit` past its end.
+    fn stretchable(
+        &self,
+        limit: Point<DevicePx, Device>,
+        past: Size<DevicePx, Device>,
+    ) -> Size<DevicePx, Device> {
+        let overflow = self.overflows(limit);
+        Size::new(
+            DevicePx(if overflow.across { past.width.0 } else { 0.0 }),
+            DevicePx(if overflow.down { past.height.0 } else { 0.0 }),
+        )
+    }
+
     /// Gives `delta` to the edges of `chain` that it pulls back towards their ends.
     ///
     /// Returns what is left of `delta` for the offsets, and adds each container whose edge moved
@@ -242,8 +292,8 @@ impl Scroller {
     /// Pulls the edges of `chain` past their ends by `left`, the part of a scroll no container
     /// absorbed.
     ///
-    /// Each axis displaces the outermost container that a person can scroll on that axis. An axis
-    /// that no container in the chain scrolls does not stretch, so content that fits its
+    /// Each axis displaces the outermost container whose content overflows its scrollport on
+    /// that axis. An axis with no such container does not stretch, so content that fits its
     /// scrollport stays still. Returns the containers that moved.
     fn stretch_past_end(
         &mut self,
@@ -252,15 +302,14 @@ impl Scroller {
         left: Size<DevicePx, Device>,
     ) -> SmallVec<[NodeKey; 2]> {
         let mut moved: SmallVec<[NodeKey; 2]> = SmallVec::new();
-        let outermost = |scrolls: &dyn Fn(Point<DevicePx, Device>) -> bool| {
-            chain
-                .iter()
-                .rev()
-                .copied()
-                .find(|container| scrolls(self.hand_limit_for(store, *container)))
-        };
-        let across = outermost(&|limit| limit.x.0 > 0.0);
-        let down = outermost(&|limit| limit.y.0 > 0.0);
+        let outermost =
+            |overflows: &dyn Fn(Overflow) -> bool| {
+                chain.iter().rev().copied().find(|container| {
+                    overflows(self.overflows(self.hand_limit_for(store, *container)))
+                })
+            };
+        let across = outermost(&|overflow| overflow.across);
+        let down = outermost(&|overflow| overflow.down);
         for (container, pull) in [
             (across, Size::new(left.width, DevicePx(0.0))),
             (down, Size::new(DevicePx(0.0), left.height)),
@@ -293,6 +342,22 @@ impl Scroller {
         }
         self.compose(container);
     }
+}
+
+/// The largest scroll range that is a residue of rounding, in CSS pixels.
+///
+/// Layout puts each box on the device grid, so content that fits its scrollport can still report
+/// a range of a pixel or two. A container with such a range does not overflow, and a finger that
+/// moves sideways over it does not stretch it.
+const STRAY_RANGE: f32 = 2.0;
+
+/// Which axes of one container overflow its scrollport.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Overflow {
+    /// The horizontal axis.
+    across: bool,
+    /// The vertical axis.
+    down: bool,
 }
 
 #[cfg(test)]

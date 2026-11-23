@@ -37,6 +37,7 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+mod axis;
 pub mod chain;
 pub mod elastic;
 pub mod into_view;

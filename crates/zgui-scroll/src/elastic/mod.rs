@@ -10,10 +10,14 @@
 //!
 //! # A finger holds the edge, the frame clock returns it
 //!
-//! While a touchpad gesture has its fingers down, the edge is *gripped*: it stays where the finger
-//! put it and no return runs. When the fingers lift, the return runs on the frame clock.
-//! [`Scroller::is_animating`](crate::Scroller::is_animating) counts an edge that returns, so the
-//! park installs a deadline for it. A gripped edge does not move, so it asks for no frames.
+//! While a touchpad gesture has its fingers down, or a finger is on a touch screen, the edge is
+//! *gripped*: it stays where the finger put it and no return runs. When the fingers lift, the
+//! return runs on the frame clock. [`Scroller::is_animating`](crate::Scroller::is_animating)
+//! counts an edge that returns, so the park installs a deadline for it. A gripped edge does not
+//! move, so it asks for no frames.
+//!
+//! A touchpad's edge returns on AppKit's curve. A touch screen's edge returns on UIScrollView's
+//! spring, and a fling that reaches the end bounces on the same spring.
 
 mod resist;
 mod spring;
@@ -22,6 +26,7 @@ use core::time::Duration;
 
 use zgui_geom::{Device, DevicePx, Size};
 
+use crate::axis::Axis;
 use crate::elastic::spring::Return;
 
 /// One container's displacement past its end, and how it returns.
@@ -86,6 +91,52 @@ impl Overscroll {
         Self {
             gripped: false,
             ..self.gripped()
+        }
+    }
+
+    /// The same edge, let go by a finger on a screen that moves the content at `speed`, against a
+    /// scrollport of `extent`.
+    ///
+    /// Each displaced axis returns on UIScrollView's spring. A finger that still pulls outwards
+    /// throws the edge on at the speed the band moves it. A finger that moves back lets the edge
+    /// return from rest.
+    pub fn let_go(self, speed: Size<DevicePx, Device>, extent: Size<DevicePx, Device>) -> Self {
+        let spring = |edge: Return, speed: f32, extent: f32| {
+            let held = edge.at();
+            if held == 0.0 {
+                return Return::default();
+            }
+            let outwards = if held.signum() == speed.signum() {
+                speed * resist::slope(held, extent)
+            } else {
+                0.0
+            };
+            Return::spring(held, outwards)
+        };
+        Self {
+            across: spring(self.across, speed.width.0, extent.width.0),
+            down: spring(self.down, speed.height.0, extent.height.0),
+            gripped: false,
+        }
+    }
+
+    /// The same edge, reached on `axis` by a fling at `speed` device pixels per second, `after`
+    /// ago.
+    ///
+    /// The edge travels on past the end on UIScrollView's spring, then returns.
+    pub(crate) fn bounced(self, axis: Axis, speed: f32, after: Duration) -> Self {
+        let edge = Return::spring(0.0, speed).advanced(after.as_secs_f32());
+        match axis {
+            Axis::Across => Self {
+                across: edge,
+                gripped: false,
+                ..self
+            },
+            Axis::Down => Self {
+                down: edge,
+                gripped: false,
+                ..self
+            },
         }
     }
 

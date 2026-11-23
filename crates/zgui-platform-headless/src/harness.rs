@@ -18,6 +18,7 @@
 
 mod drag;
 mod pinch;
+mod touch;
 
 use web_time::{Duration, Instant};
 

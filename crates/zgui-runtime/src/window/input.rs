@@ -451,11 +451,23 @@ impl Window {
             ..
         } = event
         {
+            let touch = event.kind == zgui_vocab::PointerKind::Touch;
+            // The first finger down catches the scrolling under it.
+            let first = touch
+                && *action == zgui_vocab::PointerAction::Pressed
+                && self.gestures.contacts() == 0;
+            // The positions a folded move stands for are steps of the contact's speed.
+            if *action == zgui_vocab::PointerAction::Moved {
+                self.gestures.passed(event.id, samples);
+            }
             // The *event's* stamp, not the frame's. A flick's speed is the distance between two
             // contacts divided by the time between them, and every event drained in one frame
             // shares that frame's stamp — so reading the frame's clock here makes every gesture
             // instantaneous and every lift a dead stop.
             let read = self.gestures.pointer(*action, event, *sent);
+            if first {
+                self.catch_scroll(event.id, event.position);
+            }
             if !read.is_empty() {
                 self.carry_out_gestures(&read, *sent);
             }
@@ -463,6 +475,22 @@ impl Window {
             // know that the pan is over.
             if *action == zgui_vocab::PointerAction::Cancelled {
                 self.cancel_element_pan(event.id, *sent);
+            }
+            // The last finger up lets go of what the fingers held: a tap, a pan an element took
+            // and a cancelled contact end no scroll pan of their own.
+            let lifted = matches!(
+                action,
+                zgui_vocab::PointerAction::Released | zgui_vocab::PointerAction::Cancelled
+            );
+            if touch
+                && lifted
+                && self.gestures.contacts() == 0
+                && self.scroll.borrow().is_touching()
+            {
+                self.release_scroll(
+                    None,
+                    zgui_geom::Size::new(zgui_geom::DevicePx(0.0), zgui_geom::DevicePx(0.0)),
+                );
             }
         }
         // Nothing is asked for here. Events are drained at the top of a frame and everything a

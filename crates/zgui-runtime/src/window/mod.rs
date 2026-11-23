@@ -678,11 +678,11 @@ impl Window {
         let layout = Rc::new(RefCell::new(LayoutStore::new(
             document.borrow().store().document(),
         )));
-        let scroll = Rc::new(RefCell::new(zgui_scroll::Scroller::new()));
 
         let platform_scale = surface.scale_factor() as f32;
         let zoom = handle.requested_zoom();
         let scale = platform_scale * zoom.get();
+        let scroll = Rc::new(RefCell::new(zgui_scroll::Scroller::at_scale(scale)));
         let size = surface.size();
         let safe_area = surface.safe_area();
         let keyboard = surface.virtual_keyboard();

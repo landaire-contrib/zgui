@@ -143,6 +143,9 @@ impl Scroller {
 
     /// Hands one container the speed a gesture let go of it with, in device pixels per second.
     ///
+    /// The fling decays as UIScrollView's does. When it reaches an end, it bounces past it if
+    /// `stretch` permits and the content overflows on that axis, and stops there if not.
+    ///
     /// A fling towards an edge the container is already at is not installed: it would spend the
     /// next twenty frames asking to move a container that cannot, which is a deadline per frame for
     /// nothing.
@@ -151,6 +154,7 @@ impl Scroller {
         store: &LayoutStore,
         container: NodeKey,
         velocity: Size<DevicePx, Device>,
+        stretch: Stretch,
     ) {
         if crate::motion::stopped(velocity) {
             return;
@@ -161,6 +165,6 @@ impl Scroller {
             return;
         }
         self.motions
-            .insert(container, Motion::Fling(Momentum::new(velocity)));
+            .insert(container, Motion::Fling(Momentum::new(velocity, stretch)));
     }
 }

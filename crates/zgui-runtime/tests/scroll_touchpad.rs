@@ -35,6 +35,13 @@ root { display: block; width: 400px; height: 300px }
 .row { display: block; width: 400px; height: 20px; background-color: #202020 }
 ";
 
+/// A list whose rows are two pixels wider than the port that scrolls them.
+const STRAY: &str = "
+root { display: block; width: 400px; height: 300px }
+.port { display: block; width: 400px; height: 120px; overflow: auto }
+.row { display: block; height: 20px; margin-right: -2px; background-color: #202020 }
+";
+
 /// A short list inside a page that scrolls down.
 const NESTED: &str = "
 root { display: block; width: 400px; height: 300px; overflow-y: scroll }
@@ -371,4 +378,27 @@ fn momentum_after_a_lift_with_the_edge_stretched_is_dropped() {
     pad.send(0.0, 0.0, ScrollPhase::Ended);
     pad.run(40);
     assert!(pad.settled());
+}
+
+#[test]
+fn a_range_of_two_pixels_does_not_stretch_sideways() {
+    // UIScrollView bounces an axis only when the content is larger than the view on it, and a
+    // range of a pixel or two is a residue of rounding.
+    let mut pad = Pad::new(STRAY, 30);
+    let port = pad.port();
+    let range = {
+        let window = pad.window();
+        let layout = window.layout().borrow();
+        zgui_layout::scroll_region::region_of_element(&layout, port)
+            .expect("the port scrolls")
+            .hand_limit()
+    };
+    assert_eq!(range.x.0, 2.0, "the fixture has no stray range");
+
+    pad.drag(&[(-20.0, 0.0), (-20.0, 0.0), (-20.0, 0.0)]);
+    assert_eq!(pad.stretch_of(port).width.0, 0.0, "the list swam sideways");
+    pad.drag(&[(20.0, 0.0), (20.0, 0.0), (20.0, 0.0)]);
+    assert_eq!(pad.stretch_of(port).width.0, 0.0, "the list swam sideways");
+    assert!(pad.settled());
+    pad.lift();
 }

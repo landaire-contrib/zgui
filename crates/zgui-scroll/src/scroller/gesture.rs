@@ -1,4 +1,4 @@
-//! A touchpad gesture: fingers down, a drag, fingers up.
+//! A touchpad gesture, or a finger on a touch screen: fingers down, a drag, fingers up.
 //!
 //! A gesture latches to one container at its first movement and moves only that container until it
 //! ends, as AppKit and the browsers do. A list that reaches its end halfway through a gesture then
@@ -73,7 +73,7 @@ pub(crate) enum Stage {
     Spent,
 }
 
-/// One touchpad gesture.
+/// One touchpad or touch screen gesture.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Gesture {
     /// The container the gesture moves, once its first movement has chosen it.
@@ -92,7 +92,7 @@ pub(crate) struct Gesture {
 
 impl Gesture {
     /// A gesture whose fingers have just come down.
-    fn touching() -> Self {
+    pub(crate) fn touching() -> Self {
         Self {
             latched: None,
             rail: None,
@@ -109,12 +109,22 @@ impl Gesture {
         delta: Size<DevicePx, Device>,
         at: Duration,
     ) -> Size<DevicePx, Device> {
-        if self.rail.is_none() && !chain::negligible(delta) {
-            self.rail = Some(Rail::for_first(delta));
-        }
-        let along = self.rail.unwrap_or(Rail::Free).along(delta);
+        self.aim(delta);
+        let along = self.along(delta);
         self.measure(along, at);
         along
+    }
+
+    /// Chooses the rail from `travel`, if no movement has chosen it yet.
+    pub(crate) fn aim(&mut self, travel: Size<DevicePx, Device>) {
+        if self.rail.is_none() && !chain::negligible(travel) {
+            self.rail = Some(Rail::for_first(travel));
+        }
+    }
+
+    /// The part of `delta` the rail lets through.
+    pub(crate) fn along(&self, delta: Size<DevicePx, Device>) -> Size<DevicePx, Device> {
+        self.rail.unwrap_or(Rail::Free).along(delta)
     }
 
     /// Updates the speed from `delta`, which arrived at `at`.
@@ -144,7 +154,7 @@ impl Gesture {
 }
 
 impl Scroller {
-    /// Whether a touchpad gesture has its fingers down.
+    /// Whether a touchpad gesture or a finger on a touch screen is down.
     pub fn is_touching(&self) -> bool {
         self.gesture
             .is_some_and(|gesture| gesture.stage == Stage::Touching)
@@ -237,18 +247,7 @@ impl Scroller {
         let limit = self.hand_limit_for(store, container);
         let share = chain::absorb(self.offset_of(container), limit, delta);
         let mut moved = self.move_latched(store, container, delta, Stretch::Refused, false);
-        let past = Size::new(
-            DevicePx(if limit.x.0 > 0.0 {
-                share.left.width.0
-            } else {
-                0.0
-            }),
-            DevicePx(if limit.y.0 > 0.0 {
-                share.left.height.0
-            } else {
-                0.0
-            }),
-        );
+        let past = self.stretchable(limit, share.left);
         if !chain::negligible(past) {
             gesture.stage = Stage::Spent;
             if stretch.is_permitted() {
@@ -319,16 +318,16 @@ impl Scroller {
         };
         let stretches = || {
             chain.iter().rev().copied().find(|container| {
-                let limit = self.hand_limit_for(store, *container);
-                (delta.width.0 != 0.0 && limit.x.0 > 0.0)
-                    || (delta.height.0 != 0.0 && limit.y.0 > 0.0)
+                let overflow = self.overflows(self.hand_limit_for(store, *container));
+                (delta.width.0 != 0.0 && overflow.across)
+                    || (delta.height.0 != 0.0 && overflow.down)
             })
         };
         held.or_else(moves).or_else(stretches)
     }
 
     /// Moves one container by `delta`: first back towards its end, then its offset, then past
-    /// its end on each axis it scrolls.
+    /// its end on each axis where its content overflows.
     pub(crate) fn move_latched(
         &mut self,
         store: &LayoutStore,
@@ -355,18 +354,7 @@ impl Scroller {
                 moved.push(container);
             }
         }
-        let past = Size::new(
-            DevicePx(if limit.x.0 > 0.0 {
-                share.left.width.0
-            } else {
-                0.0
-            }),
-            DevicePx(if limit.y.0 > 0.0 {
-                share.left.height.0
-            } else {
-                0.0
-            }),
-        );
+        let past = self.stretchable(limit, share.left);
         if stretch.is_permitted() && !chain::negligible(past) {
             let edge = self
                 .overscroll_of(container)

@@ -109,6 +109,7 @@ impl Scroller {
         if !by.is_finite() || by <= 0.0 || by == 1.0 {
             return moved;
         }
+        self.scale *= by;
         // The stretch first, and separately, because the two maps do not hold the same containers:
         // an edge dragged past the end of a list nobody has scrolled is displaced while its offset
         // is still the origin, and a pass driven by the offsets alone would leave that stretch

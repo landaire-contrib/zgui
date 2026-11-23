@@ -335,6 +335,9 @@ impl Window {
     /// tap, a long press, a pinch — is a reading a component acts on rather than a scroll, and is
     /// delivered rather than performed.
     ///
+    /// The scroll follows UIScrollView, as [`zgui_scroll::Scroller::press`] and the methods after
+    /// it describe.
+    ///
     /// The container a drag acts on is decided when the drag begins and not looked at again, so a
     /// finger that carries a list past the edge of its own scrollport keeps carrying that list.
     /// One drag at a time: a second contact that begins panning takes the scroll over, which is
@@ -364,6 +367,10 @@ impl Window {
                     if self.claim_pan(*pointer, *from, *at, timestamp) {
                         continue;
                     }
+                    // A second contact that takes the scroll over starts a gesture of its own.
+                    let takeover = self
+                        .panning_pointer
+                        .is_some_and(|previous| previous != *pointer);
                     self.panning_pointer = Some(*pointer);
                     // Decided once, where the finger went down, and held for the whole drag. A
                     // container re-derived from where the finger is *now* is a list that stops
@@ -374,6 +381,16 @@ impl Window {
                         Some(node) => self.scroll_chain(node),
                         None => Vec::new(),
                     };
+                    let scale = self.scale;
+                    let travel = zgui_geom::Size::new(
+                        zgui_geom::DevicePx(-(at.x.0 - from.x.0) * scale),
+                        zgui_geom::DevicePx(-(at.y.0 - from.y.0) * scale),
+                    );
+                    let mut scroller = self.scroll.borrow_mut();
+                    if takeover || !scroller.is_touching() {
+                        scroller.press(&self.panning);
+                    }
+                    scroller.steer(travel);
                 }
                 zgui_input::Gesture::PanMove {
                     pointer,
@@ -400,18 +417,16 @@ impl Window {
                         zgui_geom::DevicePx(-by.width.0 * scale),
                         zgui_geom::DevicePx(-by.height.0 * scale),
                     );
-                    // A contact that is still down is the case the spring exists for, so this
-                    // asks the gesture question rather than the detent one.
-                    let stretch = if self.scroll_settings().elastic.admits_a_gesture() {
-                        Stretch::Permitted
-                    } else {
-                        Stretch::Refused
-                    };
+                    let stretch = self.touch_stretch();
                     let touched = {
                         let layout = self.layout.borrow();
-                        self.scroll
-                            .borrow_mut()
-                            .scroll_by(&layout, &chain, moved_by, stretch)
+                        self.scroll.borrow_mut().drag_by(
+                            &layout,
+                            &chain,
+                            moved_by,
+                            timestamp.since_origin(),
+                            stretch,
+                        )
                     };
                     self.panning = chain;
                     self.mark_scrolled(&touched);
@@ -427,18 +442,14 @@ impl Window {
                     if self.panning_pointer != Some(*pointer) {
                         continue;
                     }
-                    let container = self.panning.first().copied();
+                    let panned = self.panning.first().copied();
                     self.end_pan();
-                    let Some(container) = container else {
-                        continue;
-                    };
                     let scale = self.scale;
                     let thrown = zgui_geom::Size::new(
                         zgui_geom::DevicePx(-velocity.x * scale),
                         zgui_geom::DevicePx(-velocity.y * scale),
                     );
-                    let layout = self.layout.borrow();
-                    self.scroll.borrow_mut().fling(&layout, container, thrown);
+                    self.release_scroll(panned, thrown);
                 }
                 // A tap, a long press and a pinch are readings a component acts on. Performing one
                 // here would be this layer deciding what a long press means, which is a decision
@@ -452,6 +463,55 @@ impl Window {
     fn end_pan(&mut self) {
         self.panning = Vec::new();
         self.panning_pointer = None;
+    }
+
+    /// Catches the scrolling under a finger that came down at `at`.
+    ///
+    /// A touch on content that moves visibly stops it, as a touch on a moving UIScrollView does,
+    /// and is not a press: lifting the finger does not activate what it went down on.
+    pub(crate) fn catch_scroll(
+        &mut self,
+        pointer: zgui_vocab::PointerId,
+        at: Point<CssPx, zgui_geom::Css>,
+    ) {
+        let chain = match self.node_at(at) {
+            Some(node) => self.scroll_chain(node),
+            None => Vec::new(),
+        };
+        if self.scroll.borrow_mut().press(&chain) {
+            self.router.forget_press(pointer);
+        }
+    }
+
+    /// Lets go of the scrolling that fingers hold, moving the content at `thrown` device pixels
+    /// per second. `panned` is the container under the start of the pan that ends, if one does.
+    pub(crate) fn release_scroll(
+        &mut self,
+        panned: Option<NodeKey>,
+        thrown: zgui_geom::Size<zgui_geom::DevicePx, zgui_geom::Device>,
+    ) {
+        let stretch = self.touch_stretch();
+        let returning = {
+            let layout = self.layout.borrow();
+            self.scroll
+                .borrow_mut()
+                .release(&layout, panned, thrown, stretch)
+        };
+        if !returning.is_empty() || self.is_scrolling() {
+            self.request_scroll_frame();
+        }
+    }
+
+    /// Whether a finger on a touch screen may pull the end of the content past its end.
+    ///
+    /// A contact that is down is the case the spring exists for, so this asks the gesture
+    /// question rather than the detent one.
+    fn touch_stretch(&self) -> Stretch {
+        if self.scroll_settings().elastic.admits_a_gesture() {
+            Stretch::Permitted
+        } else {
+            Stretch::Refused
+        }
     }
 
     /// Reports every contact that has now been held long enough to mean something else.

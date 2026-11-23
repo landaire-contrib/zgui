@@ -26,9 +26,19 @@ pub(crate) fn unband(held: f32, extent: f32) -> f32 {
     held.signum() * extent / COEFFICIENT * (1.0 / (1.0 - magnitude / extent) - 1.0)
 }
 
+/// How far the content moves for each further pixel pulled, at a displacement of `held`.
+///
+/// The derivative of [`band`]: `c / (c*x/d + 1)^2`, which is `c * (1 - h/d)^2` at the displacement
+/// `h` that a pull of `x` reaches.
+pub(crate) fn slope(held: f32, extent: f32) -> f32 {
+    let extent = extent.max(SMALLEST_EXTENT);
+    let free = 1.0 - (held.abs() / extent).min(1.0);
+    COEFFICIENT * free * free
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{band, unband};
+    use super::{band, slope, unband};
 
     #[test]
     fn no_pull_leaves_the_scrollport() {
@@ -53,6 +63,19 @@ mod tests {
     fn the_inverse_finds_the_pull_again() {
         for pulled in [-300.0, -3.0, 0.0, 5.0, 250.0] {
             assert!((unband(band(pulled, 600.0), 600.0) - pulled).abs() < 1e-2);
+        }
+    }
+
+    #[test]
+    fn the_slope_is_the_derivative_of_the_band() {
+        for pulled in [0.0_f32, 40.0, 300.0, 900.0] {
+            let step = 0.1;
+            let measured = (band(pulled + step, 600.0) - band(pulled, 600.0)) / step;
+            let slope = slope(band(pulled, 600.0), 600.0);
+            assert!(
+                (measured - slope).abs() < 5e-3,
+                "{measured} against {slope}"
+            );
         }
     }
 }

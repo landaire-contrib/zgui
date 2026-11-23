@@ -735,8 +735,9 @@ fn a_finger_dragged_up_the_list_scrolls_it_and_a_flick_keeps_it_going() {
          at the moment of release is a list with no momentum at all"
     );
 
-    // And the momentum spends itself rather than running for ever.
-    for _ in 0..120 {
+    // And the momentum spends itself rather than running for ever: UIScrollView's deceleration
+    // brings a flick of this speed to rest in under four seconds.
+    for _ in 0..240 {
         harness.advance(FRAME);
         harness.settle(4);
         if !window(&harness).scroll().borrow().is_animating() {
