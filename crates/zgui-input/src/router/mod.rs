@@ -563,11 +563,9 @@ impl Router {
         chain: &HitChain,
     ) -> Option<FrameworkDefault> {
         match action {
-            PointerAction::Pressed => Some(defaults::on_press(
-                world.document.store(),
-                Some(world.layout),
-                chain,
-            )),
+            PointerAction::Pressed => {
+                defaults::on_press(world.document.store(), Some(world.layout), chain)
+            }
             PointerAction::Released => defaults::on_release(
                 chain,
                 self.pressed
