@@ -83,8 +83,9 @@ pub use crate::command::{
     CommandShortcutProps,
 };
 pub use crate::context_menu::{
-    ContextMenu, ContextMenuContent, ContextMenuContentProps, ContextMenuPlace, ContextMenuProps,
-    ContextMenuTrigger, ContextMenuTriggerProps,
+    ContextMenu, ContextMenuAccessory, ContextMenuContent, ContextMenuContentProps,
+    ContextMenuPlace, ContextMenuPreview, ContextMenuProps, ContextMenuTrigger,
+    ContextMenuTriggerProps,
 };
 pub use crate::data_table::{
     Column, ColumnResizer, ColumnResizerProps, DataModel, DataTable, DataTableProps, GripEdge,

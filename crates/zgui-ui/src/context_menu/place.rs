@@ -4,6 +4,7 @@ use zgui::geom::{Css, CssPx, Point};
 use zgui::prelude::*;
 use zgui::reactive::{LocalStorage, RwSignal};
 
+use crate::context_menu::lift::Presentation;
 use crate::overlay::OverlayState;
 
 /// The place a [`ContextMenuTrigger`](crate::ContextMenuTrigger) opens its menu at.
@@ -33,6 +34,8 @@ pub struct ContextMenuPlace {
     pub(crate) top: RwSignal<f32, LocalStorage>,
     /// The menu.
     pub(crate) state: OverlayState,
+    /// How the menu is shown once open.
+    pub(crate) presentation: RwSignal<Presentation, LocalStorage>,
 }
 
 impl ContextMenuPlace {
@@ -44,6 +47,11 @@ impl ContextMenuPlace {
 
     /// Opens the menu at `position`, in window CSS pixels.
     pub fn open_at(&self, position: Point<CssPx, Css>) {
+        self.open(position, Presentation::AtPoint);
+    }
+
+    /// Opens the menu as `presentation` says, at `position` when that is at the point.
+    pub(crate) fn open(&self, position: Point<CssPx, Css>, presentation: Presentation) {
         // The region's box is in device pixels and a position is in CSS pixels, so the box is
         // converted. The window's box of the region is the one a pointer position is measured
         // against.
@@ -54,6 +62,7 @@ impl ContextMenuPlace {
             .map_or((0.0, 0.0), |box_| (box_.origin.x.0, box_.origin.y.0));
         self.left.set(position.x.0 - origin.0 / scale);
         self.top.set(position.y.0 - origin.1 / scale);
+        self.presentation.set(presentation);
         self.state.open();
     }
 }

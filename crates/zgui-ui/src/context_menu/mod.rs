@@ -1,13 +1,16 @@
-//! A menu that opens where the pointer asked for one.
+//! A menu that opens where the pointer asked for one, or below a lifted copy of the region when
+//! a finger held it.
 
 mod content;
+mod lift;
 mod place;
 mod style;
 mod trigger;
 
 pub use crate::context_menu::content::{ContextMenuContent, ContextMenuContentProps};
+pub use crate::context_menu::lift::{ContextMenuAccessory, ContextMenuPreview, is_lifted};
 pub use crate::context_menu::place::ContextMenuPlace;
-pub use crate::context_menu::style::ContextMenuStyle;
+pub use crate::context_menu::style::{ContextMenuLiftStyle, ContextMenuStyle};
 pub use crate::context_menu::trigger::{ContextMenuTrigger, ContextMenuTriggerProps};
 
 use zgui::prelude::*;
@@ -57,6 +60,11 @@ pub(crate) const SHEET: &str = "zui-context-menu";
 /// closes it and gives the caret back. Opening it from the keyboard is the region's business: the
 /// region names the point through [`ContextMenuPlace::open_at`]. A region whose actions are *only*
 /// reachable here is a region a keyboard user cannot use — so put them somewhere else as well.
+///
+/// # Touch
+///
+/// A long press by a finger shows the items below a lifted copy of the region when the content
+/// has a [`ContextMenuPreview`]. See there.
 #[component]
 pub fn ContextMenu(
     /// Whether it is open, when the caller holds it.
@@ -76,5 +84,6 @@ pub fn ContextMenu(
 ) -> impl IntoView {
     let state = OverlayState::new(open, default_open, on_open_change).provide();
     MenuContext::new(state).provide();
+    lift::LiftCx::new().provide();
     view! { {children.into_view_once()} }
 }

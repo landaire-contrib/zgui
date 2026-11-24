@@ -146,31 +146,7 @@ pub fn MenuContent(
     /// The items.
     children: ChildrenFn,
 ) -> impl IntoView {
-    install_stylesheet(SHEET, MenuStyle::CSS);
-    // Items blur themselves onto the panel they sit on when the pointer leaves them, and this is
-    // how they find it. Published per surface rather than per menu, so an item inside a submenu
-    // reaches the submenu's own panel and not the outermost one.
-    let travel = StoredValue::new_local(Travel::Unseen);
-    let surface = MenuSurface {
-        surface: state.content(),
-        travel,
-    };
-    provide_local_context(surface);
-    // Each opening starts again, because the pointer that opened it may still be down.
-    let opened = RenderEffect::new(move |_| {
-        if state.is_open() {
-            travel.set_value(Travel::Unseen);
-        }
-    });
-    on_cleanup_local(move || drop(opened));
-    let own = Attrs::new()
-        .class_toggle(ClassName::new(MenuStyle::CLASS), true)
-        .class_toggle(ClassName::new("zui-menu"), true)
-        .listener(
-            events::SCROLL,
-            zgui::vocab::ListenerOptions::DEFAULT,
-            move |_: &mut EventCx<'_, events::Scroll>| surface.scrolled(),
-        );
+    let own = panel(state);
     // Held rather than moved: a menu is rebuilt every time it re-opens, and children a closure
     // moved out of on the first open are children the second open does not have.
     let children = StoredValue::new_local(children);
@@ -189,14 +165,57 @@ pub fn MenuContent(
             {..attrs},
             class = class
         ) {
-            // The list is a behaviour rather than a box: it is `display: contents`, so the items
-            // are laid out by the panel and a reader meets them as the menu's own children.
-            RovingFocus(
-                orientation = {Orientation::Vertical},
-                class = "zui-menu__list"
-            ) {
-                MenuTypeahead {{children.get_value().view()}}
-            }
+            MenuList {{children.get_value().view()}}
+        }
+    }
+}
+
+/// Makes the panel of `state` a menu panel for the items built after it, and returns the
+/// attributes the panel element carries.
+pub(crate) fn panel(state: OverlayState) -> Attrs {
+    install_stylesheet(SHEET, MenuStyle::CSS);
+    // Items blur themselves onto the panel they sit on when the pointer leaves them, and this is
+    // how they find it. Published per surface rather than per menu, so an item inside a submenu
+    // reaches the submenu's own panel and not the outermost one.
+    let travel = StoredValue::new_local(Travel::Unseen);
+    let surface = MenuSurface {
+        surface: state.content(),
+        travel,
+    };
+    provide_local_context(surface);
+    // Each opening starts again, because the pointer that opened it may still be down.
+    let opened = RenderEffect::new(move |_| {
+        if state.is_open() {
+            travel.set_value(Travel::Unseen);
+        }
+    });
+    on_cleanup_local(move || drop(opened));
+
+    Attrs::new()
+        .class_toggle(ClassName::new(MenuStyle::CLASS), true)
+        .class_toggle(ClassName::new("zui-menu"), true)
+        .listener(
+            events::SCROLL,
+            zgui::vocab::ListenerOptions::DEFAULT,
+            move |_: &mut EventCx<'_, events::Scroll>| surface.scrolled(),
+        )
+}
+
+/// The items of a menu panel, with the arrow keys and typeahead over them.
+///
+/// The list is a behaviour rather than a box: it is `display: contents`, so the items are laid
+/// out by the panel and a reader meets them as the menu's own children.
+#[component]
+pub(crate) fn MenuList(
+    /// The items.
+    children: ChildrenFn,
+) -> impl IntoView {
+    view! {
+        RovingFocus(
+            orientation = {Orientation::Vertical},
+            class = "zui-menu__list"
+        ) {
+            MenuTypeahead {{children.view()}}
         }
     }
 }

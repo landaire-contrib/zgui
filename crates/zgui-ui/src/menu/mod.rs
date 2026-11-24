@@ -65,6 +65,8 @@ pub use crate::menu::typeahead::{RESET_AFTER, Typeahead, matching};
 
 // For the menubar's items, which take their highlight from the pointer the same way a menu's do.
 pub(crate) use crate::menu::item::defocus_on_leave;
+// For a context menu shown below a lifted preview, which is a menu panel placed by other means.
+pub(crate) use crate::menu::content::{MenuListProps, panel};
 
 use zgui::prelude::*;
 

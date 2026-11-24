@@ -236,6 +236,14 @@ impl Stage {
         ));
     }
 
+    /// Presses and releases the secondary button where the pointer is.
+    pub fn press_secondary(&mut self) {
+        let position = self.pointer;
+        for action in [PointerAction::Pressed, PointerAction::Released] {
+            self.deliver(pointer(action, position, Some(PointerButton::Secondary)));
+        }
+    }
+
     /// Lets the primary button up where the pointer is.
     pub fn release(&mut self) {
         let position = self.pointer;

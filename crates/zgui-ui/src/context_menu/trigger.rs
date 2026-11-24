@@ -1,12 +1,12 @@
 //! The region a context menu is asked for over.
 
-use zgui::geom::CssPx;
 use zgui::prelude::*;
-use zgui::reactive::RwSignal;
-use zgui::vocab::{HasPopup, PointerButton};
+use zgui::reactive::{RwSignal, StoredValue};
+use zgui::vocab::{HasPopup, PointerButton, PointerKind};
 use zgui::{component, view};
 
 use crate::context_menu::SHEET;
+use crate::context_menu::lift::{LiftCx, Presentation};
 use crate::context_menu::place::ContextMenuPlace;
 use crate::context_menu::style::ContextMenuStyle;
 use crate::overlay::OverlayState;
@@ -44,7 +44,8 @@ pub fn ContextMenuTrigger(
 ) -> impl IntoView {
     install_stylesheet(SHEET, ContextMenuStyle::CSS);
     let state = OverlayState::current().unwrap_or_else(|| OverlayState::uncontrolled(false, None));
-    let area = NodeRef::new();
+    let lift = LiftCx::current();
+    let area = lift.area;
     // Where in the region the pointer asked, in CSS pixels from its top-left corner. Two numbers
     // rather than a point, because they are bound to two style properties.
     let left = RwSignal::new_local(0.0f32);
@@ -55,15 +56,27 @@ pub fn ContextMenuTrigger(
         left,
         top,
         state,
+        presentation: lift.presentation,
     };
     provide_local_context(place);
-    let ask = move |position: zgui::geom::Point<CssPx, zgui::geom::Css>| place.open_at(position);
+    // Whether a finger is down on the region. A request while one is down is its long press,
+    // which lifts the region. The request event carries no pointer kind, so the press says it.
+    // The request clears it, because the release of a press that opened the menu goes to the
+    // menu's layer and never reaches the region.
+    let finger = StoredValue::new_local(false);
 
     let on_context_menu = handler(
         events::CONTEXT_MENU,
         move |ev: &mut EventCx<'_, events::ContextMenu>| {
             ev.prevent_default();
-            ask(ev.position);
+            let by_finger = finger.get_value();
+            finger.set_value(false);
+            let presentation = if by_finger {
+                Presentation::Lifted
+            } else {
+                Presentation::AtPoint
+            };
+            place.open(ev.position, presentation);
         },
     );
     // The secondary button as well as the request event, because a request is what a long press
@@ -72,11 +85,20 @@ pub fn ContextMenuTrigger(
     let on_pointer_down = handler(
         events::POINTER_DOWN,
         move |ev: &mut EventCx<'_, events::PointerDown>| {
+            finger.set_value((**ev).kind == PointerKind::Touch);
             if ev.button == Some(PointerButton::Secondary) {
                 ev.prevent_default();
-                ask(ev.position);
+                place.open_at(ev.position);
             }
         },
+    );
+    let on_pointer_up = handler(
+        events::POINTER_UP,
+        move |_: &mut EventCx<'_, events::PointerUp>| finger.set_value(false),
+    );
+    let on_pointer_cancel = handler(
+        events::POINTER_CANCEL,
+        move |_: &mut EventCx<'_, events::PointerCancel>| finger.set_value(false),
     );
 
     let own = state.trigger_attrs(HasPopup::Menu);
@@ -88,6 +110,8 @@ pub fn ContextMenuTrigger(
             class = "zui-context-menu__area",
             on:context_menu = on_context_menu,
             on:pointer_down = on_pointer_down,
+            on:pointer_up = on_pointer_up,
+            on:pointer_cancel = on_pointer_cancel,
             {..own},
             {..attrs},
             class = class
