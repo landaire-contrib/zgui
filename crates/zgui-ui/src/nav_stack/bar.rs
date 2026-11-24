@@ -358,6 +358,9 @@ pub(crate) fn NavBarRow(
                             .attribute(AttrName::new("data-hidden"), move || {
                                 (!bar.shows_title()).then(String::new)
                             })
+                            .attribute(AttrName::new("inert"), move || {
+                                (!bar.shows_title()).then(String::new)
+                            })
                             .a11y_from(A11yBinding::unspecified().hidden(move || !bar.shows_title()))}
                     ) {
                         {view.view()}

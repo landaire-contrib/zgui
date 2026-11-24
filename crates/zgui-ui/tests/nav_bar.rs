@@ -214,3 +214,32 @@ fn a_title_view_is_centred_and_takes_clicks() {
     stage.click(middle);
     assert_eq!(clicks.get(), 1, "the title view takes the click");
 }
+
+#[test]
+fn a_title_view_hidden_under_a_large_title_is_inert() {
+    let stage = Stage::open(
+        ".frame { width: 320px; height: 600px; --zui-space-sm: 8px }",
+        move || {
+            let path = NavPath::new(0_u8);
+            view! {
+                column(class = "frame") {
+                    NavStack(path = path, page = move |_: u8| view! {
+                        NavPage(title = "Ada Lovelace", large_title = true) {
+                            NavTitle(slot) {
+                                control {
+                                    text {"Ada"}
+                                }
+                            }
+                            "Content"
+                        }
+                    })
+                }
+            }
+        },
+    );
+
+    assert!(
+        drawn_box(&stage, "Ada").is_none(),
+        "the hidden title view takes no clicks"
+    );
+}

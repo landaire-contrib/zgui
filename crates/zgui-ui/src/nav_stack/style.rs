@@ -71,13 +71,13 @@ style! { pub NavStackStyle =>
         transition: opacity 150ms ease;
     }"
     ".zui-nav-bar__title[data-hidden] { opacity: 0; }"
-    // A title view takes clicks on its own content only, so the row's empty space stays inert.
     ".zui-nav-bar__title-view {
         display: flex;
         align-items: center;
         justify-content: center;
         line-height: normal;
     }"
+    // A title view takes clicks on its own content only, so the row's empty space stays inert.
     ".zui-nav-bar__title-view > * { pointer-events: auto; }"
     ".zui-nav-back {
         display: flex;

@@ -106,7 +106,8 @@ impl PageCx {
 /// name. The bar places it as it places the title text. Make it shrink to the width the bar gives
 /// it, for example with a text that truncates.
 ///
-/// The title of the page stays the label of the back button of the page above.
+/// The bar builds the view twice: once to draw, and once inert to measure its natural width.
+/// The title of the page is the label of the back button of the page above.
 #[slot]
 pub struct NavTitle {
     /// The view.
