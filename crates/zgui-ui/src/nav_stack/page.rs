@@ -16,6 +16,8 @@ use crate::nav_stack::style::NavStackStyle;
 pub(crate) struct PageBar {
     /// The title of the page.
     title: RwSignal<Option<Signal<String, LocalStorage>>, LocalStorage>,
+    /// The view the bar shows in place of the title text.
+    title_view: RwSignal<Option<ChildrenFn>, LocalStorage>,
     /// The controls at the leading end of the bar, after the back button.
     leading: RwSignal<Option<ChildrenFn>, LocalStorage>,
     /// The controls at the trailing end.
@@ -32,6 +34,7 @@ impl PageBar {
     pub(crate) fn new() -> Self {
         Self {
             title: RwSignal::new_local(None),
+            title_view: RwSignal::new_local(None),
             leading: RwSignal::new_local(None),
             trailing: RwSignal::new_local(None),
             back_blocked: RwSignal::new_local(None),
@@ -46,6 +49,11 @@ impl PageBar {
             .get()
             .map(|title| title.get())
             .unwrap_or_default()
+    }
+
+    /// The view in place of the title text, subscribing to it.
+    pub(crate) fn title_view(self) -> Option<ChildrenFn> {
+        self.title_view.get()
     }
 
     /// The leading controls, subscribing to them.
@@ -94,6 +102,17 @@ impl PageCx {
     }
 }
 
+/// A view that a [`NavPage`]'s bar shows in place of its title text, such as a picture beside a
+/// name. The bar places it as it places the title text. Make it shrink to the width the bar gives
+/// it, for example with a text that truncates.
+///
+/// The title of the page stays the label of the back button of the page above.
+#[slot]
+pub struct NavTitle {
+    /// The view.
+    children: ChildrenFn,
+}
+
 /// The controls at the leading end of a [`NavPage`]'s bar, after the back button.
 ///
 /// For an edit mode, block back with `back_blocked` and show Cancel here.
@@ -113,9 +132,10 @@ pub struct NavTrailing {
 /// One page of a [`NavStack`](crate::nav_stack::NavStack): its title, its bar controls and its
 /// content.
 ///
-/// The stack draws the bar. The bar shows a back button, the title of this page, and the controls
-/// of [`NavLeading`] and [`NavTrailing`]. The back button shows the title of the page below, or a
-/// shorter label when that title does not fit. Outside a stack, a page shows only its content.
+/// The stack draws the bar. The bar shows a back button, the title of this page or the view of
+/// [`NavTitle`], and the controls of [`NavLeading`] and [`NavTrailing`]. The back button shows
+/// the title of the page below, or a shorter label when that title does not fit. Outside a stack,
+/// a page shows only its content.
 ///
 /// With `large_title`, the content is a scroll container that starts with the title in large type.
 /// The bar shows the title when the large title scrolls under the bar. Put the content of such a
@@ -153,6 +173,9 @@ pub fn NavPage(
     /// Whether the content starts with the title in large type, as on the top page of an iOS app.
     #[prop(default = false)]
     large_title: bool,
+    /// The view in the bar in place of the title text.
+    #[prop(optional)]
+    nav_title: Option<NavTitle>,
     /// The controls at the leading end of the bar, after the back button.
     #[prop(optional)]
     nav_leading: Option<NavLeading>,
@@ -173,6 +196,7 @@ pub fn NavPage(
     if let Some(page) = page {
         let bar = page.bar;
         bar.title.set(Some(title));
+        bar.title_view.set(nav_title.map(|view| view.children));
         bar.back_blocked.set(Some(back_blocked));
         bar.leading.set(nav_leading.map(|leading| leading.children));
         bar.trailing
@@ -182,6 +206,7 @@ pub fn NavPage(
         // The signals belong to this scope, so the bar forgets them when it ends.
         on_cleanup_local(move || {
             bar.title.try_set(None);
+            bar.title_view.try_set(None);
             bar.back_blocked.try_set(None);
             bar.leading.try_set(None);
             bar.trailing.try_set(None);

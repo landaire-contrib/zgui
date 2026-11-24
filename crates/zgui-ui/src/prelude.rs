@@ -138,7 +138,8 @@ pub use crate::menubar::{
     MenubarTriggerProps,
 };
 pub use crate::nav_stack::{
-    NavLeading, NavPage, NavPageProps, NavPath, NavStack, NavStackProps, NavTrailing, PopError,
+    NavLeading, NavPage, NavPageProps, NavPath, NavStack, NavStackProps, NavTitle, NavTrailing,
+    PopError,
 };
 pub use crate::navigation_menu::{
     NavigationMenu, NavigationMenuContent, NavigationMenuContentProps, NavigationMenuContext,

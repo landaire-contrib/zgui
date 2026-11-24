@@ -336,7 +336,7 @@ pub use crate::menubar::{
     MenubarShortcut, MenubarShortcutProps, MenubarStyle, MenubarTrigger, MenubarTriggerProps,
 };
 pub use crate::nav_stack::{
-    NavLeading, NavPage, NavPageProps, NavPath, NavStack, NavStackProps, NavStackStyle,
+    NavLeading, NavPage, NavPageProps, NavPath, NavStack, NavStackProps, NavStackStyle, NavTitle,
     NavTrailing, PageId, PopError,
 };
 pub use crate::navigation_menu::{

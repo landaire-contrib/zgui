@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use zgui::geom::Device;
 use zgui::geom::DevicePx;
+use zgui::geom::Point;
 use zgui::geom::Rect;
 use zgui::view;
 use zgui::view::AttrName;
@@ -150,4 +151,66 @@ fn a_narrow_bar_shows_only_the_chevron() {
         "the title stays in the bar: {shown:?}"
     );
     assert!(back_is_announced(&stage));
+}
+
+#[test]
+fn a_title_view_is_centred_and_takes_clicks() {
+    let clicks: Rc<Cell<u32>> = Rc::default();
+    let count = Rc::clone(&clicks);
+    let held: Rc<Cell<Option<NavPath<u8>>>> = Rc::default();
+    let keep = Rc::clone(&held);
+    let mut stage = Stage::open(
+        ".frame { width: 320px; height: 600px; --zui-space-sm: 8px }",
+        move || {
+            let path = NavPath::new(0_u8);
+            keep.set(Some(path));
+            let count = Rc::clone(&count);
+            view! {
+                column(class = "frame") {
+                    NavStack(path = path, page = move |route: u8| {
+                        let count = Rc::clone(&count);
+                        let title = if route == 0 { BELOW } else { "Ada Lovelace" };
+                        view! {
+                            NavPage(title = title) {
+                                NavTitle(slot) {
+                                    {(route == 1).then(|| {
+                                        let count = Rc::clone(&count);
+                                        view! {
+                                            control(on:click = move |_| count.set(count.get() + 1)) {
+                                                text {"Ada"}
+                                            }
+                                        }
+                                    })}
+                                }
+                                "Content"
+                            }
+                        }
+                    })
+                }
+            }
+        },
+    );
+    held.get().expect("the stack was built").push(1);
+    stage.hold(core::time::Duration::from_secs(1));
+
+    assert!(
+        drawn_box(&stage, "Ada Lovelace").is_none(),
+        "the view replaces the title text"
+    );
+    let shown = drawn_box(&stage, "Ada").expect("the title view shows");
+    assert!(
+        (centre(shown) - 160.0).abs() <= 1.0,
+        "the title view is centred: {shown:?}"
+    );
+    assert!(
+        drawn_box(&stage, "Back").is_some(),
+        "back fits beside the title view"
+    );
+
+    let middle = Point::new(
+        DevicePx(centre(shown)),
+        DevicePx(shown.origin.y.0 + shown.size.height.0 / 2.0),
+    );
+    stage.click(middle);
+    assert_eq!(clicks.get(), 1, "the title view takes the click");
 }

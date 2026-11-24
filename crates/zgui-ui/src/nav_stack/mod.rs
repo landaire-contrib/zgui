@@ -11,6 +11,7 @@ pub use crate::nav_stack::error::PopError;
 pub use crate::nav_stack::page::NavLeading;
 pub use crate::nav_stack::page::NavPage;
 pub use crate::nav_stack::page::NavPageProps;
+pub use crate::nav_stack::page::NavTitle;
 pub use crate::nav_stack::page::NavTrailing;
 pub use crate::nav_stack::path::NavPath;
 pub use crate::nav_stack::path::PageId;

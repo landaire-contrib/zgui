@@ -71,6 +71,14 @@ style! { pub NavStackStyle =>
         transition: opacity 150ms ease;
     }"
     ".zui-nav-bar__title[data-hidden] { opacity: 0; }"
+    // A title view takes clicks on its own content only, so the row's empty space stays inert.
+    ".zui-nav-bar__title-view {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: normal;
+    }"
+    ".zui-nav-bar__title-view > * { pointer-events: auto; }"
     ".zui-nav-back {
         display: flex;
         align-items: center;
@@ -94,6 +102,7 @@ style! { pub NavStackStyle =>
         pointer-events: none;
     }"
     ".zui-nav-bar__probe > .zui-nav-bar__title { position: static; flex: none; }"
+    ".zui-nav-bar__probe > .zui-nav-bar__probe-view { display: flex; flex: none; }"
     // An empty box reports no size, so the gap probe has a height.
     ".zui-nav-bar__probe-gap { flex: none; width: var(--zui-space-sm); height: 1px; }"
 

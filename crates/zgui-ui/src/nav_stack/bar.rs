@@ -240,6 +240,7 @@ pub(crate) fn NavBarRow(
     let probe_short = NodeRef::new();
     let probe_chevron = NodeRef::new();
     let probe_title = NodeRef::new();
+    let probe_view = NodeRef::new();
     let probe_gap = NodeRef::new();
     // Content sizes are taken before transforms, so a scaled ancestor leaves them as laid out.
     // Each reads zero until it is first measured.
@@ -250,6 +251,7 @@ pub(crate) fn NavBarRow(
     let short_size = probe_short.observe_content_size();
     let chevron_size = probe_chevron.observe_content_size();
     let title_size = probe_title.observe_content_size();
+    let view_size = probe_view.observe_content_size();
     let gap_size = probe_gap.observe_content_size();
 
     let layout = Memo::new(move |_| {
@@ -265,10 +267,12 @@ pub(crate) fn NavBarRow(
             short: short_size.get().width,
             chevron,
         });
-        let title = if bar.shows_title() {
-            title_size.get().width
-        } else {
+        let title = if !bar.shows_title() {
             DevicePx::ZERO
+        } else if bar.title_view().is_some() {
+            view_size.get().width
+        } else {
+            title_size.get().width
         };
         let widths = BarWidths {
             row,
@@ -346,20 +350,36 @@ pub(crate) fn NavBarRow(
                 {back_button}
                 box(class = "zui-nav-bar__extra", node_ref = extra) {{leading}}
             }
-            text(
-                class = "zui-nav-bar__title",
-                {..Attrs::new()
-                    .attribute(AttrName::new("data-hidden"), move || {
-                        (!bar.shows_title()).then(String::new)
-                    })
-                    .a11y_from(
-                        A11yBinding::new(Role::Heading)
-                            .level(1_usize)
-                            .hidden(move || !bar.shows_title())
-                    )}
-            ) {
-                {move || bar.title()}
-            }
+            {move || match bar.title_view() {
+                Some(view) => AnyView::new(view! {
+                    box(
+                        class = "zui-nav-bar__title zui-nav-bar__title-view",
+                        {..Attrs::new()
+                            .attribute(AttrName::new("data-hidden"), move || {
+                                (!bar.shows_title()).then(String::new)
+                            })
+                            .a11y_from(A11yBinding::unspecified().hidden(move || !bar.shows_title()))}
+                    ) {
+                        {view.view()}
+                    }
+                }),
+                None => AnyView::new(view! {
+                    text(
+                        class = "zui-nav-bar__title",
+                        {..Attrs::new()
+                            .attribute(AttrName::new("data-hidden"), move || {
+                                (!bar.shows_title()).then(String::new)
+                            })
+                            .a11y_from(
+                                A11yBinding::new(Role::Heading)
+                                    .level(1_usize)
+                                    .hidden(move || !bar.shows_title())
+                            )}
+                    ) {
+                        {move || bar.title()}
+                    }
+                }),
+            }}
             box(class = "zui-nav-bar__trailing", node_ref = trailing_box) {{trailing}}
             row(class = "zui-nav-bar__probe", a11y:hidden = true, {..probe}) {
                 row(class = "zui-nav-back", node_ref = probe_full) {
@@ -375,6 +395,9 @@ pub(crate) fn NavBarRow(
                 }
                 text(class = "zui-nav-bar__title", node_ref = probe_title) {
                     {move || bar.title()}
+                }
+                box(class = "zui-nav-bar__probe-view", node_ref = probe_view) {
+                    {move || bar.title_view().map(|view| view.view())}
                 }
                 box(class = "zui-nav-bar__probe-gap", node_ref = probe_gap)
             }
