@@ -7,12 +7,19 @@
 
 mod desktop;
 
+use std::time::Duration;
+
+use zgui::component;
+use zgui::prelude::*;
 use zgui::reactive::Signal;
 use zgui::view;
+use zgui::vocab::NamedKey;
 use zgui::vocab::Role;
 use zgui_ui::prelude::*;
+use zgui_ui_primitives::dismiss::LayerStack;
 
 use crate::desktop::reader;
+use crate::desktop::reader::Announced;
 use crate::desktop::reader::Stop;
 use crate::desktop::stage::Stage;
 
@@ -28,6 +35,7 @@ fn static_text(value: &str) -> Stop {
         role: "Label".to_owned(),
         label: String::new(),
         value: value.to_owned(),
+        disabled: false,
     }
 }
 
@@ -37,7 +45,70 @@ fn button_named(label: &str) -> Stop {
         role: "Button".to_owned(),
         label: label.to_owned(),
         value: String::new(),
+        disabled: false,
     }
+}
+
+/// A stop that is a menu item called `label`, which VoiceOver on iOS reads as a button.
+fn menu_item(label: &str) -> Stop {
+    Stop {
+        role: "MenuItem".to_owned(),
+        label: label.to_owned(),
+        value: String::new(),
+        disabled: false,
+    }
+}
+
+/// A stop that is a menu item called `label` with a tick, which VoiceOver reads as on.
+fn ticked_menu_item(label: &str) -> Stop {
+    Stop {
+        role: "MenuItemCheckBox".to_owned(),
+        label: label.to_owned(),
+        value: "1".to_owned(),
+        disabled: false,
+    }
+}
+
+/// The items every menu here holds: one plain, one dimmed, and one ticked.
+#[component]
+fn Items() -> impl IntoView {
+    view! {
+        MenuItem {"Archive"}
+        MenuItem(disabled = true) {"Restore"}
+        MenuCheckboxItem(checked = RwSignal::new_local(true)) {"Pinned"}
+    }
+}
+
+/// What VoiceOver stops on in an open menu of [`Items`].
+fn open_items() -> [Stop; 3] {
+    [
+        menu_item("Archive"),
+        Stop {
+            disabled: true,
+            ..menu_item("Restore")
+        },
+        ticked_menu_item("Pinned"),
+    ]
+}
+
+/// A page that is inert while an open layer covers it, as an application writes one.
+#[component]
+fn Covered(children: Children) -> impl IntoView {
+    let stack = LayerStack::current();
+    let covered = move || stack.covering().then(String::new);
+    view! {
+        column(attr:inert = covered) {
+            {children.into_view_once()}
+        }
+    }
+}
+
+/// What a reader says of a menu item called `name`.
+fn announced_item(name: &str) -> Option<Announced> {
+    Some(Announced {
+        role: "MenuItem".to_owned(),
+        name: name.to_owned(),
+    })
 }
 
 #[test]
@@ -170,6 +241,70 @@ fn a_password_field_is_named_by_its_placeholder_and_says_only_bullets() {
             role: "PasswordInput".to_owned(),
             label: "Master password".to_owned(),
             value: "\u{2022}".repeat(7),
+            disabled: false,
         }]
     );
+}
+
+#[test]
+fn an_open_dropdown_menu_is_its_items_with_their_states_and_holds_the_focus() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            Covered {
+                DropdownMenu {
+                    DropdownMenuTrigger {"Actions"}
+                    DropdownMenuContent {Items()}
+                }
+            }
+        }
+    });
+    assert!(!stage.surface().escape_dismisses());
+
+    stage.activate("Actions");
+
+    assert_eq!(reader::ios_stops(&stage.surface()), open_items());
+    assert_eq!(stage.announced_focus(), announced_item("Archive"));
+    assert!(
+        stage.surface().escape_dismisses(),
+        "the escape gesture has a menu to close"
+    );
+
+    // What the escape gesture delivers.
+    stage.key(NamedKey::Escape);
+    stage.hold(Duration::from_millis(600));
+    assert!(!stage.shows("Archive"), "the menu stayed open");
+    assert!(!stage.surface().escape_dismisses());
+    assert_eq!(
+        reader::ios_stops(&stage.surface()),
+        [button_named("Actions")]
+    );
+}
+
+#[test]
+fn an_open_context_menu_is_its_items_with_their_states_and_holds_the_focus() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            Covered {
+                ContextMenu {
+                    ContextMenuTrigger {"Gmail"}
+                    ContextMenuContent {Items()}
+                }
+            }
+        }
+    });
+
+    // A long press, as VoiceOver passes through a double tap held down.
+    stage.touch_saying("Gmail");
+    stage.hold(Duration::from_millis(700));
+    stage.lift();
+    stage.settle();
+
+    assert_eq!(reader::ios_stops(&stage.surface()), open_items());
+    assert_eq!(stage.announced_focus(), announced_item("Archive"));
+    assert!(stage.surface().escape_dismisses());
+
+    stage.key(NamedKey::Escape);
+    stage.hold(Duration::from_millis(600));
+    assert!(!stage.shows("Archive"), "the menu stayed open");
+    assert!(!stage.surface().escape_dismisses());
 }

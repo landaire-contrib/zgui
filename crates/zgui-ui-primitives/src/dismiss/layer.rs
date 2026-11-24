@@ -156,6 +156,10 @@ pub fn DismissableLayer(
             leaving
         })
     };
+    let escapes = {
+        let stack = stack.clone();
+        RenderEffect::new(move |_| stack.set_escapes(id, dismiss_on_escape.get()))
+    };
 
     // The listeners go on the *window's* root, because that is the only place a press somewhere
     // else in the window can be heard. They are guards rather than bindings for the same reason:
@@ -243,6 +247,7 @@ pub fn DismissableLayer(
 
     on_cleanup_local(move || {
         drop(leaving);
+        drop(escapes);
         drop(attached);
         guards.borrow_mut().clear();
     });

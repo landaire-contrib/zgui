@@ -63,7 +63,26 @@ pub(crate) fn is_attached(id: SurfaceId) -> bool {
 
 /// Publishes an update for `id`, building it only if something is listening.
 pub(crate) fn publish(id: SurfaceId, build: &mut dyn FnMut() -> TreeUpdate) {
+    #[cfg(target_os = "ios")]
+    let build = &mut || {
+        let mut update = build();
+        for_uikit(&mut update);
+        update
+    };
     with(id, |adapter| adapter.update_if_active(build));
+}
+
+/// Gives each node of `update` a role the iOS adapter has a trait for.
+///
+/// The adapter gives a menu item no trait, so VoiceOver reads it as text and a UI test finds no
+/// button in an open menu. On iOS a menu item is a button, as the items of a `UIMenu` are.
+#[cfg(any(target_os = "ios", test))]
+fn for_uikit(update: &mut TreeUpdate) {
+    for (_, node) in &mut update.nodes {
+        if node.role() == accesskit::Role::MenuItem {
+            node.set_role(accesskit::Role::Button);
+        }
+    }
 }
 
 /// Lets the adapter for `id` see a window event before anything else does.
@@ -90,7 +109,8 @@ fn with(id: SurfaceId, act: impl FnOnce(&mut Adapter)) {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_attached, publish};
+    use super::{for_uikit, is_attached, publish};
+    use accesskit::{Node, NodeId, Role, Tree, TreeId, TreeUpdate};
     use zgui_platform::SurfaceId;
 
     #[test]
@@ -124,5 +144,30 @@ mod tests {
         })
         .join()
         .expect("the thread ran");
+    }
+
+    #[test]
+    fn a_menu_item_reaches_uikit_as_a_button_and_keeps_its_states() {
+        let mut item = Node::new(Role::MenuItem);
+        item.set_label("Archive");
+        item.set_disabled();
+        let mut check = Node::new(Role::MenuItemCheckBox);
+        check.set_toggled(accesskit::Toggled::True);
+        let mut menu = Node::new(Role::Menu);
+        menu.set_children(vec![NodeId(1), NodeId(2)]);
+        let mut update = TreeUpdate {
+            nodes: vec![(NodeId(0), menu), (NodeId(1), item), (NodeId(2), check)],
+            tree: Some(Tree::new(NodeId(0))),
+            tree_id: TreeId::ROOT,
+            focus: NodeId(1),
+        };
+
+        for_uikit(&mut update);
+
+        let roles: Vec<Role> = update.nodes.iter().map(|(_, node)| node.role()).collect();
+        assert_eq!(roles, [Role::Menu, Role::Button, Role::MenuItemCheckBox]);
+        let (_, item) = &update.nodes[1];
+        assert_eq!(item.label(), Some("Archive"));
+        assert!(item.is_disabled());
     }
 }

@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use zgui::geom::{Css, CssPx, Device, DevicePx, Point, Size};
-use zgui::platform::{AppHandler, SurfaceEvent};
+use zgui::platform::{AppHandler, PlatformCx, SurfaceEvent, WakeReason};
 use zgui::prelude::*;
 use zgui::vocab::{
     KeyEvent, KeyState, Modifiers, NamedKey, PhysicalKey, PointerAction, PointerButton,
@@ -511,6 +511,27 @@ impl Stage {
     /// Everything a screen reader would meet in the window, in tree order.
     pub fn announced(&self) -> Vec<Announced> {
         reader::everything(&self.surface())
+    }
+
+    /// Activates the node a screen reader calls `label`, as a double tap with VoiceOver does.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the reader meets nothing of that name, because a fixture that activated nothing
+    /// would report the same thing as a control that did not answer.
+    pub fn activate(&mut self, label: &str) {
+        let target = reader::named(&self.surface(), label)
+            .unwrap_or_else(|| panic!("a reader meets nothing called {label:?}"));
+        self.harness
+            .platform()
+            .waker()
+            .wake(WakeReason::A11yAction(accesskit::ActionRequest {
+                action: accesskit::Action::Click,
+                target_tree: accesskit::TreeId::ROOT,
+                target_node: target,
+                data: None,
+            }));
+        self.harness.settle(64);
     }
 
     /// Whether `text` is on the page: laid out, and not collapsed to nothing by anything holding it.

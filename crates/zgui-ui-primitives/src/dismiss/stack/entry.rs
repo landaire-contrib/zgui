@@ -22,6 +22,8 @@ pub(crate) struct Entry {
     leaving: bool,
     /// Whether what is under the layer counts as covered while it is open.
     covers: bool,
+    /// Whether an Escape it answers closes it.
+    escapes: bool,
 }
 
 impl Entry {
@@ -34,6 +36,7 @@ impl Entry {
             mounted: false,
             leaving: false,
             covers: false,
+            escapes: true,
         }
     }
 
@@ -65,6 +68,16 @@ impl Entry {
     /// Records whether what is under it counts as covered while it is open.
     pub(crate) fn set_covers(&mut self, covers: bool) {
         self.covers = covers;
+    }
+
+    /// Whether an Escape it answers closes it.
+    pub(crate) fn escapes(&self) -> bool {
+        self.escapes
+    }
+
+    /// Records whether an Escape it answers closes it.
+    pub(crate) fn set_escapes(&mut self, escapes: bool) {
+        self.escapes = escapes;
     }
 
     /// Whether the layer is still on the screen, recording that it has been seen there.

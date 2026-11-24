@@ -169,6 +169,7 @@ impl Shared {
                     crate::ios::forget_keyboard(surface.id());
                     crate::ios::text_view::forget(surface.id());
                     crate::ios::pointer::detach(surface.id());
+                    crate::ios::escape::detach(surface.id());
                 }
                 drop(surface);
                 id
@@ -190,6 +191,7 @@ impl Shared {
                     crate::ios::forget_keyboard(surface.id());
                     crate::ios::text_view::forget(surface.id());
                     crate::ios::pointer::detach(surface.id());
+                    crate::ios::escape::detach(surface.id());
                 }
             }
             kept
@@ -250,6 +252,7 @@ impl PlatformCx for WinitCx<'_> {
             crate::ios::observe_keyboard(&surface);
             crate::ios::text_view::attach(&surface);
             crate::ios::pointer::attach(&surface);
+            crate::ios::escape::attach(&surface);
         }
         #[cfg(target_os = "macos")]
         {

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use zgui::prelude::*;
-use zgui::reactive::{ArcTrigger, Owner};
+use zgui::reactive::{ArcTrigger, Owner, RenderEffect};
 
 use crate::dismiss::stack::entry::Entry;
 
@@ -110,18 +110,44 @@ impl LayerStack {
     /// surface happened to ask first. That is what makes a popover and a dialog written side by
     /// side share one stack: published where the asker stands, the second one would find nothing,
     /// mint a stack of its own, and believe itself topmost — and one Escape would close both.
+    ///
+    /// The stack keeps its window told whether an Escape closes a layer; see
+    /// [`WindowHandle::set_escape_dismisses`].
     pub fn current() -> Self {
         match use_local_context::<Self>() {
             Some(stack) => stack,
             None => {
                 let stack = Self::new();
+                let window = try_use_window();
                 match root_scope() {
-                    Some(root) => root.with(|| provide_local_context(stack.clone())),
-                    None => provide_local_context(stack.clone()),
+                    Some(root) => root.with(|| {
+                        provide_local_context(stack.clone());
+                        stack.tell(window);
+                    }),
+                    None => {
+                        provide_local_context(stack.clone());
+                        stack.tell(window);
+                    }
                 }
                 stack
             }
         }
+    }
+
+    /// Keeps `window` told whether an Escape closes a layer, for as long as the calling scope.
+    fn tell(&self, window: Option<WindowHandle>) {
+        let Some(window) = window else {
+            return;
+        };
+        let stack = self.clone();
+        let told = RenderEffect::new(move |was: Option<bool>| {
+            let dismisses = stack.escape_dismisses();
+            if was != Some(dismisses) {
+                window.set_escape_dismisses(dismisses);
+            }
+            dismisses
+        });
+        on_cleanup_local(move || drop(told));
     }
 
     /// Registers a layer on `band` over `surface`, and reports what it is called.
@@ -158,34 +184,41 @@ impl LayerStack {
     /// Setting one that is not there does nothing, which is what makes this safe to call from an
     /// effect that outlives the entry it is about.
     pub fn set_leaving(&self, id: LayerId, leaving: bool) {
-        let changed = self
-            .entries
-            .borrow_mut()
-            .iter_mut()
-            .find(|entry| entry.id() == id)
-            .is_some_and(|entry| {
-                let changed = entry.leaving() != leaving;
-                entry.set_leaving(leaving);
-                changed
-            });
-        if changed {
-            self.changed.notify();
-        }
+        self.change(id, |entry| {
+            let changed = entry.leaving() != leaving;
+            entry.set_leaving(leaving);
+            changed
+        });
     }
 
     /// Records whether what is under a layer counts as covered while it is open, as for a menu or
     /// a dialog that a press past it only closes. Setting one that is not there does nothing.
     pub fn set_covers(&self, id: LayerId, covers: bool) {
+        self.change(id, |entry| {
+            let changed = entry.covers() != covers;
+            entry.set_covers(covers);
+            changed
+        });
+    }
+
+    /// Records whether an Escape that a layer answers closes it. Setting one that is not there
+    /// does nothing.
+    pub fn set_escapes(&self, id: LayerId, escapes: bool) {
+        self.change(id, |entry| {
+            let changed = entry.escapes() != escapes;
+            entry.set_escapes(escapes);
+            changed
+        });
+    }
+
+    /// Applies `edit` to the entry `id` names, and notifies when `edit` reports a change.
+    fn change(&self, id: LayerId, edit: impl FnOnce(&mut Entry) -> bool) {
         let changed = self
             .entries
             .borrow_mut()
             .iter_mut()
             .find(|entry| entry.id() == id)
-            .is_some_and(|entry| {
-                let changed = entry.covers() != covers;
-                entry.set_covers(covers);
-                changed
-            });
+            .is_some_and(edit);
         if changed {
             self.changed.notify();
         }
@@ -203,6 +236,18 @@ impl LayerStack {
             .borrow_mut()
             .iter_mut()
             .any(|entry| entry.covers() && !entry.leaving() && entry.live())
+    }
+
+    /// Whether an Escape closes an open layer now, subscribing the caller.
+    pub fn escape_dismisses(&self) -> bool {
+        self.changed.track();
+        let Some(id) = self.answering_escape() else {
+            return false;
+        };
+        self.entries
+            .borrow()
+            .iter()
+            .any(|entry| entry.id() == id && entry.escapes())
     }
 
     /// The layer a press belongs to, when anything is on the screen.
@@ -392,5 +437,30 @@ mod tests {
         stack.pop(menu);
         stack.pop(tooltip);
         assert!(!stack.covering());
+    }
+
+    #[test]
+    fn escape_dismisses_only_when_the_layer_it_belongs_to_takes_it() {
+        let stack = LayerStack::new();
+        assert!(!stack.escape_dismisses(), "nothing is open");
+
+        let dialog = stack.push(OverlayLayer::Modal, NodeRef::new());
+        assert!(stack.escape_dismisses());
+
+        let alert = stack.push(OverlayLayer::Modal, NodeRef::new());
+        stack.set_escapes(alert, false);
+        assert!(
+            !stack.escape_dismisses(),
+            "the alert refuses Escape, and the dialog behind it does not get the key"
+        );
+
+        stack.pop(alert);
+        assert!(stack.escape_dismisses());
+
+        stack.set_leaving(dialog, true);
+        assert!(
+            !stack.escape_dismisses(),
+            "a dialog playing its exit is already closing"
+        );
     }
 }

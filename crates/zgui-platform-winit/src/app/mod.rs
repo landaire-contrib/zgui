@@ -289,6 +289,18 @@ impl<A: AppHandler> ApplicationHandler<UserEvent> for WinitApp<A> {
                         SurfaceEvent::Resized(_) => {
                             SurfaceEvent::Resized(Surface::size(surface.as_ref()))
                         }
+                        // Stamped as it is delivered, as the events winit reports are.
+                        SurfaceEvent::Key {
+                            state,
+                            event,
+                            modifiers,
+                            ..
+                        } => SurfaceEvent::Key {
+                            state,
+                            event,
+                            modifiers,
+                            timestamp: self.shared.clock().timestamp(),
+                        },
                         other => other,
                     };
                     let cx = WinitCx::new(&self.shared, event_loop);

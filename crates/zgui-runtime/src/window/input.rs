@@ -985,6 +985,11 @@ impl Window {
         }
         self.host.enter_owed_traps();
         self.carry_out_commands(timestamp);
+        // A request of the window's own: a wake raised at this stage is taken by the settle that
+        // follows it, and nothing else may want the next frame.
+        if self.host.owes_focus() {
+            self.request_frame();
+        }
     }
 
     /// Carries out one command.

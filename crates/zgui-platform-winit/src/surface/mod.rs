@@ -66,6 +66,9 @@ pub struct WinitSurface {
     /// The element under the hovering pointer, which the pointer interaction answers from.
     #[cfg(target_os = "ios")]
     pointer_target: Mutex<Option<zgui_platform::PointerTarget>>,
+    /// Whether an Escape key dismisses something in the surface, as the window last said.
+    #[cfg(target_os = "ios")]
+    escape_dismisses: AtomicBool,
 }
 
 impl WinitSurface {
@@ -93,6 +96,8 @@ impl WinitSurface {
             virtual_keyboard_motion: Mutex::new(None),
             #[cfg(target_os = "ios")]
             pointer_target: Mutex::new(None),
+            #[cfg(target_os = "ios")]
+            escape_dismisses: AtomicBool::new(false),
         }
     }
 
@@ -182,6 +187,23 @@ impl WinitSurface {
             .pointer_target
             .lock()
             .expect("the pointer target is not poisoned")
+    }
+
+    /// Answers a screen reader's escape gesture with an Escape key while an Escape dismisses
+    /// something, and tells whether it did.
+    #[cfg(target_os = "ios")]
+    pub(crate) fn escape(&self) -> bool {
+        if !self.escape_dismisses.load(Ordering::Relaxed) {
+            return false;
+        }
+        let keys = crate::input::text_mirror::press(
+            zgui_vocab::NamedKey::Escape,
+            zgui_vocab::KeyCode::Escape,
+        );
+        for event in keys {
+            self.waker.report(self.window.id(), event);
+        }
+        true
     }
 }
 
@@ -472,6 +494,11 @@ impl Surface for WinitSurface {
     #[cfg(target_os = "ios")]
     fn set_text_snapshot(&self, build: &mut dyn FnMut() -> Option<zgui_platform::TextSnapshot>) {
         crate::ios::text_view::set_text_snapshot(self.id, build);
+    }
+
+    #[cfg(target_os = "ios")]
+    fn set_escape_dismisses(&self, dismisses: bool) {
+        self.escape_dismisses.store(dismisses, Ordering::Relaxed);
     }
 
     fn reset_dead_keys(&self) {

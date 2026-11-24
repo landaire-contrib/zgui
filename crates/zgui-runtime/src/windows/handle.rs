@@ -93,6 +93,8 @@ pub(crate) struct WindowShared {
     pub(crate) input_region: RefCell<Option<Region>>,
     /// The last opaque region the application gave, if it gave one.
     pub(crate) opaque_region: RefCell<Option<Region>>,
+    /// Whether an Escape key dismisses something in the window, as last stated.
+    pub(crate) escape_dismisses: Cell<bool>,
     /// The light or dark scheme the window's document is styled in.
     pub(crate) color_scheme: ArcRwSignal<ColorScheme>,
     /// Who draws the window frame.
@@ -137,6 +139,7 @@ impl WindowHandle {
                 lock_keys: ArcRwSignal::new(Modifiers::NONE),
                 input_region: RefCell::new(None),
                 opaque_region: RefCell::new(None),
+                escape_dismisses: Cell::new(false),
                 // The scheme a window's document starts in until the desktop states one.
                 color_scheme: ArcRwSignal::new(ColorScheme::Light),
                 decoration_source,
@@ -167,6 +170,9 @@ impl WindowHandle {
         }
         if let Some(region) = self.shared.opaque_region.borrow().as_ref() {
             surface.set_opaque_region(region.as_deref());
+        }
+        if self.shared.escape_dismisses.get() {
+            surface.set_escape_dismisses(true);
         }
         self.shared
             .decoration_source
@@ -623,6 +629,19 @@ impl WindowHandle {
         }
         self.act(|surface| surface.set_opaque_region(region.as_deref()));
         *self.shared.opaque_region.borrow_mut() = Some(region);
+    }
+
+    /// Tells the platform whether an Escape key dismisses something in the window now, such as an
+    /// open menu or dialog.
+    ///
+    /// A screen reader gesture to leave a surface, as VoiceOver on iOS has, becomes an Escape key
+    /// while this holds. A window that has no surface yet gets it when the surface attaches.
+    pub fn set_escape_dismisses(&self, dismisses: bool) {
+        if self.shared.closed.get() {
+            return;
+        }
+        self.act(|surface| surface.set_escape_dismisses(dismisses));
+        self.shared.escape_dismisses.set(dismisses);
     }
 
     /// Sets the picture the desktop shows for this window.

@@ -102,6 +102,8 @@ pub struct OffscreenSurface {
     a11y_log: Mutex<A11yLog>,
     /// Whether an accessibility consumer listens. Without one, no update is built.
     a11y_listener: AtomicBool,
+    /// Whether the surface was last told that an Escape key dismisses something in it.
+    escape_dismisses: AtomicBool,
     /// Everything the surface was told about text input, in order.
     ///
     /// Whether an input method is wanted at all, and where its candidate window goes, is a state
@@ -171,6 +173,7 @@ impl OffscreenSurface {
             a11y_updates: AtomicU64::new(0),
             a11y_log: Mutex::new(A11yLog::default()),
             a11y_listener: AtomicBool::new(true),
+            escape_dismisses: AtomicBool::new(false),
             text_input_log: Mutex::new(Vec::new()),
             text_snapshot_listener: AtomicBool::new(false),
             text_snapshot: Mutex::new(None),
@@ -285,6 +288,11 @@ impl OffscreenSurface {
     /// How many accessibility updates have been published.
     pub fn a11y_updates(&self) -> u64 {
         self.a11y_updates.load(Ordering::Relaxed)
+    }
+
+    /// Whether the surface was last told that an Escape key dismisses something in it.
+    pub fn escape_dismisses(&self) -> bool {
+        self.escape_dismisses.load(Ordering::Relaxed)
     }
 
     /// The last accessibility update published, if one has been.
@@ -685,6 +693,10 @@ impl Surface for OffscreenSurface {
         log.push(update);
         drop(log);
         self.a11y_updates.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn set_escape_dismisses(&self, dismisses: bool) {
+        self.escape_dismisses.store(dismisses, Ordering::Relaxed);
     }
 }
 

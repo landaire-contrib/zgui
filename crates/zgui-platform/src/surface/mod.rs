@@ -437,6 +437,15 @@ pub trait Surface: Send + Sync + 'static {
     /// a pointer.
     fn push_a11y_update(&self, build: &mut dyn FnMut() -> TreeUpdate);
 
+    /// Tells the platform whether an Escape key dismisses something in the surface now, such as an
+    /// open menu or dialog.
+    ///
+    /// A platform whose screen reader has a gesture to leave a surface, as VoiceOver on iOS has,
+    /// answers that gesture with an Escape key while this holds. The default ignores it.
+    fn set_escape_dismisses(&self, dismisses: bool) {
+        let _ = dismisses;
+    }
+
     /// This surface seen as something a graphics API can draw into, when it is one.
     ///
     /// A backend with no native handles keeps the default and is invisible to the renderer.

@@ -9,6 +9,8 @@
 //! platform adapter is built on — and the result is asked the two questions a reader asks first.
 
 use accesskit::Action;
+use accesskit::NodeId;
+use accesskit::Toggled;
 use accesskit_consumer::Node;
 use accesskit_consumer::Tree;
 use accesskit_consumer::TreeChangeHandler;
@@ -90,8 +92,34 @@ pub struct Stop {
     pub role: String,
     /// What it is called.
     pub label: String,
-    /// What it holds.
+    /// What it holds. A node with a toggled state holds `1` when it is on or mixed and `0` when it
+    /// is off, which is how VoiceOver reads a checked menu item or a switch.
     pub value: String,
+    /// Whether it says that it is dimmed.
+    pub disabled: bool,
+}
+
+/// What VoiceOver on iOS reads as the value of `node`.
+fn ios_value(node: &Node<'_>) -> String {
+    match node.toggled() {
+        Some(Toggled::False) => "0".to_owned(),
+        Some(Toggled::True | Toggled::Mixed) => "1".to_owned(),
+        None => node.value().unwrap_or_default(),
+    }
+}
+
+/// The node a reader calls `label`, as the window's accessibility tree names it.
+pub fn named(surface: &OffscreenSurface, label: &str) -> Option<NodeId> {
+    let tree = consumed(surface)?;
+    let state = tree.state();
+    let mut pending = vec![state.root()];
+    while let Some(node) = pending.pop() {
+        if node.label().as_deref() == Some(label) {
+            return state.locate_node(node.id()).map(|(id, _)| id);
+        }
+        pending.extend(node.children());
+    }
+    None
 }
 
 /// The elements VoiceOver on iOS stops on, in order.
@@ -115,7 +143,8 @@ pub fn ios_stops(surface: &OffscreenSurface) -> Vec<Stop> {
             found.push(Stop {
                 role: format!("{:?}", node.role()),
                 label: node.label().unwrap_or_default(),
-                value: node.value().unwrap_or_default(),
+                value: ios_value(&node),
+                disabled: node.is_disabled(),
             });
             continue;
         }

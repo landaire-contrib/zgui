@@ -1,5 +1,6 @@
 //! The UIKit values winit does not expose.
 
+pub(crate) mod escape;
 pub(crate) mod haptics;
 pub(crate) mod pointer;
 pub(crate) mod preferences;

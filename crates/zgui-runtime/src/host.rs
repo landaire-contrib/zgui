@@ -549,12 +549,8 @@ impl RuntimeHost {
             }
             // Nothing inside it can be focused *yet*: a surface that floats beside its trigger is
             // laid out hidden once so that it can be measured before it is placed. The ask is
-            // carried to the next frame, and that frame is asked for here because the measurement
-            // may be the only other thing that wanted one.
-            if self.entering.borrow_mut().carry(owed) {
-                use zgui_reactive::FrameWaker;
-                self.waker.wake();
-            }
+            // carried to the next frame, which the window asks for while anything is still owed.
+            let _ = self.entering.borrow_mut().carry(owed);
         }
     }
 

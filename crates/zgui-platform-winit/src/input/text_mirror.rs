@@ -516,7 +516,7 @@ impl Mirror {
 /// A press and a release of one named key.
 ///
 /// The loop stamps each key event as it delivers it, as it stamps the events winit reports.
-fn press(key: NamedKey, code: KeyCode) -> [SurfaceEvent; 2] {
+pub(crate) fn press(key: NamedKey, code: KeyCode) -> [SurfaceEvent; 2] {
     [KeyState::Pressed, KeyState::Released].map(|state| SurfaceEvent::Key {
         state,
         event: KeyEvent::named(key, PhysicalKey::Code(code)),
