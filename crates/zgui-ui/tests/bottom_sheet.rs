@@ -368,6 +368,19 @@ fn a_blocked_sheet_stays_open_and_says_that_it_was_asked_to_close() {
 }
 
 #[test]
+fn a_slow_long_drag_on_a_blocked_sheet_says_that_it_was_asked_to_close() {
+    let sheet = mount(vec![Detent::Large]);
+    sheet.blocked.set(true);
+    sheet.present();
+
+    // The sheet resists the finger, but the finger travels far enough to close it.
+    sheet.drag(600.0, 0.0);
+    assert!(sheet.open.get_untracked(), "the drag was refused");
+    assert_eq!(sheet.attempts.get(), 1);
+    assert_eq!(sheet.resting().as_deref(), Some("large"));
+}
+
+#[test]
 fn an_open_sheet_traps_focus_and_escape_closes_it() {
     let sheet = mount(vec![Detent::Large]);
     assert_eq!(sheet.harness.window.host.live_focus_traps(), 0);

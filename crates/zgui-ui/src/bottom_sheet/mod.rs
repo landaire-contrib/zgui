@@ -196,8 +196,14 @@ pub fn BottomSheet(
             drag.grab.set_value(None);
             let at = drag.offset.get_untracked().unwrap_or(grab.from);
             let dismissable = !dismiss_blocked.get_untracked();
+            // A blocked sheet resists the finger, so the finger decides whether it asked to close.
+            let decide = if dismissable {
+                at
+            } else {
+                grab.from + pan.translation().height.0
+            };
             let to = detents.with_value(|detents| {
-                release(at, pan.velocity.y, detents, grab.geometry, dismissable)
+                release(decide, pan.velocity.y, detents, grab.geometry, dismissable)
             });
             match to {
                 Release::Rest(detent) => {
