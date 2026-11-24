@@ -190,6 +190,11 @@ impl<'a, 'b, D: FrameDirty> Walk<'a, 'b, D> {
             return clip;
         }
         let scale = self.scale;
+        let scrollbar = self
+            .store
+            .layout_of(key)
+            .expect("a composed box has layout")
+            .scrollbar_size;
         let style = &self.store.node(key).style;
         clip::chain_for_children(
             self.tables.clips,
@@ -197,6 +202,7 @@ impl<'a, 'b, D: FrameDirty> Walk<'a, 'b, D> {
             style,
             self.store.custom_properties(key, style),
             padding_box,
+            scrollbar,
             border,
             scale,
             shift,

@@ -1,9 +1,9 @@
 //! What a box clips its descendants to.
 //!
 //! A clip is a chain and not a rectangle: a rounded card inside a scrollport inside another
-//! scrollport is three tests, and every one of them has to be applied. So a box that clips adds one
-//! link to whatever chain it was drawn under, and the chain a descendant carries is the whole
-//! ancestry rather than the nearest clipper.
+//! scrollport is three tests, and every one of them has to be applied. A clipping box extends the
+//! chain it was drawn under, and the chain a descendant carries is the whole ancestry rather than
+//! the nearest clipper.
 //!
 //! Two things do *not* clip and are handled by not being here. `overflow: visible` adds no link at
 //! all, which is the overwhelming majority of boxes; and a box's own border box is never clipped by
@@ -30,9 +30,9 @@ pub fn clips_children(style: &ComputedStyle) -> bool {
 
 /// The chain descendants of this box are drawn under.
 ///
-/// The clip is the *padding* box, because a scrollport's content is clipped inside the border and
-/// not inside the padding, and it takes the box's own corner radii so that content is cut to the
-/// curve rather than to the corner it is inscribed in.
+/// The clip is the padding box less the reserved scrollbar gutters. Rounded boxes also retain the
+/// original padding-box curve: intersecting it with the rectangular scrollport excludes the gutters
+/// without moving a corner's center or changing its shape.
 ///
 /// `owner` names the box, and the name is the chain's identity: the same box under the same parent
 /// chain is the same chain whatever this frame's layout gave it, so a resize rewrites the stored
@@ -61,6 +61,7 @@ pub fn chain_for_children(
     style: &ComputedStyle,
     declared: CustomProperties,
     padding_box: Rect<DevicePx, Device>,
+    scrollbar: Size<DevicePx, Device>,
     border: Edges<DevicePx>,
     scale: f32,
     shift: Size<DevicePx, Device>,
@@ -70,8 +71,19 @@ pub fn chain_for_children(
     if !clips_children(style) {
         return parent;
     }
+    let scrollport = Rect::new(
+        padding_box.origin,
+        Size::new(
+            DevicePx((padding_box.size.width.0 - scrollbar.width.0).max(0.0)),
+            DevicePx((padding_box.size.height.0 - scrollbar.height.0).max(0.0)),
+        ),
+    );
     let radii = inner_radii(style, padding_box, border, scale);
-    clips.push_named(
+    if radii.is_square() {
+        return clips.push_named(parent, ClipLink::rect_in(scrollport, space), shift, owner);
+    }
+
+    let rounded = clips.push_named(
         parent,
         ClipLink::RoundedRect {
             rect: padding_box,
@@ -84,7 +96,12 @@ pub fn chain_for_children(
         },
         shift,
         owner,
-    )
+    );
+    if scrollport == padding_box {
+        return rounded;
+    }
+
+    clips.push_named(rounded, ClipLink::rect_in(scrollport, space), shift, owner)
 }
 
 /// A box's four corner radii, in device pixels, resolved against its own border box.
@@ -182,6 +199,7 @@ mod tests {
             &style,
             CustomProperties::ALL,
             rect(),
+            Size::ZERO,
             Edges::ZERO,
             1.0,
             UNMOVED,
@@ -205,6 +223,7 @@ mod tests {
             &style,
             CustomProperties::ALL,
             rect(),
+            Size::ZERO,
             Edges::ZERO,
             1.0,
             UNMOVED,
@@ -222,6 +241,7 @@ mod tests {
             &style,
             CustomProperties::ALL,
             rect().translate(by),
+            Size::ZERO,
             Edges::ZERO,
             1.0,
             by,
@@ -249,6 +269,7 @@ mod tests {
             &style,
             CustomProperties::ALL,
             rect(),
+            Size::ZERO,
             Edges::ZERO,
             1.0,
             UNMOVED,
@@ -267,6 +288,7 @@ mod tests {
             &style,
             CustomProperties::ALL,
             wider,
+            Size::ZERO,
             Edges::ZERO,
             1.0,
             UNMOVED,

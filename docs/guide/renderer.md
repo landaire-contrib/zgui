@@ -70,6 +70,10 @@ that carries the old picture over, and a backdrop that widens its rectangles all
 damage. A frame that is composed and not presented, because the platform held it or no texture was
 free, adds its rectangles to both sets for the next present.
 
+Scrollable descendants are clipped to the padding box minus the reserved scrollbar gutters.
+A rounded padding-box clip is retained and intersected with that rectangle. Scroll-copy uses the
+same reduced region, so content cannot leave stale pixels in the gutters.
+
 `zgui-render-wgpu` makes its own swap chain when `ZGUI_PRESENTER=native` is set: a Vulkan swap
 chain, or on Windows with DX12 a flip-sequential DXGI swap chain for an opaque window. Its images
 keep their contents, and `VK_KHR_incremental_present` or the dirty rectangles of

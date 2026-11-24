@@ -397,6 +397,7 @@ pub(crate) fn place(
         &node.style,
         declared,
         padding_box,
+        scrollbar,
         border,
         scale,
         Size::new(DevicePx(shift.0), DevicePx(shift.1)),
