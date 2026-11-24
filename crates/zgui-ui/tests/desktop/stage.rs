@@ -314,6 +314,12 @@ impl Stage {
         ));
     }
 
+    /// Ends the finger's contact without a release, as the system does when it takes the touch.
+    pub fn cancel_touch(&mut self) {
+        let position = self.finger;
+        self.deliver(finger(PointerAction::Cancelled, position, None));
+    }
+
     /// Puts a finger down at `from`, moves it to `to` in steps of `step` CSS pixels 10 ms apart,
     /// and lifts it, all in CSS pixels. A gesture measures the speed of the finger from the stamps.
     pub fn pan(&mut self, from: Point<CssPx, Css>, to: Point<CssPx, Css>, step: f32) {

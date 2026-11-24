@@ -50,6 +50,13 @@ impl DismissReason {
 /// That is what makes two presses of Escape close two nested surfaces: the second arrives while
 /// the first is still fading, and it belongs to the surface behind it.
 ///
+/// # A press past it
+///
+/// A press past a layer that covers what is under it only asks the layer to close. No listener
+/// under the layer hears the press or its release, and no click follows, for a mouse and a finger
+/// alike. See [`LayerStack`]. A press past a layer that does not cover, such as a navigation panel,
+/// also goes on to what it lands on, so a press on the next trigger opens that one.
+///
 /// # What it does not do
 ///
 /// It does not close anything. It reports, through `on_dismiss`, and the caller decides — which is
@@ -175,6 +182,7 @@ pub fn DismissableLayer(
             let Some(window) = root.window_root() else {
                 return;
             };
+            stack.consume_releases(&window);
 
             let mut held = Vec::new();
             // The capture leg, so the decision is taken before anything inside the press's own
@@ -186,8 +194,11 @@ pub fn DismissableLayer(
                 events::POINTER_DOWN,
                 ListenerOptions::CAPTURE,
                 move |ev: &mut EventCx<'_, events::PointerDown>| {
+                    // A topmost layer that is leaving still claims the press, so the layer behind
+                    // it stays open, and lets the press go on, because it is already closing.
                     if !dismiss_on_outside_press.get_untracked()
                         || !outside_stack.is_topmost(id)
+                        || outside_stack.is_leaving(id)
                         || root.contains(ev.target)
                         || exclude.is_some_and(|anchor| anchor.contains(ev.target))
                     {
@@ -199,6 +210,15 @@ pub fn DismissableLayer(
                         id.get(),
                         ev.target
                     );
+                    // A press past a layer that covers belongs to the layer, from down to up.
+                    // Nothing under it hears the press, and the stack consumes its release, so no
+                    // click follows. The stop is immediate so that the next layer on the window
+                    // root does not take the same press for a press past itself.
+                    if covers {
+                        ev.stop_immediate_propagation();
+                        ev.prevent_default();
+                        outside_stack.swallow_press(ev.id);
+                    }
                     dismiss.run(DismissReason::OutsidePress);
                 },
             ));

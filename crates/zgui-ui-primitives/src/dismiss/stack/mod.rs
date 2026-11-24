@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use zgui::prelude::*;
 use zgui::reactive::{ArcTrigger, Owner, RenderEffect};
+use zgui::vocab::PointerId;
 
 use crate::dismiss::stack::entry::Entry;
 
@@ -47,7 +48,8 @@ impl LayerId {
 /// answering **Escape**, because Escape has no place: it belongs to whatever is open, and a
 /// surface that has already been told to close is not. Without that distinction a dialog opened
 /// from a dialog cannot be closed with two presses of Escape, because the inner one eats the
-/// second while it fades.
+/// second while it fades. A press past it is not consumed: the layer is already closing, and the
+/// press goes on to what it lands on.
 ///
 /// # A layer that is no longer there at all
 ///
@@ -80,6 +82,14 @@ impl LayerId {
 /// });
 /// scope.unmount();
 /// ```
+///
+/// # A press past the topmost layer
+///
+/// A press past a topmost layer that covers closes it and activates nothing, as a tap outside a
+/// menu does on macOS and iOS. The layer stops the press as it goes down and records its pointer
+/// here, and the stack consumes the release of that pointer, so no click follows. The record is on
+/// the stack because a layer with no exit animation is gone before the release arrives. A cancelled
+/// pointer and the next press of the same pointer clear the record.
 #[derive(Clone)]
 pub struct LayerStack {
     /// The open layers, in registration order.
@@ -88,6 +98,11 @@ pub struct LayerStack {
     next: Rc<std::cell::Cell<u64>>,
     /// Notified when a layer goes up, comes down, starts to leave or changes what it covers.
     changed: ArcTrigger,
+
+    /// The pointers whose press past a layer closed it, until that press ends.
+    swallowed: Rc<RefCell<Vec<PointerId>>>,
+    /// The window root's listeners that consume the release of those presses.
+    releases: Rc<RefCell<Vec<ListenerGuard>>>,
 }
 
 impl LayerStack {
@@ -97,6 +112,8 @@ impl LayerStack {
             entries: Rc::new(RefCell::new(Vec::new())),
             next: Rc::new(std::cell::Cell::new(1)),
             changed: ArcTrigger::new(),
+            swallowed: Rc::new(RefCell::new(Vec::new())),
+            releases: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -224,12 +241,62 @@ impl LayerStack {
         }
     }
 
+    /// Records that the press of `pointer` closed a layer, so that its release reaches nothing.
+    pub(crate) fn swallow_press(&self, pointer: PointerId) {
+        let mut swallowed = self.swallowed.borrow_mut();
+        if !swallowed.contains(&pointer) {
+            swallowed.push(pointer);
+        }
+    }
+
+    /// Consumes on `window`, the window's root, the release of each press a layer closed.
+    ///
+    /// The listeners live as long as the stack, which is as long as the window. Calls after the
+    /// first do nothing.
+    pub(crate) fn consume_releases(&self, window: &NodeRef) {
+        if !self.releases.borrow().is_empty() {
+            return;
+        }
+
+        let mut held = Vec::new();
+        // Registered before any layer's own press listener, so a press clears the record of an
+        // earlier press whose release never reached the window, as a mouse let go outside it.
+        let swallowed = Rc::clone(&self.swallowed);
+        held.extend(window.listen(
+            events::POINTER_DOWN,
+            ListenerOptions::CAPTURE,
+            move |ev: &mut EventCx<'_, events::PointerDown>| {
+                forget(&swallowed, ev.id);
+            },
+        ));
+        let swallowed = Rc::clone(&self.swallowed);
+        held.extend(window.listen(
+            events::POINTER_UP,
+            ListenerOptions::CAPTURE,
+            move |ev: &mut EventCx<'_, events::PointerUp>| {
+                if !forget(&swallowed, ev.id) {
+                    return;
+                }
+                ev.stop_immediate_propagation();
+                ev.prevent_default();
+            },
+        ));
+        let swallowed = Rc::clone(&self.swallowed);
+        held.extend(window.listen(
+            events::POINTER_CANCEL,
+            ListenerOptions::CAPTURE,
+            move |ev: &mut EventCx<'_, events::PointerCancel>| {
+                forget(&swallowed, ev.id);
+            },
+        ));
+        *self.releases.borrow_mut() = held;
+    }
+
     /// Whether an open layer that covers what is under it is on the screen, subscribing the
     /// caller.
     ///
-    /// An application marks the content under such a layer `inert` while this holds. A press past
-    /// the layer then reaches nothing under it and only closes the layer, and a screen reader
-    /// leaves the covered content out.
+    /// An application marks the content under such a layer `inert` while this holds, so that a
+    /// screen reader leaves the covered content out.
     pub fn covering(&self) -> bool {
         self.changed.track();
         self.entries
@@ -258,6 +325,14 @@ impl LayerStack {
     /// Whether `id` is the layer a press belongs to.
     pub fn is_topmost(&self, id: LayerId) -> bool {
         self.topmost() == Some(id)
+    }
+
+    /// Whether `id` has been asked to close and is playing its exit.
+    pub fn is_leaving(&self, id: LayerId) -> bool {
+        self.entries
+            .borrow()
+            .iter()
+            .any(|entry| entry.id() == id && entry.leaving())
     }
 
     /// The layer an Escape belongs to, which is the innermost one that is still open.
@@ -323,6 +398,15 @@ fn root_scope() -> Option<Owner> {
         scope = parent;
     }
     Some(scope)
+}
+
+/// Removes `pointer` from `swallowed`, and answers whether it was there.
+fn forget(swallowed: &RefCell<Vec<PointerId>>, pointer: PointerId) -> bool {
+    let mut swallowed = swallowed.borrow_mut();
+    let before = swallowed.len();
+    swallowed.retain(|held| *held != pointer);
+
+    swallowed.len() != before
 }
 
 #[cfg(test)]
