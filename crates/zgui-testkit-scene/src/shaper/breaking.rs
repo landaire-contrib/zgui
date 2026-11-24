@@ -1,4 +1,4 @@
-//! Greedy line breaking over the clusters, at spaces only.
+//! Greedy line breaking over the clusters, at spaces and after line feeds.
 
 use zgui_text::BreakRequest;
 use zgui_text_style::WrapMode;
@@ -9,7 +9,10 @@ use crate::shaper::cluster::Cluster;
 ///
 /// The rule is the simplest one that is still a line breaker: take the last break opportunity that
 /// fits, and if none does, overflow the line rather than splitting a word. A paragraph that cannot
-/// wrap at all — `text-wrap-mode: nowrap` — is one line however wide it is.
+/// wrap at all (`text-wrap-mode: nowrap`) breaks only after its line feeds.
+///
+/// A line feed ends the line it is on, as in a real shaper, so text that ends in one ends with an
+/// empty line.
 ///
 /// Atomic inlines occupy the line beside the text, so their widths are added at the offsets they
 /// sit at; a line holding a wide image therefore breaks earlier than the same text alone, which is
@@ -19,9 +22,7 @@ pub fn into_lines(clusters: &[Cluster], request: &BreakRequest<'_>) -> Vec<(usiz
         .runs
         .first()
         .is_none_or(|run| run.style.wrap_mode == WrapMode::Wrap);
-    let Some(limit) = request.max_advance.filter(|_| wrapping) else {
-        return vec![(0, clusters.len())];
-    };
+    let limit = request.max_advance.filter(|_| wrapping);
 
     let mut lines = Vec::new();
     let mut start = 0;
@@ -41,9 +42,10 @@ pub fn into_lines(clusters: &[Cluster], request: &BreakRequest<'_>) -> Vec<(usiz
         let wanted = cluster.advance.0 + boxes;
         // A line with no break opportunity on it overflows rather than splitting a word: there is
         // nowhere legal to break, and inventing a break inside a word is a different feature.
-        if let Some(split) =
+        let split = limit.and_then(|limit| {
             last_opportunity.filter(|_| advance + wanted > limit.0 && index > start)
-        {
+        });
+        if let Some(split) = split {
             lines.push((start, split));
             start = split;
             advance = clusters[start..=index]
@@ -54,6 +56,12 @@ pub fn into_lines(clusters: &[Cluster], request: &BreakRequest<'_>) -> Vec<(usiz
             last_opportunity = None;
         } else {
             advance += wanted;
+        }
+        if cluster.forced {
+            lines.push((start, index + 1));
+            start = index + 1;
+            advance = 0.0;
+            last_opportunity = None;
         }
     }
     lines.push((start, clusters.len()));
@@ -171,5 +179,30 @@ mod tests {
         let paragraph = ParagraphStyle::initial();
         let lines = into_lines(&clusters(text), &request(&runs, &paragraph, None));
         assert_eq!(lines, vec![(0, 7)]);
+    }
+
+    #[test]
+    fn a_line_feed_ends_its_line_at_any_wrap_mode_and_width() {
+        let text = "ab\ncd\n";
+        for (wrap_mode, width) in [
+            (WrapMode::Wrap, Some(CssPx(400.0))),
+            (WrapMode::Wrap, None),
+            (WrapMode::NoWrap, Some(CssPx(8.0))),
+        ] {
+            let mut style = TextStyle::initial();
+            style.wrap_mode = wrap_mode;
+            let runs = [StyledRun {
+                text: 0..text.len(),
+                style: Arc::new(style),
+                brush: PaintSlot(0),
+            }];
+            let paragraph = ParagraphStyle::initial();
+            let lines = into_lines(&clusters(text), &request(&runs, &paragraph, width));
+            assert_eq!(
+                lines,
+                vec![(0, 3), (3, 6), (6, 6)],
+                "{wrap_mode:?} at {width:?}"
+            );
+        }
     }
 }

@@ -19,6 +19,8 @@ pub struct Cluster {
     pub advance: CssPx,
     /// Whether a soft break may be taken before it.
     pub breakable: bool,
+    /// Whether the line must end after it, which is true of a line feed.
+    pub forced: bool,
     /// The brush slot the run this cluster belongs to is drawn with.
     pub brush: zgui_text::Brush,
 }
@@ -68,6 +70,8 @@ pub fn shape(content: &ParagraphContent<'_>) -> Vec<Cluster> {
         let run = content.runs.iter().find(|run| run.text.contains(&offset));
         let style = run.map(|run| run.style.as_ref());
         let advance = match style {
+            // A forced break takes no room on its line, as in a real shaper.
+            Some(_) if character == '\n' => CssPx::ZERO,
             Some(style) if character == ' ' => metrics::space_advance(style),
             Some(style) => metrics::advance(style),
             // A character outside every run has no style to be measured with. The contract says the
@@ -80,6 +84,7 @@ pub fn shape(content: &ParagraphContent<'_>) -> Vec<Cluster> {
             offset,
             advance,
             breakable: character == ' ',
+            forced: character == '\n',
             // A cluster outside every run has no brush either; slot zero is an ordinary entry and
             // is the only answer available, which is why the contract says the runs cover the
             // string.
@@ -92,21 +97,26 @@ pub fn shape(content: &ParagraphContent<'_>) -> Vec<Cluster> {
 /// The narrowest and widest the clusters can be laid out at.
 ///
 /// The narrow figure is the widest single word, because a break may only be taken at a space; the
-/// wide figure is every cluster on one line.
+/// wide figure is the widest line between forced breaks.
 pub fn content_widths(clusters: &[Cluster]) -> (CssPx, CssPx) {
     let mut widest_word: f32 = 0.0;
     let mut word: f32 = 0.0;
-    let mut total: f32 = 0.0;
+    let mut widest_line: f32 = 0.0;
+    let mut line: f32 = 0.0;
     for cluster in clusters {
-        total += cluster.advance.0;
-        if cluster.breakable {
+        line += cluster.advance.0;
+        if cluster.breakable || cluster.forced {
             widest_word = widest_word.max(word);
             word = 0.0;
         } else {
             word += cluster.advance.0;
         }
+        if cluster.forced {
+            widest_line = widest_line.max(line);
+            line = 0.0;
+        }
     }
-    (CssPx(widest_word.max(word)), CssPx(total))
+    (CssPx(widest_word.max(word)), CssPx(widest_line.max(line)))
 }
 
 #[cfg(test)]

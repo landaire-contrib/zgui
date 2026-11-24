@@ -22,18 +22,21 @@ pub fn geometry(
     let mut top = CssPx::ZERO;
     let mut widest: f32 = 0.0;
 
+    let count = shaped.engine.lines.len();
     for (index, (start, end)) in shaped.engine.lines.iter().copied().enumerate() {
+        // The empty line after a final line feed starts and ends at the end of the text.
+        let first = clusters
+            .get(start)
+            .map_or(shaped.text().len(), |held| held.offset);
+        let past = clusters
+            .get(end)
+            .map_or(shaped.text().len(), |held| held.offset);
+        // A box at the end of the text belongs to the last line.
+        let last = index + 1 == count;
         let on_line: Vec<&InlineBoxGeometry> = shaped
             .boxes()
             .iter()
-            .filter(|geometry| {
-                clusters
-                    .get(start)
-                    .is_none_or(|first| geometry.offset >= first.offset)
-                    && clusters
-                        .get(end)
-                        .is_none_or(|past| geometry.offset < past.offset)
-            })
+            .filter(|geometry| geometry.offset >= first && (geometry.offset < past || last))
             .collect();
 
         // A line box is at least as tall as the strut, and taller where an inline box reaches past
@@ -47,13 +50,14 @@ pub fn geometry(
         });
 
         let text_advance: f32 = clusters[start..end].iter().map(|held| held.advance.0).sum();
-        // The white space at the end of the line, unless an inline box follows it.
+        // The white space at the end of the line, before its line feed, unless an inline box
+        // follows it.
         let text = shaped.text();
         let trailing: f32 = clusters[start..end]
             .iter()
             .rev()
             .take_while(|held| {
-                text[held.offset..].starts_with([' ', '\t'])
+                text[held.offset..].starts_with([' ', '\t', '\n'])
                     && on_line
                         .iter()
                         .all(|geometry| geometry.offset <= held.offset)
@@ -87,10 +91,7 @@ pub fn geometry(
 
         widest = widest.max(width + indent);
         lines.push(LineGeometry {
-            text: clusters.get(start).map_or(0, |held| held.offset)
-                ..clusters
-                    .get(end)
-                    .map_or(shaped.text().len(), |held| held.offset),
+            text: first..past,
             top,
             baseline,
             height: CssPx(ascent.0 + descent.0),

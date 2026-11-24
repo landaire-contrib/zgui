@@ -171,6 +171,28 @@ fn an_inline_box_makes_its_line_taller_and_is_placed_on_it() {
 }
 
 #[test]
+fn a_final_line_feed_ends_with_an_empty_line_at_the_end_of_the_text() {
+    let mut paragraph = Paragraph::new("ab\n", TextStyle::initial());
+    paragraph.boxes = vec![InlineBoxGeometry {
+        id: 1,
+        offset: 1,
+        width: CssPx(20.0),
+        height: CssPx(10.0),
+        ascent: CssPx(10.0),
+        shift: CssPx::ZERO,
+    }];
+
+    let broken = paragraph.run(Some(CssPx(200.0)));
+    let lines = &broken.geometry.lines;
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0].text, 0..3, "the line feed ends the first line");
+    assert_eq!(lines[1].text, 3..3);
+    assert_eq!(lines[1].width, CssPx(0.0));
+    assert_eq!(broken.boxes.len(), 1, "the box is placed once");
+    assert_eq!(broken.boxes[0].line, 0);
+}
+
+#[test]
 fn a_vertical_align_shift_moves_the_box_without_reshaping() {
     let mut paragraph = Paragraph::new("ab", TextStyle::initial());
     // The box is shorter than the strut, so the line's height does not follow it and the shift has

@@ -17,9 +17,9 @@
 //! real engine, and a test that does not needs an answer it can compute by hand.
 //!
 //! What it *does* honour is everything a layout test depends on: the cost protocol (shaping is
-//! counted once per content, breaking once per distinct request), line breaking at spaces,
-//! alignment and indent, the strut, atomic inline boxes with their `vertical-align` shift, and the
-//! paragraph's base direction as far as alignment sees it.
+//! counted once per content, breaking once per distinct request), line breaking at spaces and
+//! after line feeds, alignment and indent, the strut, atomic inline boxes with their
+//! `vertical-align` shift, and the paragraph's base direction as far as alignment sees it.
 //!
 //! ```
 //! use std::sync::Arc;

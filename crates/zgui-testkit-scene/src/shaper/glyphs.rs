@@ -85,6 +85,10 @@ pub(crate) fn visit_line(
         }
         brush = Some(cluster.brush);
         pen += boxed;
+        // A line feed draws nothing, as in a real shaper. It is the last cluster of its line.
+        if cluster.forced {
+            continue;
+        }
         let character = shaped.text()[cluster.offset..]
             .chars()
             .next()
