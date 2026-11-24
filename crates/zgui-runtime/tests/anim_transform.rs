@@ -15,7 +15,10 @@ mod support;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
-use zgui_geom::{CssPx, Point};
+use zgui_geom::CssPx;
+use zgui_geom::DevicePx;
+use zgui_geom::Point;
+use zgui_geom::Size;
 use zgui_platform::SurfaceEvent;
 use zgui_profile::{COUNTERS_ENABLED, counter};
 use zgui_view::{BuildCx, IntoView, View};
@@ -638,4 +641,55 @@ fn a_transform_that_ends_before_a_colour_stays_at_its_end() {
         "the bar went back and slid again after its colour ended: {path:?}"
     );
     assert!(arrived < 10, "the slide takes its own 100 ms: {path:?}");
+}
+
+/// A bar that slides on a transition, under an entrance that fills both ways.
+const FILLED_CSS: &str = "root { display: block; width: 400px; height: 300px }
+                          .track { display: block; position: relative;
+                                   width: 400px; height: 40px }
+                          .bar { display: block; width: 100px; height: 40px;
+                                 background-color: rgb(0, 0, 0);
+                                 translate: 0px;
+                                 transition: translate 100ms linear;
+                                 animation: enter 100ms linear both }
+                          .bar.on { translate: 200px }
+                          @keyframes enter {
+                              from { opacity: 0 }
+                              to { opacity: 1 }
+                          }";
+
+#[test]
+fn a_transition_beside_a_filled_animation_stays_at_its_end_after_a_resize() {
+    use zgui_reactive::prelude::*;
+
+    // This case reads no counter, and its transition places the bar. The counters are one set
+    // for the process, so it holds the lock for the cases that count placements.
+    let _guard = measuring();
+    let on = zgui_reactive::RwSignal::new(false);
+    let mut harness = support::app(FILLED_CSS, move |cx: &mut BuildCx<'_>| {
+        let view = zgui_elements::column().class("root").child(
+            zgui_elements::column().class("track").child(
+                zgui_elements::column()
+                    .class("bar")
+                    .class_toggle(zgui_interned::ClassName::new("on"), move || on.get()),
+            ),
+        );
+        Box::new(view.into_view().build(cx))
+    });
+    harness.settle(8);
+    harness.run_for(Duration::from_millis(200), FRAME);
+    on.set(true);
+    harness.run_for(Duration::from_millis(200), FRAME);
+    assert_eq!(inks(&harness, "bar")[0].0, 200, "the bar arrives");
+
+    harness.deliver_to_first(SurfaceEvent::Resized(Size::new(
+        DevicePx(400.0),
+        DevicePx(280.0),
+    )));
+    harness.settle(8);
+    assert_eq!(
+        inks(&harness, "bar")[0].0,
+        200,
+        "the bar stays where its transition ended"
+    );
 }

@@ -161,6 +161,13 @@ impl Stage {
         )));
     }
 
+    /// Hides the surface and shows it again, as an application that leaves the foreground and
+    /// returns.
+    pub fn hide_and_show(&mut self) {
+        self.deliver(SurfaceEvent::Occluded(true));
+        self.deliver(SurfaceEvent::Occluded(false));
+    }
+
     /// Moves the pointer to `at`, in device pixels.
     pub fn move_to(&mut self, at: Point<DevicePx, Device>) {
         let position = self.css(at);

@@ -230,6 +230,20 @@ pub(crate) fn advance(
         if key.pseudo_element.is_some() {
             properties |= AnimatedProperties::CASCADED;
         }
+        // A forwards fill or a paused animation keeps the element on its private override, so the
+        // branch above does not conclude a transition that ends beside it. The element's style
+        // still holds the value the transition started from, and the next tick drops the completed
+        // transition that holds its end value. So the element cascades now, while the completed
+        // transition tells the cascade that the destination is reached.
+        if crossed
+            && !advancing
+            && set
+                .transitions
+                .iter()
+                .any(|transition| transition.state == AnimationState::Finished)
+        {
+            properties |= AnimatedProperties::CASCADED;
+        }
         // Sampled before the row is folded rather than after, because what the sample finds can
         // move the element onto another path: an animation that gives an element its first
         // transform changes what the box tree and the painting order make of it, and the summary
@@ -434,8 +448,8 @@ fn step(
     // hundredths at a time — unless the completed one is still there to say the destination has
     // already been reached. So it survives the tick that cascade runs in. While another animation
     // of the element still moves, that cascade has not run yet: an element on a private override
-    // is cascaded only once all of its animations end. The completed transition then stays until
-    // they do, or the concluding cascade starts the finished transition again from its start.
+    // is cascaded only once nothing on it moves. The completed transition then stays until nothing
+    // moves, or the concluding cascade starts the finished transition again from its start.
     let moving = set
         .transitions
         .iter()
