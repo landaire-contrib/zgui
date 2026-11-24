@@ -5,6 +5,10 @@ mod support;
 use std::path::PathBuf;
 
 use support::{Element, Fixture, Frame, lay_out, measurer, relayout};
+use zgui_geom::Device;
+use zgui_geom::DevicePx;
+use zgui_geom::Point;
+use zgui_layout::BoxKey;
 use zgui_layout::LayoutStore;
 use zgui_layout::scroll_region::gutter;
 use zgui_testkit_scene::dump::{TreeDump, golden};
@@ -62,6 +66,34 @@ fn page(overflow: &str) -> Fixture {
              row {{ display: block }}"
         ),
     )
+}
+
+fn gutter_fixture(style: &str) -> Fixture {
+    Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("port").children(vec![Element::new("child")]),
+        ]),
+        &format!(
+            "root {{ display: block; width: 400px; height: 300px }}
+             port {{ display: block; margin: 20px; width: 160px; height: 120px;
+                     overflow: scroll; border: 4px solid black; padding: 10px; {style} }}
+             child {{ display: block; position: relative; left: -10px; top: -10px;
+                      width: 240px; height: 200px }}"
+        ),
+    )
+}
+
+fn hits_box(
+    frame: &Frame,
+    store: &LayoutStore,
+    key: BoxKey,
+    point: Point<DevicePx, Device>,
+) -> bool {
+    frame
+        .hit
+        .hit(point, &frame.clips, &frame.spatial)
+        .iter()
+        .any(|fragment| store.fragments_of_box(key).contains(fragment))
 }
 
 #[test]
@@ -328,4 +360,82 @@ fn a_box_is_found_in_its_scrollers_content_space_from_layout_alone() {
         zgui_layout::scroll_region::into_view::target_in(&store, target, container).is_none(),
         "the scroller is not below the row"
     );
+}
+
+#[test]
+fn child_hits_stop_at_reserved_gutters_but_not_at_hidden_scrollbars() {
+    for hide_scrollbars in [false, true] {
+        let fixture = gutter_fixture(if hide_scrollbars {
+            "--zgui-scrollbar-width: none"
+        } else {
+            ""
+        });
+        let mut store = fixture.box_tree();
+        let mut content = measurer();
+        let frame = lay_out(&mut store, &mut content, 400.0, 300.0);
+        let root = store.root().expect("a root");
+        let port = store.node(root).children[0];
+        let child = store.node(port).children[0];
+        let padding = store
+            .fragment(store.fragments_of_box(port)[0])
+            .expect("the scroller")
+            .padding_box();
+        let gutter = store.layout_of(port).expect("laid out").scrollbar_size;
+        let breadth = if hide_scrollbars { 0.0 } else { 15.0 };
+        assert_eq!(gutter.width.0, breadth);
+        assert_eq!(gutter.height.0, breadth);
+
+        let middle_x = padding.left().0 + 40.0;
+        let middle_y = padding.top().0 + 40.0;
+        let hit = |x, y| hits_box(&frame, &store, child, Point::new(DevicePx(x), DevicePx(y)));
+        assert!(hit(padding.right().0 - gutter.width.0 - 0.5, middle_y));
+        assert!(hit(middle_x, padding.bottom().0 - gutter.height.0 - 0.5));
+        assert_eq!(hit(padding.right().0 - 0.5, middle_y), hide_scrollbars);
+        assert_eq!(hit(middle_x, padding.bottom().0 - 0.5), hide_scrollbars);
+        assert!(
+            hit(padding.left().0 + 0.5, middle_y),
+            "padding is not a gutter"
+        );
+        assert!(
+            !hit(padding.left().0 - 0.5, middle_y),
+            "the border clips content"
+        );
+    }
+}
+
+#[test]
+fn a_gutter_intersects_the_original_rounded_padding_curve() {
+    let fixture = gutter_fixture("border-radius: 30px; transform: translate(13px, 9px)");
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    let frame = lay_out(&mut store, &mut content, 400.0, 300.0);
+    let root = store.root().expect("a root");
+    let port = store.node(root).children[0];
+    let child = store.node(port).children[0];
+    let fragment = store
+        .fragment(store.fragments_of_box(port)[0])
+        .expect("the scroller");
+    let placements = zgui_scene::Placements::of(&frame.spatial);
+    let padding = zgui_layout::fragment::transform::placed::onto_device(
+        fragment.padding_box(),
+        fragment.transform,
+        &placements,
+    );
+    let gutter = store.layout_of(port).expect("laid out").scrollbar_size;
+    assert_eq!(gutter.width.0, 15.0);
+    assert_eq!(gutter.height.0, 15.0);
+
+    let hit = |x, y| hits_box(&frame, &store, child, Point::new(DevicePx(x), DevicePx(y)));
+    let right = padding.right().0 - gutter.width.0;
+    assert!(
+        hit(right - 1.0, padding.top().0 + 8.0),
+        "the gutter must not move or tighten the padding-box curve"
+    );
+    assert!(
+        !hit(right - 1.0, padding.top().0 + 0.5),
+        "the original curve still excludes the top corner"
+    );
+    assert!(!hit(padding.left().0 + 0.5, padding.top().0 + 0.5));
+    assert!(!hit(right + 0.5, padding.top().0 + 40.0));
+    assert!(!hit(padding.left().0 + 40.0, padding.bottom().0 - 0.5));
 }

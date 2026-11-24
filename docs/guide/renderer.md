@@ -47,6 +47,10 @@ the surface it is given is not the surface it drew into last time.
 If you are writing a renderer over a swap chain, this is the decision to make first, and it is not
 reversible later without changing everything above it.
 
+Scrollable descendants are clipped to the padding box minus the reserved scrollbar gutters.
+A rounded padding-box clip is retained and intersected with that rectangle. Scroll-copy uses the
+same reduced region, so content cannot leave stale pixels in the gutters.
+
 ## Rule two: damage is retired on submission, not on presentation
 
 `draw` returns a `FrameOutcome`, deliberately not a `Result`. Most of the ways a frame fails to

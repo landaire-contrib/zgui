@@ -11,6 +11,7 @@ mod support;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use support::Frame;
 use support::{Element, Fixture, fragments, lay_out, lay_out_only, measurer};
 use zgui_geom::{Device, DevicePx, Point};
 use zgui_interned::ClassName;
@@ -162,6 +163,119 @@ fn both(index: usize, grown: f32) -> (Snapshot, Snapshot) {
     let carried = answers.pop().expect("both passes ran");
     let composed = answers.pop().expect("both passes ran");
     (composed, carried)
+}
+
+fn nested_gutter_hits(store: &LayoutStore, frame: &Frame, port: zgui_layout::BoxKey) -> [bool; 5] {
+    let child = store.node(port).children[0];
+    let fragment = store
+        .fragment(store.fragments_of_box(port)[0])
+        .expect("the nested scroller");
+    let placements = zgui_scene::Placements::of(&frame.spatial);
+    let padding = fragment.on_device(fragment.padding_box(), &placements);
+    let gutter = store.layout_of(port).expect("laid out").scrollbar_size;
+    assert_eq!(gutter.width.0, 15.0);
+    assert_eq!(gutter.height.0, 15.0);
+
+    let hits_child = |x, y| {
+        frame
+            .hit
+            .hit(
+                Point::new(DevicePx(x), DevicePx(y)),
+                &frame.clips,
+                &frame.spatial,
+            )
+            .iter()
+            .any(|frag| store.fragments_of_box(child).contains(frag))
+    };
+    [
+        hits_child(
+            padding.right().0 - gutter.width.0 - 0.5,
+            padding.top().0 + 40.0,
+        ),
+        hits_child(
+            padding.left().0 + 40.0,
+            padding.bottom().0 - gutter.height.0 - 0.5,
+        ),
+        hits_child(padding.right().0 - 0.5, padding.top().0 + 40.0),
+        hits_child(padding.left().0 + 40.0, padding.bottom().0 - 0.5),
+        hits_child(padding.left().0 + 0.5, padding.top().0 + 0.5),
+    ]
+}
+
+#[test]
+fn a_moved_nested_scroller_keeps_its_gutters_clipped() {
+    let _guard = exclusive();
+    let mut fixture = Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("above"),
+            Element::new("outer").children(vec![
+                Element::new("inner").children(vec![Element::new("content")]),
+                Element::new("below"),
+            ]),
+        ]),
+        "root { display: block; width: 400px; height: 400px }
+         above { display: block; height: 20px }
+         above.tall { height: 50px }
+         outer { display: block; width: 240px; height: 240px; overflow: scroll }
+         inner { display: block; width: 140px; height: 120px; margin: 12px;
+                 overflow: scroll; border: 2px solid black; padding: 6px; border-radius: 24px }
+         content { display: block; width: 220px; height: 180px;
+                   position: relative; left: -6px; top: -6px }
+         below { display: block; height: 400px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    let mut frame = lay_out(&mut store, &mut content, 400.0, 400.0);
+    let root = store.root().expect("a root box");
+    let above = store.node(root).children[0];
+    let outer = store.node(root).children[1];
+    let inner = store.node(outer).children[0];
+    let child = store.node(inner).children[0];
+    let child_fragment = store.fragments_of_box(child)[0];
+    let clip = store.fragment(child_fragment).expect("the content").clip;
+    let previous_top = store
+        .fragment(store.fragments_of_box(inner)[0])
+        .expect("the nested scroller")
+        .border_box
+        .top();
+    let expected = [true, true, false, false, false];
+    assert_eq!(nested_gutter_hits(&store, &frame, inner), expected);
+
+    retire_all(&mut fixture);
+    let above_element = store.node(above).source.expect("the preceding element");
+    let above_index = fixture
+        .document
+        .store()
+        .index_of(above_element)
+        .expect("a live element");
+    fixture.edit_restyle_and_patch(&mut store, |edit| {
+        edit.set_classes(above_index, &[ClassName::new("tall")]);
+    });
+    lay_out_only(&mut store, &mut content, 400.0, 400.0);
+    counter::reset();
+    let mut dirty = DocumentMarks::for_document(&mut fixture.document);
+    fragments(&mut frame, &mut store, root, &mut dirty);
+    if COUNTERS_ENABLED {
+        assert!(
+            counter::get(Counter::BoxesShifted) > 0,
+            "the moved subtree was not carried"
+        );
+    }
+
+    let current_top = store
+        .fragment(store.fragments_of_box(inner)[0])
+        .expect("the nested scroller")
+        .border_box
+        .top();
+    assert_eq!(current_top.0 - previous_top.0, 30.0);
+    assert_eq!(
+        store.fragment(child_fragment).expect("the content").clip,
+        clip
+    );
+    assert_eq!(nested_gutter_hits(&store, &frame, inner), expected);
+
+    fragments(&mut frame, &mut store, root, &mut Everything);
+    assert_eq!(nested_gutter_hits(&store, &frame, inner), expected);
 }
 
 #[test]
