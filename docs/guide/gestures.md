@@ -6,7 +6,8 @@ The window reads taps, long presses, pans and pinches from the touch stream. Thi
 
 - A tap is a press and a release that did not travel past the slop. It clicks the element.
 - A touch shows as pressed (`:active`) after the finger is held for 100 ms. A pan that starts before then cancels it, so rows do not light up under a scroll. A tap that lifts before then shows as pressed for 100 ms after the lift.
-- A long press is a contact that stays still for half a second. It sends `context_menu` to the element under it. If a listener calls `prevent_default` on that event, the contact does not pan, so the finger can move onto the menu that the listener opened.
+- A long press is a contact that stays still for 400 ms. It sends `context_menu` to the element under it. If a listener calls `prevent_default` on that event, the contact does not pan, so the finger can move onto the menu that the listener opened.
+- A touch does not set `:hover`. Elements still receive `pointer_enter` and `pointer_leave` as the finger moves.
 - A pan is a contact that travels past the slop. It scrolls the scroll containers under the point where it started. A pan never clicks.
 - The scroll moves as a scroll view on iOS does. The content follows the finger and stretches past an end. When the finger lifts, the content keeps its speed and slows down, and it bounces at an end that it reaches.
 - A container stretches and bounces only along an axis where its content is larger than the container.

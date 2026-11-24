@@ -4,9 +4,9 @@ use core::time::Duration;
 
 /// How long a still contact is held before it becomes a long press.
 ///
-/// Half a second is what a touch platform means by "press and hold": short enough that nobody
-/// wonders whether it worked, long enough that it is not fired by a slow tap.
-pub const LONG_PRESS: Duration = Duration::from_millis(500);
+/// The time an iOS context menu takes to open: short enough that nobody wonders whether it
+/// worked, long enough that it is not fired by a slow tap.
+pub const LONG_PRESS: Duration = Duration::from_millis(400);
 
 #[cfg(test)]
 mod tests {

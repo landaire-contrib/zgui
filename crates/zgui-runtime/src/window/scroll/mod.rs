@@ -578,7 +578,7 @@ impl Window {
     ///
     /// A held finger is **not** an animation, and answering it as one is the difference between a
     /// press-and-hold costing one wake and costing one wake per refresh interval for as long as it
-    /// is held: nothing about the contact changes between the press and the half-second mark, so
+    /// is held: nothing about the contact changes between the press and the long-press mark, so
     /// every frame in between draws the same pixels. This is the moment the recogniser actually
     /// owes an answer at, and it is the only wake a held contact is worth.
     pub(crate) fn gesture_deadline(&self) -> Option<web_time::Instant> {
