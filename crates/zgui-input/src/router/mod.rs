@@ -567,6 +567,8 @@ impl Router {
                 defaults::on_press(world.document.store(), Some(world.layout), chain)
             }
             PointerAction::Released => defaults::on_release(
+                world.document.store(),
+                Some(world.layout),
                 chain,
                 self.pressed
                     .iter()

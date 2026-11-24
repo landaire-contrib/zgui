@@ -142,8 +142,8 @@ pub fn step(
 }
 
 /// Whether this element declares itself focusable, by attribute or by being one of the names that
-/// are focusable by nature.
-fn declares_focusable(store: &DocumentStore, index: NodeIndex) -> bool {
+/// are focusable by nature, whatever its state.
+pub fn declares_focusable(store: &DocumentStore, index: NodeIndex) -> bool {
     if tabindex(store, index).is_some() {
         return true;
     }

@@ -150,3 +150,21 @@ fn a_control_takes_focus_when_pressed_by_default() {
     assert_eq!(script.focused(), script.control.get_untracked());
     assert!(!script.text_input_on());
 }
+
+#[test]
+fn a_press_on_the_mark_lifted_over_the_padding_of_the_control_clicks_it() {
+    // The mark spans 12 to 32 across the control. The finger moves 7 pixels, inside the slop.
+    let mut script = scripted(false);
+    script.touch(PointerAction::Pressed, 13.0, CONTROL_TOP + 22.0);
+    script.touch(PointerAction::Moved, 6.0, CONTROL_TOP + 22.0);
+    script.touch(PointerAction::Released, 6.0, CONTROL_TOP + 22.0);
+    assert_eq!(script.clicks.get(), 1);
+
+    script.touch(PointerAction::Pressed, 13.0, CONTROL_TOP + 22.0);
+    script.touch(PointerAction::Released, 13.0, CONTROL_TOP + 50.0);
+    assert_eq!(
+        script.clicks.get(),
+        1,
+        "a lift below the control is no click"
+    );
+}
