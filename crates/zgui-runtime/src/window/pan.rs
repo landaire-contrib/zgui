@@ -243,6 +243,15 @@ impl Window {
         self.send_pan(pan, GesturePhase::Cancelled, Velocity::default(), timestamp);
     }
 
+    /// Cancels the element pan in progress of any contact, for a pinch that took the contacts.
+    pub(super) fn cancel_any_element_pan(&mut self, timestamp: Timestamp) {
+        let Some(pan) = self.element_pan.take() else {
+            return;
+        };
+
+        self.send_pan(pan, GesturePhase::Cancelled, Velocity::default(), timestamp);
+    }
+
     /// Whether a person can scroll `container` along `axis` for a contact that moved `travel` CSS
     /// pixels along it. The content follows the contact, so the offset moves against it.
     fn can_scroll(&self, container: NodeKey, axis: Axis, travel: f32) -> bool {

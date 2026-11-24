@@ -115,6 +115,13 @@ impl Track {
         self.claimed = true;
     }
 
+    /// Records that a pinch took it. It then stops panning and does not tap or pan again.
+    pub fn hold(&mut self) {
+        self.claimed = true;
+        self.spent = true;
+        self.panning = false;
+    }
+
     /// Records that it moved to `to`.
     pub fn moved(&mut self, to: Point<CssPx, Css>, when: Timestamp) -> Movement {
         let by = Size::new(CssPx(to.x.0 - self.at.x.0), CssPx(to.y.0 - self.at.y.0));

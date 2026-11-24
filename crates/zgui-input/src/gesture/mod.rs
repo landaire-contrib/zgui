@@ -30,7 +30,8 @@ use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use zgui_geom::{Css, CssPx, Point, Size};
 use zgui_vocab::{
-    PointerAction, PointerEvent, PointerId, PointerKind, PointerSample, Timestamp, Velocity,
+    GesturePhase, PointerAction, PointerEvent, PointerId, PointerKind, PointerSample, Timestamp,
+    Velocity,
 };
 
 pub use crate::gesture::longpress::LONG_PRESS;
@@ -85,9 +86,16 @@ pub enum Gesture {
         velocity: Velocity,
     },
     /// Two fingers moved towards or away from each other.
+    ///
+    /// A pinch starts when a second contact goes down, and ends when fewer than two remain. It is
+    /// read between the two contacts that went down first.
     Pinch {
-        /// How much the distance between them has changed since they went down.
-        scale: f32,
+        /// Where in the gesture this reading is.
+        phase: GesturePhase,
+        /// The distance between the two contacts divided by their distance at the reading before.
+        step: f32,
+        /// The point midway between them.
+        at: Point<CssPx, Css>,
     },
 }
 
@@ -128,8 +136,21 @@ pub enum Gesture {
 pub struct Gestures {
     /// The contacts that are down, by pointer.
     contacts: FxHashMap<PointerId, Track>,
-    /// The distance between the first two contacts when the second one went down.
-    pinch_origin: Option<f32>,
+    /// The contacts that are down, in the order they went down.
+    pressed: SmallVec<[PointerId; 4]>,
+    /// The pinch of the first two contacts, while two are down.
+    pinch: Option<Pinch>,
+}
+
+/// A pinch in progress.
+#[derive(Clone, Copy, Debug)]
+struct Pinch {
+    /// The distance between the two contacts at the last reading.
+    spread: f32,
+    /// The point midway between them at the last reading.
+    at: Point<CssPx, Css>,
+    /// Whether an element took the pinch, so that no contact pans or taps until it ends.
+    held: bool,
 }
 
 impl Gestures {
@@ -179,9 +200,17 @@ impl Gestures {
         }
         match action {
             PointerAction::Pressed => {
-                self.contacts
-                    .insert(event.id, Track::started(event.position, at));
-                self.pinch_origin = self.spread();
+                let mut track = Track::started(event.position, at);
+                if self.pinch.is_some_and(|pinch| pinch.held) {
+                    track.hold();
+                }
+                self.contacts.insert(event.id, track);
+                self.pressed.retain(|id| *id != event.id);
+                self.pressed.push(event.id);
+                match self.pinch {
+                    Some(_) => self.rebase_pinch(),
+                    None => read.extend(self.start_pinch()),
+                }
             }
             PointerAction::Moved => {
                 let Some(track) = self.contacts.get_mut(&event.id) else {
@@ -203,14 +232,13 @@ impl Gestures {
                         velocity: moved.velocity,
                     });
                 }
-                if let Some(scale) = self.pinch_scale() {
-                    read.push(Gesture::Pinch { scale });
-                }
+                read.extend(self.move_pinch());
             }
             PointerAction::Released => {
                 let Some(track) = self.contacts.remove(&event.id) else {
                     return read;
                 };
+                self.pressed.retain(|id| *id != event.id);
                 if track.is_panning() {
                     read.push(Gesture::PanEnd {
                         pointer: event.id,
@@ -223,14 +251,15 @@ impl Gestures {
                         at: event.position,
                     });
                 }
-                self.pinch_origin = self.spread();
+                read.extend(self.end_pinch(GesturePhase::Ended));
             }
             PointerAction::Cancelled => {
                 // A cancelled contact produces no reading at all, which is the whole point of the
                 // action existing: something else took the interaction over, and reporting a tap
                 // for it would activate the control the gesture was taken away from.
                 self.contacts.remove(&event.id);
-                self.pinch_origin = self.spread();
+                self.pressed.retain(|id| *id != event.id);
+                read.extend(self.end_pinch(GesturePhase::Cancelled));
             }
             // Nothing else in the stream contributes to a reading: an enter and a leave are about
             // where a pointer is, and a kind this build has never heard of is not guessed at.
@@ -272,18 +301,91 @@ impl Gestures {
             .min()
     }
 
-    /// The distance between the first two contacts, if there are two.
-    fn spread(&self) -> Option<f32> {
-        let mut positions = self.contacts.values().map(|track| track.at());
-        let first = positions.next()?;
-        let second = positions.next()?;
-        Some(pinch::distance(first, second))
+    /// Records that an element took the pinch in progress. No contact then pans or taps until the
+    /// pinch ends, including a contact that goes down during it.
+    pub fn hold_pinch(&mut self) {
+        let Some(pinch) = self.pinch.as_mut() else {
+            return;
+        };
+        pinch.held = true;
+        for track in self.contacts.values_mut() {
+            track.hold();
+        }
     }
 
-    /// How far the two contacts have spread since the second went down.
-    fn pinch_scale(&self) -> Option<f32> {
-        let origin = self.pinch_origin?;
-        pinch::scale(origin, self.spread()?)
+    /// The distance between the two contacts that went down first and the point midway between
+    /// them, if two are down.
+    fn measure(&self) -> Option<(f32, Point<CssPx, Css>)> {
+        let mut down = self.pressed.iter().filter_map(|id| self.contacts.get(id));
+        let first = down.next()?.at();
+        let second = down.next()?.at();
+        Some((
+            pinch::distance(first, second),
+            pinch::midpoint(first, second),
+        ))
+    }
+
+    /// Starts a pinch when a second contact went down far enough from the first.
+    fn start_pinch(&mut self) -> Option<Gesture> {
+        if self.contacts.len() != 2 {
+            return None;
+        }
+        let (spread, at) = self.measure()?;
+        pinch::scale(spread, spread)?;
+        self.pinch = Some(Pinch {
+            spread,
+            at,
+            held: false,
+        });
+
+        Some(Gesture::Pinch {
+            phase: GesturePhase::Started,
+            step: 1.0,
+            at,
+        })
+    }
+
+    /// Reads the pinch in progress after a contact moved.
+    fn move_pinch(&mut self) -> Option<Gesture> {
+        let (spread, at) = self.measure()?;
+        let pinch = self.pinch.as_mut()?;
+        let step = pinch::scale(pinch.spread, spread)?;
+        pinch.spread = spread;
+        pinch.at = at;
+
+        Some(Gesture::Pinch {
+            phase: GesturePhase::Moved,
+            step,
+            at,
+        })
+    }
+
+    /// Measures the pinch again from the contacts now down, after one went down or lifted while
+    /// two others stay, so that the change of pair is not read as a step.
+    fn rebase_pinch(&mut self) {
+        let measured = self.measure();
+        let Some(pinch) = self.pinch.as_mut() else {
+            return;
+        };
+        if let Some((spread, at)) = measured {
+            pinch.spread = spread;
+            pinch.at = at;
+        }
+    }
+
+    /// Ends the pinch in progress as `phase` when fewer than two contacts are left.
+    fn end_pinch(&mut self, phase: GesturePhase) -> Option<Gesture> {
+        if self.contacts.len() >= 2 {
+            self.rebase_pinch();
+            return None;
+        }
+        let pinch = self.pinch.take()?;
+
+        Some(Gesture::Pinch {
+            phase,
+            step: 1.0,
+            at: pinch.at,
+        })
     }
 }
 
@@ -291,7 +393,7 @@ impl Gestures {
 mod tests {
     use zgui_geom::{Css, CssPx, Point};
     use zgui_vocab::{
-        PointerAction, PointerEvent, PointerId, PointerKind, PointerSample, Timestamp,
+        GesturePhase, PointerAction, PointerEvent, PointerId, PointerKind, PointerSample, Timestamp,
     };
 
     use super::{Gesture, Gestures};
@@ -375,17 +477,89 @@ mod tests {
         assert!(!gestures.awaits_deadline());
     }
 
+    /// The pinch readings in `read`.
+    fn pinches(read: &[Gesture]) -> Vec<(GesturePhase, f32, Point<CssPx, Css>)> {
+        read.iter()
+            .filter_map(|gesture| match gesture {
+                Gesture::Pinch { phase, step, at } => Some((*phase, *step, *at)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn point(x: f32, y: f32) -> Point<CssPx, Css> {
+        Point::new(CssPx(x), CssPx(y))
+    }
+
     #[test]
-    fn two_fingers_moving_apart_are_a_pinch() {
+    fn two_fingers_moving_apart_are_a_pinch_between_them() {
         let mut gestures = Gestures::new();
         gestures.pointer(PointerAction::Pressed, &finger(1, 0.0, 0.0), stamp(0));
-        gestures.pointer(PointerAction::Pressed, &finger(2, 100.0, 0.0), stamp(0));
-        let read = gestures.pointer(PointerAction::Moved, &finger(2, 200.0, 0.0), stamp(20));
-        let scale = read.iter().find_map(|gesture| match gesture {
-            Gesture::Pinch { scale } => Some(*scale),
-            _ => None,
-        });
-        assert_eq!(scale, Some(2.0));
+        let started = gestures.pointer(PointerAction::Pressed, &finger(2, 100.0, 0.0), stamp(0));
+        assert_eq!(
+            pinches(&started),
+            [(GesturePhase::Started, 1.0, point(50.0, 0.0))]
+        );
+
+        let moved = gestures.pointer(PointerAction::Moved, &finger(2, 200.0, 0.0), stamp(20));
+        assert_eq!(
+            pinches(&moved),
+            [(GesturePhase::Moved, 2.0, point(100.0, 0.0))]
+        );
+        let again = gestures.pointer(PointerAction::Moved, &finger(2, 300.0, 0.0), stamp(40));
+        assert_eq!(
+            pinches(&again),
+            [(GesturePhase::Moved, 1.5, point(150.0, 0.0))],
+            "each step is measured from the reading before"
+        );
+
+        let ended = gestures.pointer(PointerAction::Released, &finger(1, 0.0, 0.0), stamp(60));
+        assert_eq!(
+            pinches(&ended),
+            [(GesturePhase::Ended, 1.0, point(150.0, 0.0))]
+        );
+    }
+
+    #[test]
+    fn a_held_pinch_stops_the_pan_of_its_contacts() {
+        let mut gestures = Gestures::new();
+        gestures.pointer(PointerAction::Pressed, &finger(1, 0.0, 0.0), stamp(0));
+        let panned = gestures.pointer(PointerAction::Moved, &finger(1, 0.0, 40.0), stamp(20));
+        assert!(matches!(panned.first(), Some(Gesture::PanStart { .. })));
+        gestures.pointer(PointerAction::Pressed, &finger(2, 100.0, 40.0), stamp(30));
+        gestures.hold_pinch();
+
+        let moved = gestures.pointer(PointerAction::Moved, &finger(1, 0.0, 80.0), stamp(40));
+        assert!(
+            moved
+                .iter()
+                .all(|gesture| matches!(gesture, Gesture::Pinch { .. })),
+            "{moved:?}"
+        );
+        gestures.pointer(PointerAction::Released, &finger(2, 100.0, 40.0), stamp(50));
+        let left = gestures.pointer(PointerAction::Moved, &finger(1, 0.0, 120.0), stamp(60));
+        let lifted = gestures.pointer(PointerAction::Released, &finger(1, 0.0, 120.0), stamp(70));
+        assert!(left.is_empty() && lifted.is_empty(), "{left:?} {lifted:?}");
+    }
+
+    #[test]
+    fn a_third_finger_is_not_read_as_a_step() {
+        let mut gestures = Gestures::new();
+        gestures.pointer(PointerAction::Pressed, &finger(2, 0.0, 0.0), stamp(0));
+        gestures.pointer(PointerAction::Pressed, &finger(3, 100.0, 0.0), stamp(0));
+        // A lower id than the first two, as iOS can give a later touch.
+        let third = gestures.pointer(PointerAction::Pressed, &finger(1, 10.0, 0.0), stamp(10));
+        assert!(pinches(&third).is_empty());
+        let moved = gestures.pointer(PointerAction::Moved, &finger(1, 20.0, 0.0), stamp(20));
+        assert!(
+            pinches(&moved).iter().all(|(_, step, _)| *step == 1.0),
+            "the third finger is not one of the pair: {moved:?}"
+        );
+        let moved = gestures.pointer(PointerAction::Moved, &finger(3, 200.0, 0.0), stamp(30));
+        assert_eq!(
+            pinches(&moved),
+            [(GesturePhase::Moved, 2.0, point(100.0, 0.0))]
+        );
     }
 
     #[test]

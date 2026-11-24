@@ -458,9 +458,12 @@ impl Window {
                     );
                     self.release_scroll(panned, thrown);
                 }
-                // A tap, a long press and a pinch are readings a component acts on. Performing one
-                // here would be this layer deciding what a long press means, which is a decision
-                // that belongs to whatever was pressed.
+                zgui_input::Gesture::Pinch { phase, step, at } => {
+                    self.carry_out_pinch(*phase, *step, *at, timestamp);
+                }
+                // A tap and a long press are readings a component acts on. Performing one here
+                // would be this layer deciding what a long press means, which is a decision that
+                // belongs to whatever was pressed.
                 _ => {}
             }
         }
@@ -470,6 +473,19 @@ impl Window {
     fn end_pan(&mut self) {
         self.panning = Vec::new();
         self.panning_pointer = None;
+    }
+
+    /// Ends the scroll drag in progress, if any, and lets go of the content with no speed.
+    pub(super) fn stop_scroll_pan(&mut self) {
+        if self.panning_pointer.is_none() {
+            return;
+        }
+        let panned = self.panning.first().copied();
+        self.end_pan();
+        self.release_scroll(
+            panned,
+            zgui_geom::Size::new(zgui_geom::DevicePx(0.0), zgui_geom::DevicePx(0.0)),
+        );
     }
 
     /// Catches the scrolling under a finger that came down at `at`.

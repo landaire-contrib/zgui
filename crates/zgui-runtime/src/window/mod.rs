@@ -35,6 +35,7 @@ mod select;
 mod sheets;
 mod surface_focus;
 pub mod text_aa;
+mod touch_pinch;
 mod value;
 mod virtual_keyboard;
 mod zoom;
@@ -348,6 +349,8 @@ pub struct Window {
     panning_pointer: Option<zgui_vocab::PointerId>,
     /// The pan in progress that an element took from the scrolling.
     element_pan: Option<crate::window::pan::ElementPan>,
+    /// The element that took the touch pinch in progress.
+    touch_pinch: Option<zgui_dom::NodeKey>,
     /// The pointers released or cancelled since the commands were last carried out, whose
     /// captures end after those commands.
     lifted: Vec<zgui_vocab::PointerId>,
@@ -844,6 +847,7 @@ impl Window {
             panning: Vec::new(),
             panning_pointer: None,
             element_pan: None,
+            touch_pinch: None,
             lifted: Vec::new(),
             owed_scrolls: Vec::new(),
             carried_scrolls: Vec::new(),

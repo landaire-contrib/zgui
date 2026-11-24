@@ -15,6 +15,14 @@ pub fn distance(first: Point<CssPx, Css>, second: Point<CssPx, Css>) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
+/// The point midway between two contacts.
+pub fn midpoint(first: Point<CssPx, Css>, second: Point<CssPx, Css>) -> Point<CssPx, Css> {
+    Point::new(
+        CssPx((first.x.0 + second.x.0) / 2.0),
+        CssPx((first.y.0 + second.y.0) / 2.0),
+    )
+}
+
 /// How much two contacts have spread since they were `origin` apart, or nothing when they started
 /// too close together to say.
 pub fn scale(origin: f32, now: f32) -> Option<f32> {
