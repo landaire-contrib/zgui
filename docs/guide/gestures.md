@@ -29,7 +29,7 @@ view! {
 }
 ```
 
-When a pan starts, the window compares how far the contact travelled across and down. The larger distance gives the axis of the pan. A diagonal pan is vertical. Then the window examines the element under the start point and each of its ancestors, from the innermost outwards, and offers the pan to each element that listens for pans along the axis:
+When a pan starts, the window compares how far the contact travelled across and down. The pan is horizontal when it travelled at least 1.5 times as far across as down, and vertical otherwise, so a diagonal pan is vertical. Then the window examines the element under the start point and each of its ancestors, from the innermost outwards, and offers the pan to each element that listens for pans along the axis:
 
 - A listener in the bubble phase (`on:vertical_pan`) is offered the pan only if no scroll container between it and the start point can scroll in the direction the contact moves.
 - A listener in the capture phase (`on:vertical_pan:capture`) is offered the pan before the scroll containers inside it.

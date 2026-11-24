@@ -1,7 +1,8 @@
 //! Pans that an element takes from the scrolling.
 //!
-//! A touch contact that travels past the slop is a pan. The axis that it travelled farther along
-//! when it became a pan is its axis, and the window decides once who gets it. It walks from the
+//! A touch contact that travels past the slop is a pan. A pan that travelled at least
+//! [`HORIZONTAL_RATIO`] times as far across as down when it became a pan is horizontal, and any
+//! other pan is vertical. The window decides once who gets it. It walks from the
 //! element under the start point outwards, and offers the pan to each element on the way that
 //! listens for pans along that axis ([`EventKind::HorizontalPan`] or [`EventKind::VerticalPan`]):
 //!
@@ -56,6 +57,13 @@ enum Listening {
     Capture,
 }
 
+/// How many times as far across as down a pan travels to be horizontal: at most about 34 degrees
+/// from the horizontal.
+///
+/// A steeper pan is vertical, because vertical scrolling is the most frequent use of a pan, and a
+/// thumb that pushes a list upwards often moves sideways first.
+const HORIZONTAL_RATIO: f32 = 1.5;
+
 /// The axes a pan can go along.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Axis {
@@ -64,12 +72,11 @@ enum Axis {
 }
 
 impl Axis {
-    /// The axis a contact that travelled from `from` to `to` goes along. A diagonal goes
-    /// vertically, because vertical scrolling is the most frequent use of a pan.
+    /// The axis a contact that travelled from `from` to `to` goes along.
     fn of(from: Point<CssPx, Css>, to: Point<CssPx, Css>) -> Self {
         let across = (to.x.0 - from.x.0).abs();
         let down = (to.y.0 - from.y.0).abs();
-        if across > down {
+        if across >= down * HORIZONTAL_RATIO && across > 0.0 {
             Self::Horizontal
         } else {
             Self::Vertical
@@ -308,11 +315,16 @@ mod tests {
     use super::Axis;
 
     #[test]
-    fn the_axis_is_the_one_the_contact_travelled_farther_along() {
+    fn a_pan_is_horizontal_only_when_it_travelled_clearly_across() {
         let from = Point::new(CssPx(100.0), CssPx(100.0));
         assert_eq!(
             Axis::of(from, Point::new(CssPx(80.0), CssPx(105.0))),
             Axis::Horizontal
+        );
+        assert_eq!(
+            Axis::of(from, Point::new(CssPx(91.0), CssPx(93.0))),
+            Axis::Vertical,
+            "a thumb that rolls sideways as it pushes upwards scrolls"
         );
         assert_eq!(
             Axis::of(from, Point::new(CssPx(105.0), CssPx(70.0))),
