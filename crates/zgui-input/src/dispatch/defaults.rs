@@ -9,7 +9,7 @@
 //! frame, which is also the only thing that knows whether a handler asked for the default to be
 //! skipped — and it cannot know that until every listener on the path has run.
 
-use zgui_dom::{DocumentStore, NodeKey};
+use zgui_dom::{DocumentStore, NodeKey, NodeKind};
 use zgui_layout::LayoutStore;
 use zgui_vocab::{Key, KeyEvent, Modifiers, NamedKey, PointerButton, ScrollDelta, ScrollPhase};
 
@@ -108,13 +108,21 @@ pub fn on_press(
 
 /// What a release does: activate the element the press landed on, if this release is over it.
 ///
-/// A press that slid off its element before being let go is not an activation, which is the
+/// Inside the nearest element that holds the press and declares focus, the release activates the
+/// innermost element that holds both the press and the release. A press on the icon of a button
+/// that is lifted over the button's padding activates the button. When that element cannot take
+/// focus now, or no such element holds the press, the release must be over the pressed element
+/// itself.
+///
+/// A press that slid off its control before being let go is not an activation, which is the
 /// affordance that lets someone change their mind mid-click.
 ///
 /// The primary button alone activates. The secondary button belongs to the context menu, the
 /// middle one and the two side buttons to the application, and a control that ran its action on
 /// any of them would fire on a right press and on the button a mouse navigates back with.
 pub fn on_release(
+    store: &DocumentStore,
+    layout: Option<&LayoutStore>,
     chain: &HitChain,
     pressed: Option<NodeKey>,
     button: Option<PointerButton>,
@@ -123,9 +131,29 @@ pub fn on_release(
         return None;
     }
     let pressed = pressed?;
-    chain
-        .contains(pressed)
-        .then_some(FrameworkDefault::Activate(pressed))
+    if chain.contains(pressed) {
+        return Some(FrameworkDefault::Activate(pressed));
+    }
+
+    let mut common = None;
+    let mut index = store.index_of(pressed)?;
+    loop {
+        let record = store.core(index);
+        if record.kind() == NodeKind::Element {
+            let node = record.key();
+            if common.is_none() && chain.contains(node) {
+                common = Some(node);
+            }
+            // A disabled or hidden control still bounds the walk, so a release never reaches a
+            // focusable container around it.
+            if order::declares_focusable(store, index) {
+                return common
+                    .filter(|_| order::is_focusable(store, layout, node))
+                    .map(FrameworkDefault::Activate);
+            }
+        }
+        index = record.parent()?;
+    }
 }
 
 /// What a wheel does: scroll the nearest scrolling ancestor, if there is one.
@@ -359,16 +387,124 @@ mod tests {
         let primary = Some(PointerButton::Primary);
 
         assert_eq!(
-            on_release(&over_label, Some(store.key_of(control)), primary),
+            on_release(
+                store,
+                None,
+                &over_label,
+                Some(store.key_of(control)),
+                primary
+            ),
             Some(FrameworkDefault::Activate(store.key_of(control))),
             "the release is inside the control that was pressed"
         );
         assert_eq!(
-            on_release(&over_root, Some(store.key_of(control)), primary),
+            on_release(
+                store,
+                None,
+                &over_root,
+                Some(store.key_of(control)),
+                primary
+            ),
             None,
             "and sliding off it before letting go is not an activation"
         );
-        assert_eq!(on_release(&over_label, None, primary), None);
+        assert_eq!(on_release(store, None, &over_label, None, primary), None);
+    }
+
+    #[test]
+    fn a_press_on_the_text_of_a_control_lifted_over_the_control_activates_the_control() {
+        let (document, [root, control, label]) = document();
+        let store = document.store();
+        let over_control = HitChain::to_root(store, store.key_of(control));
+        let over_root = HitChain::to_root(store, store.key_of(root));
+        let primary = Some(PointerButton::Primary);
+
+        assert_eq!(
+            on_release(
+                store,
+                None,
+                &over_control,
+                Some(store.key_of(label)),
+                primary
+            ),
+            Some(FrameworkDefault::Activate(store.key_of(control)))
+        );
+        assert_eq!(
+            on_release(store, None, &over_root, Some(store.key_of(label)), primary),
+            None,
+            "a release outside the control activates nothing"
+        );
+    }
+
+    #[test]
+    fn a_disabled_control_bounds_the_release_inside_a_focusable_panel() {
+        let (document, [root, control, label]) = document();
+        document
+            .edit(&EverythingMatters, |edit| {
+                edit.set_state(control, UiState::DISABLED, true);
+                edit.set_attribute(
+                    root,
+                    AttrName::new("tabindex"),
+                    Some(SharedString::from("0")),
+                );
+            })
+            .expect("not poisoned");
+        let store = document.store();
+        let over_control = HitChain::to_root(store, store.key_of(control));
+        let over_root = HitChain::to_root(store, store.key_of(root));
+        let primary = Some(PointerButton::Primary);
+
+        assert_eq!(
+            on_release(
+                store,
+                None,
+                &over_control,
+                Some(store.key_of(label)),
+                primary
+            ),
+            None
+        );
+        assert_eq!(
+            on_release(
+                store,
+                None,
+                &over_root,
+                Some(store.key_of(control)),
+                primary
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_release_over_another_part_of_the_pressed_control_activates_the_control() {
+        let (document, [root, control, label]) = document();
+        let icon = document
+            .edit(&EverythingMatters, |edit| {
+                edit.set_attribute(
+                    root,
+                    AttrName::new("tabindex"),
+                    Some(SharedString::from("0")),
+                );
+                let icon = edit.create_element(ElementName::new("icon"));
+                edit.insert_before(control, icon, Some(label));
+                icon
+            })
+            .expect("not poisoned");
+        let store = document.store();
+        let over_label = HitChain::to_root(store, store.key_of(label));
+        let over_root = HitChain::to_root(store, store.key_of(root));
+        let primary = Some(PointerButton::Primary);
+
+        assert_eq!(
+            on_release(store, None, &over_label, Some(store.key_of(icon)), primary),
+            Some(FrameworkDefault::Activate(store.key_of(control)))
+        );
+        assert_eq!(
+            on_release(store, None, &over_root, Some(store.key_of(icon)), primary),
+            None,
+            "a release over the focusable panel around the control activates nothing"
+        );
     }
 
     #[test]
@@ -386,7 +522,7 @@ mod tests {
             PointerButton::Other(9),
         ] {
             assert_eq!(
-                on_release(&over_label, pressed, Some(button)),
+                on_release(store, None, &over_label, pressed, Some(button)),
                 None,
                 "{button:?} must leave the control alone"
             );
