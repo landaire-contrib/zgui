@@ -6351,6 +6351,7 @@ dependencies = [
  "smallvec",
  "zgui-arena",
  "zgui-bits",
+ "zgui-css",
  "zgui-dom",
  "zgui-geom",
  "zgui-interned",

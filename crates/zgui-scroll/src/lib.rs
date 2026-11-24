@@ -49,7 +49,7 @@ pub mod stretch;
 
 pub use crate::chain::Absorbed;
 pub use crate::into_view::Align;
-pub use crate::motion::Behavior;
+pub use crate::motion::{Behavior, Pace};
 pub use crate::report::Scrolled;
 pub use crate::scroller::Scroller;
 pub use crate::stretch::Stretch;

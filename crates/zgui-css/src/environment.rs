@@ -127,6 +127,23 @@ pub struct KeyboardMotion {
     pub easing: KeyboardEasing,
 }
 
+impl KeyboardMotion {
+    /// How far the movement has come `elapsed` after its start, where zero is the start and one is
+    /// the end. A spring can go past one before it settles.
+    pub fn progress(self, elapsed: Duration) -> f32 {
+        if elapsed >= self.duration {
+            return 1.0;
+        }
+        match self.easing {
+            KeyboardEasing::CubicBezier(CubicBezier { x1, y1, x2, y2 }) => {
+                let linear = elapsed.as_secs_f64() / self.duration.as_secs_f64();
+                style::bezier::Bezier::calculate_bezier_output(linear, 1e-6, x1, y1, x2, y2) as f32
+            }
+            KeyboardEasing::Spring(spring) => spring.progress(elapsed.as_secs_f64()) as f32,
+        }
+    }
+}
+
 /// The curve an on-screen keyboard moves along.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum KeyboardEasing {
@@ -603,6 +620,35 @@ mod tests {
         }
         assert_eq!(spring(critical).progress(0.0), 0.0);
         assert!(spring(critical).progress(0.5) > 0.998);
+    }
+
+    #[test]
+    fn a_keyboard_movement_follows_its_curve_and_ends_at_its_duration() {
+        let ease_out = KeyboardMotion {
+            duration: Duration::from_millis(250),
+            easing: KeyboardEasing::CubicBezier(CubicBezier {
+                x1: 0.0,
+                y1: 0.0,
+                x2: 0.58,
+                y2: 1.0,
+            }),
+        };
+        assert_eq!(ease_out.progress(Duration::ZERO), 0.0);
+        let half = ease_out.progress(Duration::from_millis(125));
+        assert!(half > 0.5 && half < 1.0, "{half}");
+        assert_eq!(ease_out.progress(Duration::from_millis(250)), 1.0);
+
+        let spring = KeyboardMotion {
+            duration: Duration::from_millis(500),
+            easing: KeyboardEasing::Spring(Spring {
+                mass: 1.0,
+                stiffness: 100.0,
+                damping: 20.0,
+            }),
+        };
+        let early = spring.progress(Duration::from_millis(25));
+        assert!((early - 0.0265).abs() < 1e-3, "{early}");
+        assert_eq!(spring.progress(Duration::from_secs(1)), 1.0);
     }
 
     #[test]

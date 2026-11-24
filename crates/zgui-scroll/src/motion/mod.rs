@@ -15,7 +15,7 @@ use core::time::Duration;
 use zgui_geom::{Device, DevicePx, Point, Size};
 
 pub use crate::motion::momentum::Momentum;
-pub use crate::motion::tween::Tween;
+pub use crate::motion::tween::{Pace, Tween};
 
 /// Whether a scroll jumps or travels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -178,6 +178,12 @@ and they are the values at the end of the movement.
 root { padding-bottom: max(env(safe-area-inset-bottom), env(keyboard-inset-height)); }
 ```
 
+When a field gets focus, when the keyboard area changes, and when the caret moves to another line,
+the window scrolls the containers around the focused field so that the caret and 16 pixels around it
+are above the keyboard. A container that already shows them does not move. The scroll moves with the
+keyboard. Give the content room at its end, as above, so that a field near the end can scroll that
+far.
+
 To move content with the keyboard, transition it with `env(keyboard-animation-duration)` and
 `env(keyboard-animation-easing)`. They are known after the first keyboard movement on a platform that
 reports it. Give a fallback for the time before that, and for a desktop.

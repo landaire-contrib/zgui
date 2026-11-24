@@ -241,8 +241,8 @@ pub fn phase_of_mark(stage: &str) -> Option<Phase> {
         "f.brushes" => Phase::TextPaint,
         "f.boxes" => Phase::BoxTree,
         "f.layout" => Phase::Layout,
-        "f.fragments" | "f.image_demand" | "f.enter" | "f.dispatch_scroll" | "f.images_late"
-        | "f.publish_brushes" | "f.caret" | "f.embed" => Phase::Fragments,
+        "f.fragments" | "f.above_keyboard" | "f.image_demand" | "f.enter" | "f.dispatch_scroll"
+        | "f.images_late" | "f.publish_brushes" | "f.caret" | "f.embed" => Phase::Fragments,
         "f.observe" => Phase::Observe,
         "f.rehit" => Phase::Rehit,
         "f.paint" | "p.expand" => Phase::DamageExpand,

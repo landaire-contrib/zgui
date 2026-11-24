@@ -491,6 +491,10 @@ impl Window {
                 self.damage.rects()
             )
         });
+        // After the fragment pass, which places the field and its scroll containers. The scroll it
+        // starts moves from the next frame.
+        mark("f.above_keyboard");
+        self.keep_caret_above_keyboard();
         // After layout, because a picture's demand *is* its laid-out content box: this is the
         // first moment the loader can know how many device pixels each image actually needs, and
         // the decode it kicks is sized by the answer.

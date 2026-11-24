@@ -7,7 +7,7 @@ use zgui_layout::LayoutStore;
 use zgui_layout::scroll_region::code_region_of_element;
 
 use crate::chain;
-use crate::motion::{Behavior, Momentum, Motion, Tween};
+use crate::motion::{Behavior, Momentum, Motion, Pace, Tween};
 use crate::scroller::Scroller;
 use crate::stretch::Stretch;
 
@@ -93,15 +93,42 @@ impl Scroller {
                 self.record(container, at, landed);
                 Some(landed)
             }
-            Behavior::Smooth => {
-                if at == clamped {
-                    self.motions.remove(&container);
-                    return Some(clamped);
-                }
-                self.motions
-                    .insert(container, Motion::Smooth(Tween::new(at, clamped)));
-                Some(clamped)
-            }
+            Behavior::Smooth => self.travel_to(store, container, to, Pace::Standard),
+        }
+    }
+
+    /// Moves one container to `to` over the next few frames, at `pace`.
+    ///
+    /// Returns where it is heading, or nothing when the container does not scroll at all.
+    pub fn travel_to(
+        &mut self,
+        store: &LayoutStore,
+        container: NodeKey,
+        to: Point<DevicePx, Device>,
+        pace: Pace,
+    ) -> Option<Point<DevicePx, Device>> {
+        let limit = code_region_of_element(store, container)?.limit();
+        let clamped = Point::new(
+            DevicePx(to.x.0.clamp(0.0, limit.x.0)),
+            DevicePx(to.y.0.clamp(0.0, limit.y.0)),
+        );
+        let at = self.offset_of(container);
+        if at == clamped {
+            self.motions.remove(&container);
+            return Some(clamped);
+        }
+        self.motions.insert(
+            container,
+            Motion::Smooth(Tween::new(at, clamped).with_pace(pace)),
+        );
+        Some(clamped)
+    }
+
+    /// Where one container is heading: the destination of its smooth scroll, or where it is.
+    pub fn heading(&self, container: NodeKey) -> Point<DevicePx, Device> {
+        match self.motion_of(container) {
+            Some(Motion::Smooth(tween)) => tween.destination(),
+            _ => self.offset_of(container),
         }
     }
 

@@ -17,9 +17,11 @@ include.workspace = true
 # scrollport sits. This crate owns scroll *offsets*, which are state that changes many times a
 # second and must never re-enter style or layout. It therefore names the document (to mark the one
 # bit a scroll produces), the layout store (to read the region an offset is clamped against) and
-# the vocabulary a scroll is reported in — and nothing above any of them.
+# the vocabulary a scroll is reported in, and the keyboard motion a smooth scroll can follow. It
+# names nothing above any of them.
 [dependencies]
 zgui-bits = { path = "../zgui-bits", version = "0.1.0" }
+zgui-css = { path = "../zgui-css", version = "0.1.0" }
 zgui-dom = { path = "../zgui-dom", version = "0.1.0" }
 zgui-geom = { path = "../zgui-geom", version = "0.1.0" }
 zgui-layout = { path = "../zgui-layout", version = "0.1.0" }

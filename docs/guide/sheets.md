@@ -87,7 +87,7 @@ Your own Cancel control can still close the sheet: set `open` to false.
 
 ## The keyboard
 
-When a field in the sheet shows the on-screen keyboard, the sheet rises to its large detent, and its content ends above the keyboard. When the keyboard goes away, the sheet goes back to its detent. A drag that starts while the keyboard shows starts from the large detent.
+When a field in the sheet shows the on-screen keyboard, the sheet rises to its large detent, and its content ends above the keyboard. If the keyboard covers the field at the large detent, the content scrolls to show it. When the keyboard goes away, the sheet goes back to its detent. A drag that starts while the keyboard shows starts from the large detent.
 
 ## iPad
 

@@ -6,6 +6,35 @@ use zgui_geom::{Device, DevicePx, Point, Size};
 
 use crate::motion::Step;
 
+/// The duration and curve of a smooth scroll.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Pace {
+    /// [`Tween::DURATION`], fast at first and slow at the end.
+    #[default]
+    Standard,
+    /// The duration and curve an on-screen keyboard moves with, so that the content moves with it.
+    Keyboard(zgui_css::environment::KeyboardMotion),
+}
+
+impl Pace {
+    /// The time the scroll takes.
+    fn duration(self) -> Duration {
+        match self {
+            Self::Standard => Tween::DURATION,
+            Self::Keyboard(motion) => motion.duration,
+        }
+    }
+
+    /// How far the scroll has come `elapsed` after its start, where zero is the start and one is
+    /// the end.
+    fn progress(self, elapsed: Duration) -> f32 {
+        match self {
+            Self::Standard => ease(elapsed.as_secs_f32() / Tween::DURATION.as_secs_f32()),
+            Self::Keyboard(motion) => motion.progress(elapsed),
+        }
+    }
+}
+
 /// A scroll interpolating from where it started to where it was asked to go.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tween {
@@ -15,6 +44,8 @@ pub struct Tween {
     to: Point<DevicePx, Device>,
     /// How much of the duration has passed.
     elapsed: Duration,
+    /// The duration and curve.
+    pace: Pace,
 }
 
 impl Tween {
@@ -26,13 +57,20 @@ impl Tween {
     /// time, and the eye is tracking the arrival rather than the speed.
     pub const DURATION: Duration = Duration::from_millis(240);
 
-    /// A scroll from `from` to `to`.
+    /// A scroll from `from` to `to` at the [`Pace::Standard`] pace.
     pub fn new(from: Point<DevicePx, Device>, to: Point<DevicePx, Device>) -> Self {
         Self {
             from,
             to,
             elapsed: Duration::ZERO,
+            pace: Pace::Standard,
         }
+    }
+
+    /// The same scroll at `pace`.
+    pub fn with_pace(mut self, pace: Pace) -> Self {
+        self.pace = pace;
+        self
     }
 
     /// Where it is heading.
@@ -44,7 +82,8 @@ impl Tween {
         self.to
     }
 
-    /// Sends it somewhere else, continuing from where it has actually reached.
+    /// Sends it somewhere else at the [`Pace::Standard`] pace, continuing from where it has
+    /// actually reached.
     ///
     /// The ease starts again from `at`, and that is what makes a run of detents feel like one
     /// motion rather than a series of them. The alternative — keeping the elapsed time and moving
@@ -68,6 +107,7 @@ impl Tween {
         self.from = at;
         self.to = to;
         self.elapsed = Duration::ZERO;
+        self.pace = Pace::Standard;
     }
 
     /// Moves where it started and where it is going by `by`, keeping its progress.
@@ -101,16 +141,15 @@ impl Tween {
 
     /// Advances it by `elapsed`.
     pub fn advance(&mut self, elapsed: Duration) -> Step {
-        self.elapsed = (self.elapsed + elapsed).min(Self::DURATION);
-        let progress = self.elapsed.as_secs_f32() / Self::DURATION.as_secs_f32();
-        let done = self.elapsed >= Self::DURATION;
-        if done {
+        let duration = self.pace.duration();
+        self.elapsed = (self.elapsed + elapsed).min(duration);
+        if self.elapsed >= duration {
             return Step {
                 to: self.to,
                 done: true,
             };
         }
-        let eased = ease(progress);
+        let eased = self.pace.progress(self.elapsed);
         Step {
             to: Point::new(
                 DevicePx(lerp(self.from.x.0, self.to.x.0, eased)),
@@ -138,7 +177,7 @@ mod tests {
 
     use zgui_geom::{Device, DevicePx, Point};
 
-    use super::Tween;
+    use super::{Pace, Tween};
 
     fn at(y: f32) -> Point<DevicePx, Device> {
         Point::new(DevicePx(0.0), DevicePx(y))
@@ -178,5 +217,30 @@ mod tests {
         // dropped key press rather than as a smooth scroll.
         let mut tween = Tween::new(at(0.0), at(400.0));
         assert!(tween.advance(Duration::from_millis(16)).to.y.0 > 4.0);
+    }
+
+    #[test]
+    fn a_keyboard_pace_takes_the_time_and_follows_the_curve_of_the_keyboard() {
+        let linear = zgui_css::environment::KeyboardMotion {
+            duration: Duration::from_millis(500),
+            easing: zgui_css::environment::KeyboardEasing::CubicBezier(
+                zgui_css::environment::CubicBezier {
+                    x1: 0.0,
+                    y1: 0.0,
+                    x2: 1.0,
+                    y2: 1.0,
+                },
+            ),
+        };
+        let mut tween = Tween::new(at(0.0), at(400.0)).with_pace(Pace::Keyboard(linear));
+        let step = tween.advance(Tween::DURATION);
+        assert!(
+            !step.done,
+            "the keyboard takes longer than a standard scroll"
+        );
+        assert!((step.to.y.0 - 192.0).abs() < 0.5, "{}", step.to.y.0);
+        let step = tween.advance(Duration::from_millis(260));
+        assert_eq!(step.to, at(400.0));
+        assert!(step.done);
     }
 }

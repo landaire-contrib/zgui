@@ -22,6 +22,7 @@ mod asked;
 mod bar;
 mod extent;
 mod frozen;
+pub(crate) mod keyboard;
 pub(crate) mod shift;
 
 use zgui_dom::NodeKey;

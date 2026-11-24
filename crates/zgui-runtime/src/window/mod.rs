@@ -408,6 +408,11 @@ pub struct Window {
     /// A reveal runs only when this changes, so a field a person scrolled stays where it is until
     /// the next edit or caret move.
     revealed: Option<crate::window::reveal::Revealed>,
+    /// The field, caret line and keyboard area the last check above the keyboard measured.
+    ///
+    /// The check scrolls only when this changes, so a field a person scrolled under the keyboard
+    /// stays there until the caret moves to another line.
+    above_keyboard: Option<crate::window::scroll::keyboard::AboveKeyboard>,
     /// Consecutive text presses, separate from generic double-click activations.
     text_clicks: crate::window::pointer_text::TextClicks,
     /// Text an editing command asked to be put on the clipboard, waiting for a turn of the loop
@@ -852,6 +857,7 @@ impl Window {
             selecting: None,
             drag_pointer: None,
             revealed: None,
+            above_keyboard: None,
             text_clicks: crate::window::pointer_text::TextClicks::default(),
             clipboard: Vec::new(),
             wants_paste: Vec::new(),
