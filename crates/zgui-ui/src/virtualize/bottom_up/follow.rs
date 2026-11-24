@@ -79,6 +79,8 @@ pub(crate) struct Follow<K> {
     drift: Option<f64>,
     /// The last scroll asked to bring the held row to the top, until the row is there.
     asked: Option<Asked>,
+    /// The height of the port at the last sighting, and whether it showed the end.
+    last: Option<(f32, bool)>,
 }
 
 impl<K> Follow<K>
@@ -92,6 +94,7 @@ where
             slack,
             drift: None,
             asked: None,
+            last: None,
         }
     }
 
@@ -120,6 +123,7 @@ where
     /// Forgets where the port was, for a port that is not laid out.
     pub(crate) const fn forget_motion(&mut self) {
         self.drift = None;
+        self.last = None;
     }
 
     /// Stops holding a row, because the reader took the port.
@@ -136,7 +140,9 @@ where
     /// only the reader does. It follows the end again when the port shows the end, every scroll the
     /// measurements asked for has been seen, and the host has no newer rows. A held row that is
     /// away from the top of the port is scrolled to again when it or the heights moved since the
-    /// last scroll to it, unless the port is at the end and the row is below its top.
+    /// last scroll to it, unless the port is at the end and the row is below its top. A port that
+    /// shrinks while it shows the end, as one does when the keyboard opens under it, keeps the end
+    /// in view and follows it.
     pub(crate) fn see(&mut self, sighting: Sighting) -> Step {
         let moved_up = self
             .drift
@@ -149,6 +155,18 @@ where
             self.drift = Some(sighting.drift);
         }
         let at_end = sighting.remaining <= self.slack;
+        let shrank_at_end = self.last.is_some_and(|(port, shown)| {
+            shown && f64::from(sighting.extent.port) < f64::from(port) - MOTION
+        });
+        // A scroll not yet seen can move the port off the end it showed.
+        self.last = Some((sighting.extent.port, at_end && sighting.settled));
+        // A row the list does not have yet is still waited for at the end.
+        let waiting = matches!(self.hold, Hold::Row(_)) && sighting.held.is_none();
+        if shrank_at_end && !sighting.newer && !waiting && self.hold != Hold::End {
+            self.hold = Hold::End;
+            self.asked = None;
+            return Step::ScrollToEnd;
+        }
 
         match &self.hold {
             Hold::End if at_end => Step::Stay,
@@ -398,5 +416,97 @@ mod tests {
             follow.at_end(&at(1_600.0)),
             "the port shows the end while it waits"
         );
+    }
+
+    #[test]
+    fn a_port_that_shrinks_while_it_waits_for_a_held_row_still_waits() {
+        let mut follow = Follow::new(4.0);
+        follow.hold_row(7_u32);
+        follow.see(at(1_600.0));
+        let shrunk = Sighting {
+            remaining: 300.0,
+            extent: Extent {
+                content: 2_000.0,
+                port: 100.0,
+            },
+            ..at(1_600.0)
+        };
+        assert_eq!(follow.see(shrunk), Step::Stay);
+        assert_eq!(follow.hold(), &Hold::Row(7));
+    }
+
+    #[test]
+    fn a_port_that_shrinks_before_a_scroll_is_seen_is_not_at_the_end() {
+        let mut follow = Follow::new(4.0);
+        follow.hold_row(7_u32);
+        let pending = Sighting {
+            remaining: 0.0,
+            settled: false,
+            held: Some(Placed {
+                row: 1_800.0,
+                port: 1_600.0,
+            }),
+            ..at(1_600.0)
+        };
+        follow.see(pending);
+        let shrunk = Sighting {
+            remaining: 300.0,
+            extent: Extent {
+                content: 2_000.0,
+                port: 100.0,
+            },
+            ..pending
+        };
+        assert_ne!(follow.see(shrunk), Step::ScrollToEnd);
+        assert_eq!(follow.hold(), &Hold::Row(7));
+    }
+
+    #[test]
+    fn a_port_that_shrinks_at_the_end_keeps_the_end_in_view() {
+        let mut follow = Follow::new(4.0);
+        follow.hold_row(7_u32);
+        let held = Sighting {
+            remaining: 0.0,
+            held: Some(Placed {
+                row: 1_800.0,
+                port: 1_600.0,
+            }),
+            ..at(1_600.0)
+        };
+        assert_eq!(follow.see(held), Step::Stay);
+        assert_eq!(follow.hold(), &Hold::Row(7));
+
+        // The keyboard opened under the port and took 300px of it.
+        let shrunk = Sighting {
+            remaining: 300.0,
+            extent: Extent {
+                content: 2_000.0,
+                port: 100.0,
+            },
+            ..held
+        };
+        assert_eq!(follow.see(shrunk), Step::ScrollToEnd);
+        assert_eq!(
+            follow.hold(),
+            &Hold::End,
+            "the list follows the end from there"
+        );
+    }
+
+    #[test]
+    fn a_port_that_shrinks_away_from_the_end_stays_where_it_is() {
+        let mut follow = Follow::<u32>::new(4.0);
+        follow.see(at(1_600.0));
+        follow.see(at(1_000.0));
+        let shrunk = Sighting {
+            remaining: 900.0,
+            extent: Extent {
+                content: 2_000.0,
+                port: 100.0,
+            },
+            ..at(1_000.0)
+        };
+        assert_eq!(follow.see(shrunk), Step::Stay);
+        assert_eq!(follow.hold(), &Hold::Free);
     }
 }
