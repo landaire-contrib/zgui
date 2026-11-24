@@ -20,6 +20,8 @@ pub(crate) struct Entry {
     mounted: bool,
     /// Whether the surface has been asked to close and is playing its exit.
     leaving: bool,
+    /// Whether what is under the layer counts as covered while it is open.
+    covers: bool,
 }
 
 impl Entry {
@@ -31,6 +33,7 @@ impl Entry {
             surface,
             mounted: false,
             leaving: false,
+            covers: false,
         }
     }
 
@@ -52,6 +55,16 @@ impl Entry {
     /// Records whether it has been asked to close.
     pub(crate) fn set_leaving(&mut self, leaving: bool) {
         self.leaving = leaving;
+    }
+
+    /// Whether what is under it counts as covered while it is open.
+    pub(crate) fn covers(&self) -> bool {
+        self.covers
+    }
+
+    /// Records whether what is under it counts as covered while it is open.
+    pub(crate) fn set_covers(&mut self, covers: bool) {
+        self.covers = covers;
     }
 
     /// Whether the layer is still on the screen, recording that it has been seen there.

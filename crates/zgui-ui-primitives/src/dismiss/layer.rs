@@ -100,6 +100,10 @@ pub fn DismissableLayer(
     /// first.
     #[prop(optional)]
     exclude: Option<NodeRef>,
+    /// Whether what is under the layer counts as covered while it is open, which
+    /// [`LayerStack::covering`] reports.
+    #[prop(default = false)]
+    covers: bool,
     /// Where to record the layer's own element.
     #[prop(optional)]
     element_ref: Option<NodeRef>,
@@ -112,6 +116,7 @@ pub fn DismissableLayer(
     let root = element_ref.unwrap_or_default();
     let stack = LayerStack::current();
     let id = stack.push(layer, root);
+    stack.set_covers(id, covers);
     note!(
         "layer.push",
         "id={} band={} open={} stack={}",

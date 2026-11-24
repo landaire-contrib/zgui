@@ -115,6 +115,7 @@ pub fn AnchoredSurface(
                         class = "zui-overlay-layer",
                         on_dismiss = dismiss,
                         exclude = {state.trigger()},
+                        covers = {trap.is_some()},
                         dismiss_on_outside_press = dismiss_on_outside_press,
                         dismiss_on_escape = dismiss_on_escape
                     ) {

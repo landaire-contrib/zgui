@@ -92,6 +92,7 @@ pub fn ModalSurface(
                         layer = {OverlayLayer::Modal},
                         class = "zui-overlay-layer",
                         on_dismiss = dismiss,
+                        covers = true,
                         dismiss_on_outside_press = dismiss_on_outside_press,
                         dismiss_on_escape = dismiss_on_escape
                     ) {

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use zgui::prelude::*;
-use zgui::reactive::Owner;
+use zgui::reactive::{ArcTrigger, Owner};
 
 use crate::dismiss::stack::entry::Entry;
 
@@ -86,6 +86,8 @@ pub struct LayerStack {
     entries: Rc<RefCell<Vec<Entry>>>,
     /// The next number to hand out, for both names and tie-breaks.
     next: Rc<std::cell::Cell<u64>>,
+    /// Notified when a layer goes up, comes down, starts to leave or changes what it covers.
+    changed: ArcTrigger,
 }
 
 impl LayerStack {
@@ -94,6 +96,7 @@ impl LayerStack {
         Self {
             entries: Rc::new(RefCell::new(Vec::new())),
             next: Rc::new(std::cell::Cell::new(1)),
+            changed: ArcTrigger::new(),
         }
     }
 
@@ -133,12 +136,21 @@ impl LayerStack {
         self.entries
             .borrow_mut()
             .push(Entry::new(id, band, ordinal, surface));
+        self.changed.notify();
         id
     }
 
     /// Takes a layer out. Removing one that is not there does nothing.
     pub fn pop(&self, id: LayerId) {
-        self.entries.borrow_mut().retain(|entry| entry.id() != id);
+        let removed = {
+            let mut entries = self.entries.borrow_mut();
+            let before = entries.len();
+            entries.retain(|entry| entry.id() != id);
+            entries.len() != before
+        };
+        if removed {
+            self.changed.notify();
+        }
     }
 
     /// Records whether a layer has been asked to close and is playing its exit.
@@ -146,14 +158,51 @@ impl LayerStack {
     /// Setting one that is not there does nothing, which is what makes this safe to call from an
     /// effect that outlives the entry it is about.
     pub fn set_leaving(&self, id: LayerId, leaving: bool) {
-        if let Some(entry) = self
+        let changed = self
             .entries
             .borrow_mut()
             .iter_mut()
             .find(|entry| entry.id() == id)
-        {
-            entry.set_leaving(leaving);
+            .is_some_and(|entry| {
+                let changed = entry.leaving() != leaving;
+                entry.set_leaving(leaving);
+                changed
+            });
+        if changed {
+            self.changed.notify();
         }
+    }
+
+    /// Records whether what is under a layer counts as covered while it is open, as for a menu or
+    /// a dialog that a press past it only closes. Setting one that is not there does nothing.
+    pub fn set_covers(&self, id: LayerId, covers: bool) {
+        let changed = self
+            .entries
+            .borrow_mut()
+            .iter_mut()
+            .find(|entry| entry.id() == id)
+            .is_some_and(|entry| {
+                let changed = entry.covers() != covers;
+                entry.set_covers(covers);
+                changed
+            });
+        if changed {
+            self.changed.notify();
+        }
+    }
+
+    /// Whether an open layer that covers what is under it is on the screen, subscribing the
+    /// caller.
+    ///
+    /// An application marks the content under such a layer `inert` while this holds. A press past
+    /// the layer then reaches nothing under it and only closes the layer, and a screen reader
+    /// leaves the covered content out.
+    pub fn covering(&self) -> bool {
+        self.changed.track();
+        self.entries
+            .borrow_mut()
+            .iter_mut()
+            .any(|entry| entry.covers() && !entry.leaving() && entry.live())
     }
 
     /// The layer a press belongs to, when anything is on the screen.
@@ -320,5 +369,28 @@ mod tests {
         let id = stack.push(OverlayLayer::Modal, NodeRef::new());
         assert_eq!(stack.topmost(), Some(id));
         assert_eq!(stack.answering_escape(), Some(id));
+    }
+
+    #[test]
+    fn only_an_open_layer_that_covers_counts_as_covering() {
+        let stack = LayerStack::new();
+        let tooltip = stack.push(OverlayLayer::Modal, NodeRef::new());
+        assert!(
+            !stack.covering(),
+            "a layer covers nothing unless it says so"
+        );
+
+        let menu = stack.push(OverlayLayer::Modal, NodeRef::new());
+        stack.set_covers(menu, true);
+        assert!(stack.covering());
+
+        stack.set_leaving(menu, true);
+        assert!(
+            !stack.covering(),
+            "a menu playing its exit leaves what is under it to the next press"
+        );
+        stack.pop(menu);
+        stack.pop(tooltip);
+        assert!(!stack.covering());
     }
 }
