@@ -12,7 +12,7 @@ pub use crate::editor::command::{Command, Response};
 use crate::history::{EditKind, Entry, History};
 use crate::ime::Composition;
 use crate::select::{Granularity, Motion, Selection, grapheme, motion, word};
-use crate::text::EditText;
+use crate::text::{EditText, with_line_feeds};
 
 /// One editable field or document.
 ///
@@ -76,9 +76,12 @@ impl core::fmt::Debug for Editor {
 
 impl Editor {
     /// An editor over `text`, with the caret at the start and nothing to undo.
+    ///
+    /// Each line break in text the editor takes in becomes one line feed. See
+    /// [`with_line_feeds`].
     pub fn new(text: &str) -> Self {
         Self {
-            text: EditText::of(text),
+            text: EditText::of(&with_line_feeds(text)),
             selection: Selection::caret(0),
             history: History::new(),
             composing: None,
@@ -225,7 +228,9 @@ impl Editor {
     /// assert_eq!(editor.text(), "world", "an undo across a load is not an undo of it");
     /// ```
     pub fn load(&mut self, text: &str) -> Response {
-        let splice = self.text.replace(0..self.text.len(), text);
+        let splice = self
+            .text
+            .replace(0..self.text.len(), &with_line_feeds(text));
         self.put(Selection::caret(0));
         self.history.clear();
         self.composing = None;
@@ -401,6 +406,8 @@ impl Editor {
 
     /// Replaces a range, recording one change and putting the caret after it.
     fn replace(&mut self, range: Range<usize>, with: &str, kind: EditKind) -> Response {
+        let with = with_line_feeds(with);
+        let with = with.as_ref();
         let before = self.selection;
         let removed = self.text.slice(range.clone());
         if removed.is_empty() && with.is_empty() {
@@ -556,6 +563,8 @@ impl Editor {
         let Some(composition) = self.composing.take() else {
             return self.replace_selection(text, EditKind::Replace);
         };
+        let text = with_line_feeds(text);
+        let text = text.as_ref();
         let splice = self.text.replace(composition.range.clone(), text);
         let after = self.put(Selection::caret(composition.range.start + text.len()));
         self.history.seal();

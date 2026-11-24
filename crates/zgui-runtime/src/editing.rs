@@ -13,6 +13,7 @@
 use rustc_hash::FxHashMap;
 use zgui_dom::{Document, DocumentStore, EverythingMatters, NodeIndex, NodeKey, NodeKind};
 use zgui_edit::document::Projection;
+use zgui_edit::text::{line_feed_offset, with_line_feeds};
 use zgui_edit::{Editor, Response};
 use zgui_vocab::{ImeEvent, KeyEvent, Modifiers};
 
@@ -448,6 +449,18 @@ impl Editors {
         focus: usize,
         affinity: zgui_edit::Affinity,
     ) -> Edited {
+        // A model attached here is made from the text the element holds with its line breaks as
+        // line feeds, and the offsets are measured in the text the element holds.
+        let (anchor, focus) = match document.store().index_of(node) {
+            Some(index) if !self.attached.contains_key(&node) => {
+                let held = held_text(document.store(), index);
+                (
+                    line_feed_offset(&held, anchor),
+                    line_feed_offset(&held, focus),
+                )
+            }
+            _ => (anchor, focus),
+        };
         self.deliver(document, node, |editor| {
             editor.apply(zgui_edit::Command::Select(zgui_edit::Selection {
                 anchor,
@@ -605,7 +618,7 @@ impl Editors {
             .attached
             .entry(node)
             .or_insert_with(|| Attached::adopt(document, index));
-        if attached.editor.text() == text {
+        if attached.editor.text() == with_line_feeds(text) {
             return Loaded::default();
         }
         let caret = attached.editor.selection();
@@ -786,6 +799,19 @@ impl Attached {
             uncommitted: false,
         }
     }
+}
+
+/// The text of an element's text children, in order, which is the text a model is adopted from.
+fn held_text(store: &DocumentStore, index: NodeIndex) -> String {
+    let mut held = String::new();
+    let mut child = store.core(index).first_child();
+    while let Some(node) = child {
+        if store.core(node).kind() == NodeKind::Text {
+            held.push_str(zgui_dom::text::text_of(store, node).unwrap_or_default());
+        }
+        child = store.core(node).next_sibling();
+    }
+    held
 }
 
 #[cfg(test)]
@@ -1127,6 +1153,33 @@ mod tests {
             "the caret was reset by a load that was supposed to be a no-op"
         );
         assert_eq!(editors.value(key).as_deref(), Some("zqab"));
+    }
+
+    #[test]
+    fn loading_crlf_text_the_editor_already_holds_changes_nothing() {
+        let (document, field) = field("editor", &["a\r\nb"]);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+        editors.key(&document, key, &letter("z"), Modifiers::NONE);
+        assert_eq!(editors.value(key).as_deref(), Some("za\nb"));
+
+        assert_eq!(
+            editors.load(&document, key, "za\r\nb"),
+            super::Loaded::default()
+        );
+    }
+
+    #[test]
+    fn a_selection_in_an_editor_not_yet_attached_skips_the_carriage_return_of_each_pair() {
+        // The offsets are in the text the element holds. The model holds each pair as one line
+        // feed.
+        let (document, field) = field("editor", &["ab\r\ncd\r\nef"]);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+
+        let placed = editors.select(&document, key, 9..9);
+        assert_eq!(placed.selection, Some(7..7), "the caret is before f");
+        assert_eq!(editors.value(key).as_deref(), Some("ab\ncd\nef"));
     }
 
     #[test]

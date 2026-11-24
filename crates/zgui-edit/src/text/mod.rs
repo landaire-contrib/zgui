@@ -9,6 +9,7 @@ pub mod position;
 pub mod splice;
 
 use core::ops::Range;
+use std::borrow::Cow;
 
 pub use crate::text::position::Position;
 pub use crate::text::splice::Splice;
@@ -187,6 +188,51 @@ impl EditText {
             inserted: count,
         }
     }
+}
+
+/// `text` with each carriage return and line feed pair, and each lone carriage return, written as
+/// one line feed, the one break the buffer splits at.
+///
+/// ```
+/// use zgui_edit::text::with_line_feeds;
+///
+/// assert_eq!(with_line_feeds("a\r\nb\rc\nd"), "a\nb\nc\nd");
+/// ```
+pub fn with_line_feeds(text: &str) -> Cow<'_, str> {
+    if !text.contains('\r') {
+        return Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('\r') {
+        out.push_str(&rest[..at]);
+        out.push(BREAK);
+        rest = &rest[at + 1..];
+        rest = rest.strip_prefix(BREAK).unwrap_or(rest);
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
+}
+
+/// The offset in [`with_line_feeds`] of `text` that `offset` in `text` names.
+///
+/// An offset between a carriage return and its line feed names the break.
+///
+/// ```
+/// use zgui_edit::text::line_feed_offset;
+///
+/// assert_eq!(line_feed_offset("ab\r\ncd", 3), 2, "between the pair");
+/// assert_eq!(line_feed_offset("ab\r\ncd", 4), 3, "the start of cd");
+/// ```
+pub fn line_feed_offset(text: &str, offset: usize) -> usize {
+    let offset = offset.min(text.len());
+    let bytes = text.as_bytes();
+    let pairs = bytes[..offset]
+        .iter()
+        .enumerate()
+        .filter(|&(at, &byte)| byte == b'\r' && bytes.get(at + 1) == Some(&b'\n'))
+        .count();
+    offset - pairs
 }
 
 /// The nearest character boundary at or before `offset`, never past the end of `text`.
