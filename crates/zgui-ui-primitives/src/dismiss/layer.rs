@@ -108,7 +108,8 @@ pub fn DismissableLayer(
     #[prop(optional)]
     exclude: Option<NodeRef>,
     /// Whether what is under the layer counts as covered while it is open, which
-    /// [`LayerStack::covering`] reports.
+    /// [`LayerStack::covering`] reports. A screen reader reaches nothing outside a layer that
+    /// covers.
     #[prop(default = false)]
     covers: bool,
     /// Where to record the layer's own element.

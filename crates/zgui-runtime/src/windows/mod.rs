@@ -34,7 +34,7 @@ mod region;
 mod zoom;
 
 pub use crate::windows::focus::FocusGuard;
-pub use crate::windows::handle::{WindowHandle, WindowId};
+pub use crate::windows::handle::{ReaderModal, WindowHandle, WindowId};
 pub use crate::windows::layer::LayerOptions;
 pub use crate::windows::options::WindowOptions;
 pub use crate::windows::popup::PopupOptions;

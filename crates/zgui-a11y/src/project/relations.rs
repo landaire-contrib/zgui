@@ -134,6 +134,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         let relations = Relations {
             labelled_by: vec![alive],
@@ -166,6 +167,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         let target = to_a11y(document.store().key_of(label));
 

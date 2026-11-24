@@ -179,6 +179,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         let mut node = Node::new(declared.role);
         crate::project::semantics::apply(declared, &mut node);
@@ -258,6 +259,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         assert_eq!(
             from_content(&world, document.store().key_of(root)).as_deref(),
@@ -281,6 +283,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         assert_eq!(from_content(&world, document.store().key_of(root)), None);
     }

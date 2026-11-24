@@ -40,6 +40,7 @@ use crate::build::snapshot::Snapshots;
 use crate::build::snapshot::Waiting;
 use crate::id::to_a11y;
 use crate::project;
+use crate::world::Modal;
 use crate::world::World;
 
 /// Builds the updates one window's accessibility tree is advanced by.
@@ -58,6 +59,11 @@ pub struct A11yBuilder {
     owed: Pending,
     /// Whether an update has ever been produced.
     published: bool,
+
+    /// The modal subtree the consumer's tree was built under.
+    modal: Option<Modal>,
+    /// Whether the modal element changed since the last update was built.
+    modal_moved: bool,
 }
 
 impl A11yBuilder {
@@ -76,7 +82,17 @@ impl A11yBuilder {
 
     /// Whether anything is owed an update.
     pub fn is_owed(&self) -> bool {
-        !self.published || self.owed.is_owed()
+        !self.published || self.owed.is_owed() || self.modal_moved
+    }
+
+    /// Records the subtrees a reader is confined to, if any.
+    ///
+    /// A change conceals or shows the content outside the modal subtrees, and no mark records
+    /// that, so the next update is owed from here.
+    pub fn note_modal(&mut self, modal: Option<&Modal>) {
+        if self.modal.as_ref() != modal {
+            self.modal_moved = true;
+        }
     }
 
     /// How many nodes the consumer is holding.
@@ -127,6 +143,8 @@ impl A11yBuilder {
         self.held.clear();
         self.published = false;
         self.owed = Pending::new();
+        self.modal = None;
+        self.modal_moved = false;
     }
 
     /// The update this frame owes.
@@ -144,6 +162,20 @@ impl A11yBuilder {
                 targets.insert(parent);
             }
         }
+
+        // The siblings of each holder of the previous and the current modal subtrees are the nodes
+        // that a change of the modal subtrees conceals or shows.
+        if self.modal != world.modal {
+            let previous = core::mem::replace(&mut self.modal, world.modal.clone());
+            let holders = previous
+                .iter()
+                .chain(world.modal.iter())
+                .flat_map(Modal::holders);
+            for holder in holders {
+                targets.extend(project::children::element_keys(world, holder));
+            }
+        }
+        self.modal_moved = false;
 
         // A node that only moved owes a rectangle, and its parent owes nothing: a child list is
         // what makes a parent's projection stale, and a subtree that was carried somewhere else
@@ -217,6 +249,8 @@ impl A11yBuilder {
     pub fn build_full(&mut self, world: &World<'_>) -> TreeUpdate {
         self.held.clear();
         self.owed = Pending::new();
+        self.modal = world.modal.clone();
+        self.modal_moved = false;
         let root = world.root();
         let mut nodes = Vec::new();
         self.project_subtree(world, root, &mut nodes);

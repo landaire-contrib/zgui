@@ -12,6 +12,7 @@ pub use crate::toast::style::ToastStyle;
 
 use zgui::prelude::*;
 use zgui::{component, view};
+use zgui_ui_primitives::dismiss::LayerStack;
 
 /// What the toaster's rules are installed under.
 pub(crate) const SHEET: &str = "zui-toast";
@@ -199,6 +200,10 @@ pub fn Toaster(
         on_cleanup_local(left);
     }
 
+    // A reader confined to an open dialog or menu still hears a notice.
+    let region = NodeRef::new();
+    LayerStack::current().keep_readable(region);
+
     view! {
         box(class = "zui-toast__host") {
             {children.into_view_once()}
@@ -208,6 +213,7 @@ pub fn Toaster(
             box(
                 class = "zui-toast__region",
                 class = ToastStyle::CLASS,
+                node_ref = region,
                 attr:data-corner = corner.name(),
                 // Collapsed into a deck while nobody is looking at it, and fanned out the moment
                 // the pointer arrives. The same hold that stops the deadlines is what opens it,

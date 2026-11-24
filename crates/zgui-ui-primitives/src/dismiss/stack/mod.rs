@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use zgui::prelude::*;
 use zgui::reactive::{ArcTrigger, Owner, RenderEffect};
+use zgui::runtime::windows::ReaderModal;
 use zgui::vocab::PointerId;
 
 use crate::dismiss::stack::entry::Entry;
@@ -90,6 +91,13 @@ impl LayerId {
 /// here, and the stack consumes the release of that pointer, so no click follows. The record is on
 /// the stack because a layer with no exit animation is gone before the release arrives. A cancelled
 /// pointer and the next press of the same pointer clear the record.
+///
+/// # What a reader reaches
+///
+/// A layer that covers what is under it is modal to a screen reader. While one is open, the reader
+/// reaches the innermost such layer, the layers open above it and the elements kept readable with
+/// [`LayerStack::keep_readable`], and nothing else in the window; see
+/// [`LayerStack::reader_modal`].
 #[derive(Clone)]
 pub struct LayerStack {
     /// The open layers, in registration order.
@@ -103,6 +111,8 @@ pub struct LayerStack {
     swallowed: Rc<RefCell<Vec<PointerId>>>,
     /// The window root's listeners that consume the release of those presses.
     releases: Rc<RefCell<Vec<ListenerGuard>>>,
+    /// The elements a reader reaches while a layer confines it, by registration number.
+    readable: Rc<RefCell<Vec<(u64, NodeRef)>>>,
 }
 
 impl LayerStack {
@@ -114,6 +124,7 @@ impl LayerStack {
             changed: ArcTrigger::new(),
             swallowed: Rc::new(RefCell::new(Vec::new())),
             releases: Rc::new(RefCell::new(Vec::new())),
+            readable: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -128,8 +139,9 @@ impl LayerStack {
     /// side share one stack: published where the asker stands, the second one would find nothing,
     /// mint a stack of its own, and believe itself topmost — and one Escape would close both.
     ///
-    /// The stack keeps its window told whether an Escape closes a layer; see
-    /// [`WindowHandle::set_escape_dismisses`].
+    /// The stack keeps its window told whether an Escape closes a layer, and which layer a reader
+    /// is confined to; see [`WindowHandle::set_escape_dismisses`] and
+    /// [`WindowHandle::set_modal_root`].
     pub fn current() -> Self {
         match use_local_context::<Self>() {
             Some(stack) => stack,
@@ -151,20 +163,36 @@ impl LayerStack {
         }
     }
 
-    /// Keeps `window` told whether an Escape closes a layer, for as long as the calling scope.
+    /// Keeps `window` told whether an Escape closes a layer and which layer a reader is confined
+    /// to, for as long as the calling scope.
     fn tell(&self, window: Option<WindowHandle>) {
         let Some(window) = window else {
             return;
         };
+
         let stack = self.clone();
+        let escapes_window = window.clone();
         let told = RenderEffect::new(move |was: Option<bool>| {
             let dismisses = stack.escape_dismisses();
             if was != Some(dismisses) {
-                window.set_escape_dismisses(dismisses);
+                escapes_window.set_escape_dismisses(dismisses);
             }
             dismisses
         });
-        on_cleanup_local(move || drop(told));
+
+        let stack = self.clone();
+        let confined = RenderEffect::new(move |was: Option<Option<ReaderModal>>| {
+            let modal = stack.reader_modal();
+            if was.as_ref() != Some(&modal) {
+                window.set_reader_modal(modal.clone());
+            }
+            modal
+        });
+
+        on_cleanup_local(move || {
+            drop(told);
+            drop(confined);
+        });
     }
 
     /// Registers a layer on `band` over `surface`, and reports what it is called.
@@ -295,14 +323,68 @@ impl LayerStack {
     /// Whether an open layer that covers what is under it is on the screen, subscribing the
     /// caller.
     ///
-    /// An application marks the content under such a layer `inert` while this holds, so that a
-    /// screen reader leaves the covered content out.
+    /// A screen reader reaches nothing outside the innermost such layer, other than what is
+    /// beside it; see [`LayerStack::reader_modal`].
     pub fn covering(&self) -> bool {
         self.changed.track();
         self.entries
             .borrow_mut()
             .iter_mut()
             .any(|entry| entry.covers() && !entry.leaving() && entry.live())
+    }
+
+    /// Keeps `node` readable while a layer confines a reader, for as long as the calling scope.
+    ///
+    /// For a region that announces notices, such as the toasts', which a reader has to hear over
+    /// an open dialog.
+    pub fn keep_readable(&self, node: NodeRef) {
+        let number = self.next.get();
+        self.next.set(number + 1);
+        self.readable.borrow_mut().push((number, node));
+        self.changed.notify();
+
+        let stack = self.clone();
+        on_cleanup_local(move || {
+            stack
+                .readable
+                .borrow_mut()
+                .retain(|(held, _)| *held != number);
+            stack.changed.notify();
+        });
+    }
+
+    /// What a reader is confined to, subscribing the caller.
+    ///
+    /// The surface is the innermost open layer that covers what is under it. Beside it are the
+    /// live layers ranked above it and the elements kept readable with
+    /// [`LayerStack::keep_readable`]. The window confines a screen reader to these, as UIKit does
+    /// for a view with `accessibilityViewIsModal`.
+    ///
+    /// A layer that covers is modal to a reader: a menu, a select, a dialog or a sheet. A layer
+    /// that does not cover, such as a tooltip, leaves the rest of the window readable. A layer
+    /// that plays its exit gives the window back.
+    pub fn reader_modal(&self) -> Option<ReaderModal> {
+        self.changed.track();
+        let id = self.answering(|entry| entry.covers() && !entry.leaving())?;
+
+        let mut entries = self.entries.borrow_mut();
+        let modal = entries.iter().find(|entry| entry.id() == id)?;
+        let rank = modal.rank();
+        let surface = modal.surface().get()?;
+
+        let mut beside = Vec::new();
+        for entry in entries.iter_mut() {
+            if entry.rank() <= rank || !entry.live() {
+                continue;
+            }
+            beside.extend(entry.surface().get());
+        }
+        drop(entries);
+        for (_, node) in self.readable.borrow().iter() {
+            beside.extend(node.get());
+        }
+
+        Some(ReaderModal { surface, beside })
     }
 
     /// Whether an Escape closes an open layer now, subscribing the caller.

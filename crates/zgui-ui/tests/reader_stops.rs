@@ -16,6 +16,7 @@ use zgui::view;
 use zgui::vocab::NamedKey;
 use zgui::vocab::Role;
 use zgui_ui::prelude::*;
+use zgui_ui::toast::{Toast, use_toaster};
 use zgui_ui_primitives::dismiss::LayerStack;
 
 use crate::desktop::reader;
@@ -277,6 +278,84 @@ fn an_open_dropdown_menu_is_its_items_with_their_states_and_holds_the_focus() {
     assert_eq!(
         reader::ios_stops(&stage.surface()),
         [button_named("Actions")]
+    );
+}
+
+#[test]
+fn a_reader_reaches_nothing_outside_an_open_menu_over_a_live_page() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            column {
+                text {"Passwords"}
+                DropdownMenu {
+                    DropdownMenuTrigger {"Actions"}
+                    DropdownMenuContent {Items()}
+                }
+                Button {"Play"}
+            }
+        }
+    });
+    let page = [
+        static_text("Passwords"),
+        button_named("Actions"),
+        button_named("Play"),
+    ];
+    assert_eq!(reader::ios_stops(&stage.surface()), page);
+
+    stage.activate("Actions");
+    assert_eq!(reader::ios_stops(&stage.surface()), open_items());
+
+    stage.key(NamedKey::Escape);
+    stage.hold(Duration::from_millis(600));
+    assert_eq!(
+        reader::ios_stops(&stage.surface()),
+        page,
+        "the page comes back whole once the menu has closed"
+    );
+}
+
+/// A button that announces "Copied".
+#[component]
+fn Notify() -> impl IntoView {
+    let toasts = use_toaster();
+    view! {
+        Button(on:click = move |_| {
+            if let Some(toasts) = toasts {
+                toasts.push(Toast::new("Copied"));
+            }
+        }) {"Notify"}
+    }
+}
+
+#[test]
+fn a_notice_stays_readable_over_an_open_menu() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            Toaster {
+                column {
+                    Notify()
+                    DropdownMenu {
+                        DropdownMenuTrigger {"Actions"}
+                        DropdownMenuContent {Items()}
+                    }
+                }
+            }
+        }
+    });
+    stage.activate("Notify");
+    stage.activate("Actions");
+
+    let stops = reader::ios_stops(&stage.surface());
+    assert_eq!(stops[..3], open_items(), "{stops:#?}");
+    assert!(
+        stops
+            .iter()
+            .any(|stop| stop.label.contains("Copied") || stop.value.contains("Copied")),
+        "the notice is out of the reader's reach: {stops:#?}"
+    );
+    assert!(
+        !stops.contains(&button_named("Notify")),
+        "the page is in the reader's reach: {stops:#?}"
     );
 }
 

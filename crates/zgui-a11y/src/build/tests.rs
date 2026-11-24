@@ -10,6 +10,7 @@ use zgui_vocab::{A11y, EventKind, ListenerOptions};
 
 use super::A11yBuilder;
 use crate::id::to_a11y;
+use crate::world::Modal;
 use crate::world::World;
 
 /// A document with a button and a text child under a root, as a view would have built it.
@@ -44,6 +45,7 @@ macro_rules! world {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         }
     };
 }
@@ -290,6 +292,7 @@ fn focus_is_reported_on_every_update_and_never_dangles() {
         scale: 1.0,
         focus: Some(focused),
         scroll: None,
+        modal: None,
     };
     let update = builder.build(&world);
     assert_eq!(update.focus, to_a11y(focused));
@@ -303,6 +306,7 @@ fn focus_is_reported_on_every_update_and_never_dangles() {
         scale: 1.0,
         focus: zgui_dom::NodeKey::from_u64(0xdead_beef),
         scroll: None,
+        modal: None,
     };
     let update = builder.focus_update(&stale);
     assert_eq!(
@@ -520,4 +524,63 @@ fn an_inert_subtree_leaves_the_tree_and_comes_back_whole() {
             inert.then(|| SharedString::from("")),
         );
     });
+}
+
+#[test]
+fn a_modal_subtree_hides_what_is_outside_it_and_gives_it_back_whole() {
+    let (mut document, outside, _text) = counter();
+    let (_pane, inside) = pane(&document);
+    let layout = LayoutStore::new(document.store().document());
+    let mut builder = A11yBuilder::new();
+    builder.collect(&mut document);
+    builder.build(&world!(document, layout));
+    let inside_key = document.store().key_of(inside);
+    let outside_id = to_a11y(document.store().key_of(outside));
+
+    let modal = Modal::new(&document, inside_key, &[]);
+    builder.note_modal(modal.as_ref());
+    assert!(
+        builder.is_owed(),
+        "nothing in the document marks a new modal subtree"
+    );
+    builder.collect(&mut document);
+    let update = builder.build(&World {
+        modal: modal.clone(),
+        ..world!(document, layout)
+    });
+    let sent = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == outside_id)
+        .map(|(_, node)| node.clone())
+        .expect("the button outside the modal subtree is sent again");
+    assert!(sent.is_hidden(), "{}", crate::dump(&update));
+    assert!(
+        builder.retained().any(|id| id == to_a11y(inside_key)),
+        "the modal element stays"
+    );
+    assert!(crate::dangling(&update, builder.retained()).is_empty());
+
+    let mut fresh = A11yBuilder::new();
+    fresh.build(&World {
+        modal,
+        ..world!(document, layout)
+    });
+    let mut held: Vec<NodeId> = builder.retained().collect();
+    let mut whole: Vec<NodeId> = fresh.retained().collect();
+    held.sort_unstable();
+    whole.sort_unstable();
+    assert_eq!(held, whole, "the differences add up to the whole tree");
+
+    builder.note_modal(None);
+    builder.collect(&mut document);
+    let update = builder.build(&world!(document, layout));
+    let sent = update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == outside_id)
+        .map(|(_, node)| node.clone())
+        .expect("the button outside the modal subtree is sent again");
+    assert!(!sent.is_hidden(), "{}", crate::dump(&update));
+    assert!(!builder.is_owed());
 }

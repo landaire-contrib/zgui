@@ -98,6 +98,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         let store = document.store();
         assert_eq!(

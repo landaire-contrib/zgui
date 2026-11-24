@@ -29,9 +29,9 @@ pub use crate::error::Error;
 /// another. Every operation on a window that has closed does nothing, as does every operation this
 /// desktop cannot carry out — so none of this needs a branch per platform.
 pub use zgui_runtime::windows::{
-    CloseGuard, FocusGuard, LayerOptions, PopupOptions, WindowHandle, WindowId, WindowOptions,
-    Windows, Zoom, on_close_request, try_use_window, try_use_windows, use_input_region, use_window,
-    use_windows,
+    CloseGuard, FocusGuard, LayerOptions, PopupOptions, ReaderModal, WindowHandle, WindowId,
+    WindowOptions, Windows, Zoom, on_close_request, try_use_window, try_use_windows,
+    use_input_region, use_window, use_windows,
 };
 
 /// The desktop's clipboards: what to copy onto, and what to read back.

@@ -50,6 +50,11 @@ impl Entry {
         self.rank
     }
 
+    /// The layer's own element.
+    pub(crate) fn surface(&self) -> NodeRef {
+        self.surface
+    }
+
     /// Whether it has been asked to close and is playing its exit.
     pub(crate) fn leaving(&self) -> bool {
         self.leaving

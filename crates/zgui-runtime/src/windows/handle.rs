@@ -95,6 +95,8 @@ pub(crate) struct WindowShared {
     pub(crate) opaque_region: RefCell<Option<Region>>,
     /// Whether an Escape key dismisses something in the window, as last stated.
     pub(crate) escape_dismisses: Cell<bool>,
+    /// What a reader is confined to, as last stated.
+    pub(crate) reader_modal: RefCell<Option<ReaderModal>>,
     /// The light or dark scheme the window's document is styled in.
     pub(crate) color_scheme: ArcRwSignal<ColorScheme>,
     /// Who draws the window frame.
@@ -103,6 +105,18 @@ pub(crate) struct WindowShared {
 
 /// A region in CSS pixels, or `None` for the whole window.
 type Region = Option<Vec<Rect<CssPx, Css>>>;
+
+/// What a screen reader is confined to while a modal surface is open.
+///
+/// See [`WindowHandle::set_reader_modal`].
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ReaderModal {
+    /// The modal surface.
+    pub surface: zgui_view::NodeId,
+    /// The elements that stay readable beside it, such as a surface open above it or a region that
+    /// announces notices.
+    pub beside: Vec<zgui_view::NodeId>,
+}
 
 impl WindowHandle {
     /// A handle for a window that has been asked for and does not exist yet.
@@ -140,6 +154,7 @@ impl WindowHandle {
                 input_region: RefCell::new(None),
                 opaque_region: RefCell::new(None),
                 escape_dismisses: Cell::new(false),
+                reader_modal: RefCell::new(None),
                 // The scheme a window's document starts in until the desktop states one.
                 color_scheme: ArcRwSignal::new(ColorScheme::Light),
                 decoration_source,
@@ -642,6 +657,24 @@ impl WindowHandle {
         }
         self.act(|surface| surface.set_escape_dismisses(dismisses));
         self.shared.escape_dismisses.set(dismisses);
+    }
+
+    /// Confines a screen reader to a modal surface, or lets it read the whole window again with
+    /// `None`.
+    ///
+    /// While one is set, the accessibility tree conceals every element outside the surface and
+    /// the elements beside it, except the elements that hold them, as UIKit's
+    /// `accessibilityViewIsModal` does. The tree changes with the next frame.
+    pub fn set_reader_modal(&self, modal: Option<ReaderModal>) {
+        if self.shared.closed.get() {
+            return;
+        }
+        *self.shared.reader_modal.borrow_mut() = modal;
+    }
+
+    /// What a reader is confined to, as last stated.
+    pub(crate) fn reader_modal(&self) -> Option<ReaderModal> {
+        self.shared.reader_modal.borrow().clone()
     }
 
     /// Sets the picture the desktop shows for this window.

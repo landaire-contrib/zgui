@@ -6,6 +6,8 @@
 //! one value is what keeps the projection a function of the frame rather than of whatever happened
 //! to be reachable.
 
+use std::collections::HashSet;
+
 use zgui_dom::side::a11y_key::Presence;
 use zgui_dom::side::attrs::INERT;
 use zgui_dom::{Document, NodeKey, NodeKind};
@@ -42,6 +44,8 @@ pub struct World<'a> {
     /// unscrolled, so that a scroll rewrites the container's node and none of the children's.
     /// `None` reads as no container scrolled.
     pub scroll: Option<&'a ScrollOffsets>,
+    /// The subtrees a reader is confined to, when there are any.
+    pub modal: Option<Modal>,
 }
 
 impl World<'_> {
@@ -89,14 +93,23 @@ impl World<'_> {
 
     /// Whether `node` hides itself and everything below it from the tree.
     ///
-    /// An element is concealed when it declares itself hidden, carries the `inert` attribute, or
-    /// has a computed style of `display: none` or a `visibility` other than `visible`. Each of these
-    /// marks the element for the accessibility phase when it changes.
+    /// An element is concealed when it declares itself hidden, carries the `inert` attribute, has
+    /// a computed style of `display: none` or a `visibility` other than `visible`, or is outside
+    /// the [`Modal`] subtree. Each of these except the last marks the element for the
+    /// accessibility phase when it changes. The builder answers a change of the modal subtree
+    /// itself.
     ///
     /// A concealed element is projected as a hidden node with no children. It stays in the tree so
     /// that a relation that names it, such as a dialog labelled by a title that is hidden, keeps a
     /// target. Nothing below it is projected.
     pub fn conceals(&self, node: NodeKey) -> bool {
+        if self
+            .modal
+            .as_ref()
+            .is_some_and(|modal| modal.excludes(self.document, node))
+        {
+            return true;
+        }
         if self
             .semantics(node)
             .is_some_and(|semantics| semantics.flags.contains(SemanticFlags::HIDDEN))
@@ -160,6 +173,81 @@ impl World<'_> {
     }
 }
 
+/// The subtrees a reader is confined to while a modal surface is open.
+///
+/// A reader reaches the modal surface, the elements that stay readable beside it, everything
+/// inside these, and the elements that hold them. Every other element is
+/// [concealed](World::conceals), as for UIKit's `accessibilityViewIsModal`.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Modal {
+    /// The elements a reader is confined to.
+    roots: Vec<NodeKey>,
+    /// Every node that holds one of them, up to the document node.
+    holders: HashSet<NodeKey>,
+}
+
+impl Modal {
+    /// The confinement to `surface` and to each element of `beside`, when `surface` is in
+    /// `document`.
+    ///
+    /// An element of `beside` that is not in `document` is left out. So is an element inside
+    /// another root, because a reader reaches it with that root.
+    pub fn new(document: &Document, surface: NodeKey, beside: &[NodeKey]) -> Option<Self> {
+        let mut paths = vec![(surface, holders_of(document, surface)?)];
+        for root in beside {
+            if let Some(holders) = holders_of(document, *root) {
+                paths.push((*root, holders));
+            }
+        }
+
+        let all: Vec<NodeKey> = paths.iter().map(|(root, _)| *root).collect();
+        paths.retain(|(_, holders)| !holders.iter().any(|holder| all.contains(holder)));
+
+        let roots = paths.iter().map(|(root, _)| *root).collect();
+        let holders = paths.into_iter().flat_map(|(_, holders)| holders).collect();
+
+        Some(Self { roots, holders })
+    }
+
+    /// Every node that holds one of the elements a reader is confined to.
+    pub fn holders(&self) -> impl Iterator<Item = NodeKey> + '_ {
+        self.holders.iter().copied()
+    }
+
+    /// Whether `node` is outside the confinement and is the top of what it conceals: a sibling of
+    /// one of the roots or of one of their holders.
+    fn excludes(&self, document: &Document, node: NodeKey) -> bool {
+        if self.roots.contains(&node) || self.holders.contains(&node) {
+            return false;
+        }
+
+        let store = document.store();
+        let Some(index) = store.index_of(node) else {
+            return false;
+        };
+
+        store
+            .core(index)
+            .parent()
+            .is_some_and(|parent| self.holders.contains(&store.key_of(parent)))
+    }
+}
+
+/// Every node that holds `node`, from its parent to the document node, when `node` is in
+/// `document`.
+fn holders_of(document: &Document, node: NodeKey) -> Option<Vec<NodeKey>> {
+    let store = document.store();
+    let root = document.document_index();
+    let mut current = store.index_of(node)?;
+    let mut holders = Vec::new();
+    while current != root {
+        current = store.core(current).parent()?;
+        holders.push(store.key_of(current));
+    }
+
+    Some(holders)
+}
+
 #[cfg(test)]
 mod tests {
     use zgui_dom::{Document, EverythingMatters, NodeKind};
@@ -170,7 +258,7 @@ mod tests {
     use zgui_vocab::Role;
     use zgui_vocab::SharedString;
 
-    use super::World;
+    use super::{Modal, World};
 
     #[test]
     fn a_concealed_element_stays_and_everything_below_it_leaves() {
@@ -198,6 +286,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
 
         let store = document.store();
@@ -209,6 +298,48 @@ mod tests {
         );
         assert!(!world.is_projected(store.key_of(inside)));
         assert!(!world.is_projected(store.key_of(below_inert)));
+    }
+
+    #[test]
+    fn a_modal_surface_conceals_the_page_and_keeps_what_is_beside_it() {
+        let mut document = Document::new();
+        let root = document.append(
+            document.document_index(),
+            NodeKind::Element,
+            ElementName::new("root"),
+        );
+        let page = document.append(root, NodeKind::Element, ElementName::new("page"));
+        let row = document.append(page, NodeKind::Element, ElementName::new("row"));
+        let overlay = document.append(root, NodeKind::Element, ElementName::new("overlay"));
+        let menus = document.append(overlay, NodeKind::Element, ElementName::new("layer"));
+        let menu = document.append(menus, NodeKind::Element, ElementName::new("menu"));
+        let first = document.append(menu, NodeKind::Element, ElementName::new("item"));
+        let second = document.append(menu, NodeKind::Element, ElementName::new("item"));
+        let notices = document.append(overlay, NodeKind::Element, ElementName::new("layer"));
+        let toast = document.append(notices, NodeKind::Element, ElementName::new("toast"));
+        let layout = LayoutStore::new(document.store().document());
+
+        let store = document.store();
+        let key = |index| store.key_of(index);
+        let world = World {
+            document: &document,
+            layout: &layout,
+            placements: &zgui_scene::Placements::EMPTY,
+            scale: 1.0,
+            focus: None,
+            scroll: None,
+            modal: Modal::new(&document, key(menu), &[key(toast), key(first)]),
+        };
+
+        assert!(world.conceals(key(page)));
+        assert!(!world.is_projected(key(row)));
+        assert!(world.is_projected(key(menu)));
+        assert!(
+            world.is_projected(key(second)),
+            "a root inside the modal surface conceals nothing beside it"
+        );
+        assert!(world.is_projected(key(toast)));
+        assert!(!world.conceals(key(notices)));
     }
 
     #[test]
@@ -230,6 +361,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
 
         let store = document.store();
@@ -273,6 +405,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         assert!(!world.is_projected(keys.0));
         assert!(

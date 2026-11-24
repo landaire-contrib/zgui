@@ -19,7 +19,8 @@
 //! responds to being clicked responds to a screen reader activating it, with nothing written twice
 //! and nothing to forget.
 
-use zgui_a11y::{ActionRequest, Intent, World};
+use zgui_a11y::{ActionRequest, Intent, Modal, World};
+use zgui_view_dom::id::to_document;
 use zgui_vocab::{EventKind, Payload, Timestamp, ValueChange, ValueEvent};
 
 use crate::window::Window;
@@ -41,16 +42,18 @@ impl Window {
         for space in self.moved_spaces.drain(..) {
             self.a11y.note_space_moved(space);
         }
-        {
+        let modal = {
             let mut document = self.document.borrow_mut();
             self.a11y.collect(&mut document);
-        }
+            self.modal(&document)
+        };
+        self.a11y.note_modal(modal.as_ref());
         match (self.a11y.is_owed(), self.focus_moved_since_publish()) {
             (false, false) => {}
             // Nothing about the document changed and focus did: an update carrying no nodes at all
             // is the whole of what there is to say, and building one costs no projection.
-            (false, true) => self.push_focus_only(),
-            (true, _) => self.push_a11y(false),
+            (false, true) => self.push_focus_only(modal),
+            (true, _) => self.push_a11y(false, modal),
         }
     }
 
@@ -60,11 +63,12 @@ impl Window {
     /// because nothing has changed — what is missing is the consumer's copy.
     pub fn publish_full_a11y_tree(&mut self) {
         self.a11y.forget();
-        self.push_a11y(true);
+        let modal = self.modal(&self.document.borrow());
+        self.push_a11y(true, modal);
     }
 
     /// Builds and hands over one update, building it only if something is listening.
-    fn push_a11y(&mut self, full: bool) {
+    fn push_a11y(&mut self, full: bool, modal: Option<Modal>) {
         let document = self.document.borrow();
         let layout = self.layout.borrow();
         let placements = self.host.placements();
@@ -76,6 +80,7 @@ impl Window {
             scale: self.scale,
             focus: self.router.interaction().focus.focused(),
             scroll: Some(scroll.composed()),
+            modal,
         };
         let builder = &mut self.a11y;
         self.surface.push_a11y_update(&mut || {
@@ -99,7 +104,7 @@ impl Window {
     }
 
     /// Publishes an update that says only where focus is.
-    fn push_focus_only(&mut self) {
+    fn push_focus_only(&mut self, modal: Option<Modal>) {
         let document = self.document.borrow();
         let layout = self.layout.borrow();
         let placements = self.host.placements();
@@ -110,6 +115,7 @@ impl Window {
             scale: self.scale,
             focus: self.router.interaction().focus.focused(),
             scroll: None,
+            modal,
         };
         let builder = &self.a11y;
         self.surface
@@ -125,6 +131,19 @@ impl Window {
     /// Focus rides on every update, so a frame that moved focus and changed no node still owes one.
     fn focus_moved_since_publish(&self) -> bool {
         self.published_focus != self.router.interaction().focus.focused()
+    }
+
+    /// What a reader is confined to in `document`, when the window confines it.
+    fn modal(&self, document: &zgui_dom::Document) -> Option<Modal> {
+        let stated = self.handle.reader_modal()?;
+        let surface = to_document(stated.surface)?;
+        let beside: Vec<zgui_dom::NodeKey> = stated
+            .beside
+            .iter()
+            .filter_map(|node| to_document(*node))
+            .collect();
+
+        Modal::new(document, surface, &beside)
     }
 
     /// Carries out what an assistive technology asked for, if it named a node of this window.

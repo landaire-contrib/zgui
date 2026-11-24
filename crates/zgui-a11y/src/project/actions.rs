@@ -79,6 +79,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         let store = document.store();
 
@@ -125,6 +126,7 @@ mod tests {
             scale: 1.0,
             focus: None,
             scroll: None,
+            modal: None,
         };
         let semantics: Semantics = zgui_vocab::A11y::new(Role::Slider)
             .numeric_value(0.5)

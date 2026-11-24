@@ -33,6 +33,8 @@
 //! - An element with `display: none`, a `visibility` other than `visible`, the `inert` attribute,
 //!   or a declaration that it is hidden is a hidden node with no children. Nothing below it is in
 //!   the tree.
+//! - While a [`Modal`] subtree is set, every element outside it, other than the elements that hold
+//!   it, is a hidden node with no children.
 //! - A field with no label and no `labelled_by` is named by its placeholder.
 //! - A password field reports one bullet for each character it holds.
 //!
@@ -74,6 +76,7 @@
 //!     scale: 1.0,
 //!     focus: None,
 //!     scroll: None,
+//!     modal: None,
 //! };
 //!
 //! let mut builder = A11yBuilder::new();
@@ -100,7 +103,7 @@ pub use crate::build::{A11yBuilder, A11yTree, TreeId, TreeUpdate};
 pub use crate::dump::dump;
 pub use crate::id::{NodeId, to_a11y, to_document};
 pub use crate::integrity::{Dangling, Mention, dangling};
-pub use crate::world::World;
+pub use crate::world::{Modal, World};
 
 /// The size of one accessibility node record, for a memory report.
 #[doc(hidden)]
