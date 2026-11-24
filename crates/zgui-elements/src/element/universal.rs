@@ -211,6 +211,31 @@ impl<T: Tag> Element<T> {
         }
     }
 
+    /// Says whether a pointer press on this element moves focus to it.
+    ///
+    /// With `false`, a press on the element, or on anything inside it that cannot take focus
+    /// itself, leaves focus where it is. The element stays focusable from the keyboard. Use it for
+    /// a button that acts on a field, such as the send button of a message field: the field keeps
+    /// its caret and its on-screen keyboard while the button is pressed.
+    ///
+    /// ```
+    /// use zgui_elements::control;
+    ///
+    /// let send = control().focus_on_press(false);
+    /// ```
+    #[must_use]
+    pub fn focus_on_press<M>(self, focus: impl IntoReactiveValue<bool, M>) -> Self {
+        let name = AttrName::new("focusonpress");
+        match focus.into_reactive_value() {
+            ReactiveValue::Constant(focus) => {
+                self.attribute(name, if focus { "true" } else { "false" })
+            }
+            focus => self.attribute(name, move || {
+                Some(if focus.get() { "true" } else { "false" }.to_owned())
+            }),
+        }
+    }
+
     /// Hides the element from layout and from everything reading the interface.
     #[must_use]
     pub fn hidden<M>(self, hidden: impl IntoReactiveValue<bool, M>) -> Self {

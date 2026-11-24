@@ -7,6 +7,12 @@ use zgui_vocab::UiState;
 /// The attribute an element declares its focusability with.
 pub const TABINDEX: &str = "tabindex";
 
+/// The attribute that says whether a press focuses the element.
+///
+/// `"false"` keeps focus where it is when the element is pressed. The element stays focusable from
+/// the keyboard and by a call that focuses it. Any other value, or none, is the default.
+pub const FOCUS_ON_PRESS: &str = "focusonpress";
+
 /// The vocabulary elements that can be focused without declaring anything.
 ///
 /// A control is operated, a field is filled in and an editor is typed into; all three are useless
@@ -55,6 +61,17 @@ pub fn tabindex(store: &DocumentStore, index: NodeIndex) -> Option<i32> {
     Node::new(store.core(index))
         .attr(TABINDEX)
         .and_then(|value| value.as_str().trim().parse::<i32>().ok())
+}
+
+/// Whether a press on `node` may move focus, as [`FOCUS_ON_PRESS`] states.
+pub fn focuses_on_press(store: &DocumentStore, node: NodeKey) -> bool {
+    let Some(index) = store.index_of(node) else {
+        return true;
+    };
+
+    Node::new(store.core(index))
+        .attr(FOCUS_ON_PRESS)
+        .is_none_or(|value| value.as_str() != "false")
 }
 
 /// Every focusable element in `root`'s subtree, in sequential focus-navigation order.

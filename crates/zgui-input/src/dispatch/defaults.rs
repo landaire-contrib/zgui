@@ -79,15 +79,31 @@ pub enum FrameworkDefault {
 /// Pressing something unfocusable takes focus away rather than leaving it where it was, which is
 /// what makes clicking the background dismiss a field's caret. The nearest focusable *ancestor*
 /// counts, so pressing the text inside a button focuses the button.
+///
+/// An element that sets [`order::FOCUS_ON_PRESS`] to `false` keeps focus where it is when it or
+/// anything inside it below the nearest focusable element is pressed. A send button beside a
+/// message field is the example: the field keeps the caret and the on-screen keyboard.
 pub fn on_press(
     store: &DocumentStore,
     layout: Option<&LayoutStore>,
     chain: &HitChain,
-) -> FrameworkDefault {
-    FrameworkDefault::Focus {
-        node: nearest_focusable(store, layout, chain),
-        source: FocusSource::Pointer,
+) -> Option<FrameworkDefault> {
+    for node in chain.path().iter().rev().copied() {
+        if !order::focuses_on_press(store, node) {
+            return None;
+        }
+        if order::is_focusable(store, layout, node) {
+            return Some(FrameworkDefault::Focus {
+                node: Some(node),
+                source: FocusSource::Pointer,
+            });
+        }
     }
+
+    Some(FrameworkDefault::Focus {
+        node: None,
+        source: FocusSource::Pointer,
+    })
 }
 
 /// What a release does: activate the element the press landed on, if this release is over it.
@@ -158,20 +174,6 @@ pub fn on_key(
         }
         _ => None,
     }
-}
-
-/// The innermost element of `chain` that can take focus, itself included.
-pub fn nearest_focusable(
-    store: &DocumentStore,
-    layout: Option<&LayoutStore>,
-    chain: &HitChain,
-) -> Option<NodeKey> {
-    chain
-        .path()
-        .iter()
-        .rev()
-        .copied()
-        .find(|node| order::is_focusable(store, layout, *node))
 }
 
 /// The innermost element of `chain` that scrolls, itself included.
@@ -268,10 +270,63 @@ mod tests {
         let chain = HitChain::to_root(document.store(), document.store().key_of(label));
         assert_eq!(
             on_press(document.store(), None, &chain),
-            FrameworkDefault::Focus {
+            Some(FrameworkDefault::Focus {
                 node: Some(document.store().key_of(control)),
                 source: FocusSource::Pointer,
-            }
+            })
+        );
+    }
+
+    #[test]
+    fn pressing_inside_a_control_that_keeps_focus_moves_no_focus() {
+        let (document, [root, control, label]) = document();
+        document
+            .edit(&EverythingMatters, |edit| {
+                edit.set_attribute(
+                    control,
+                    AttrName::new("focusonpress"),
+                    Some(SharedString::from("false")),
+                );
+            })
+            .expect("not poisoned");
+        let store = document.store();
+        assert_eq!(
+            on_press(store, None, &HitChain::to_root(store, store.key_of(label))),
+            None
+        );
+        assert_eq!(
+            on_press(store, None, &HitChain::to_root(store, store.key_of(root))),
+            Some(FrameworkDefault::Focus {
+                node: None,
+                source: FocusSource::Pointer,
+            }),
+            "a press outside the control still takes focus away"
+        );
+    }
+
+    #[test]
+    fn a_control_inside_an_element_that_keeps_focus_still_takes_it() {
+        let (document, [root, control, label]) = document();
+        document
+            .edit(&EverythingMatters, |edit| {
+                edit.set_attribute(
+                    root,
+                    AttrName::new("focusonpress"),
+                    Some(SharedString::from("false")),
+                );
+            })
+            .expect("not poisoned");
+        let store = document.store();
+        assert_eq!(
+            on_press(store, None, &HitChain::to_root(store, store.key_of(label))),
+            Some(FrameworkDefault::Focus {
+                node: Some(store.key_of(control)),
+                source: FocusSource::Pointer,
+            })
+        );
+        assert_eq!(
+            on_press(store, None, &HitChain::to_root(store, store.key_of(root))),
+            None
         );
     }
 
@@ -286,10 +341,10 @@ mod tests {
         let chain = HitChain::to_root(document.store(), document.store().key_of(control));
         assert_eq!(
             on_press(document.store(), None, &chain),
-            FrameworkDefault::Focus {
+            Some(FrameworkDefault::Focus {
                 node: None,
                 source: FocusSource::Pointer,
-            },
+            }),
             "the disabled control is not focusable and neither is the root above it"
         );
         let _ = root;
@@ -391,10 +446,10 @@ mod tests {
         let chain = HitChain::to_root(document.store(), document.store().key_of(label));
         assert_eq!(
             on_press(document.store(), None, &chain),
-            FrameworkDefault::Focus {
+            Some(FrameworkDefault::Focus {
                 node: Some(document.store().key_of(label)),
                 source: FocusSource::Pointer,
-            }
+            })
         );
     }
 
