@@ -15,7 +15,7 @@ mod world;
 use smallvec::SmallVec;
 use zgui_vocab::{
     EventKind, GesturePhase, KeyEvent, Modifiers, Payload, PinchEvent, PointerAction, PointerEvent,
-    Timestamp, WheelEvent,
+    PointerKind, Timestamp, WheelEvent,
 };
 
 use crate::capture::PointerCapture;
@@ -46,7 +46,7 @@ pub struct Routed<'a> {
     pub steps: &'a [Step],
     /// What the framework does about it if no handler says otherwise.
     pub default: Option<FrameworkDefault>,
-    /// Which elements gained or lost `:hover` because of it.
+    /// Which elements the pointer arrived on or left because of it.
     pub hover: Moved,
     /// Which elements gained or lost `:active` because of it.
     pub active: Moved,
@@ -71,6 +71,8 @@ pub struct Router {
     capture: PointerCapture,
     /// Hover, press and focus.
     interaction: Interaction,
+    /// The pointer that last moved the hover, whose kind decides whether a re-test marks `:hover`.
+    hovered_by: Option<zgui_vocab::PointerId>,
     /// The reusable resolved order.
     plan: Plan,
     /// Which element each pointer was pressed on, for deciding activation.
@@ -134,7 +136,7 @@ impl Router {
         // State first, listeners second: a handler that reads a computed style has to see the
         // state its own event produced, and a restyle driven from a bit written afterwards would
         // land a frame late.
-        let hover = self.hover(world, action, &chain);
+        let hover = self.hover(world, action, event, &chain);
         // A scrollbar answers before anything else does, and takes the event away from the rest of
         // the framework's behaviour when it answers at all. It has to: a press on a bar belongs to
         // the element that scrolls, so left to the ordinary path it would take focus off whatever
@@ -323,7 +325,8 @@ impl Router {
             .move_to(world.document, world.filter, &chain, source)
     }
 
-    /// Re-tests what is under each pointer without any pointer having moved, and rewrites hover.
+    /// Re-tests what is under the pointer that last moved the hover, without it having moved, and
+    /// moves the hover.
     ///
     /// A frame that moved a fragment can move something out from under a stationary cursor, and
     /// the pointer that is now over something else will not say so until it is moved again. Run
@@ -333,7 +336,12 @@ impl Router {
     ///
     /// Panics if the document is poisoned by an earlier batch that unwound.
     pub fn rehit(&mut self, world: &World<'_>) -> Moved {
-        let Some((pointer, point)) = self.pointers.all().next() else {
+        // The pointer that moved the hover, because the re-test keeps its kind: a finger held
+        // beside a moving cursor must not have the cursor's `:hover` moved onto it.
+        let hovering = self
+            .hovered_by
+            .and_then(|by| self.pointers.all().find(|(id, _)| *id == by));
+        let Some((pointer, point)) = hovering.or_else(|| self.pointers.all().next()) else {
             return Moved::default();
         };
         // Through the capture, exactly as an event of its own would be. A captured pointer hovers
@@ -343,7 +351,7 @@ impl Router {
         let chain = self.aimed(world, pointer, world.chain_at(point));
         self.interaction
             .hover
-            .move_to(world.document, world.filter, &chain)
+            .retest(world.document, world.filter, &chain)
     }
 
     /// Lets go of whatever is being pressed, and of any pointer capture.
@@ -435,16 +443,28 @@ impl Router {
         }
     }
 
-    /// Applies what this action does to `:hover`.
-    fn hover(&mut self, world: &World<'_>, action: PointerAction, chain: &HitChain) -> Moved {
+    /// Applies what this event does to `:hover`. A finger moves the path and writes no `:hover`.
+    fn hover(
+        &mut self,
+        world: &World<'_>,
+        action: PointerAction,
+        event: &PointerEvent,
+        chain: &HitChain,
+    ) -> Moved {
+        let hover = &mut self.interaction.hover;
         match action {
             PointerAction::Left | PointerAction::Cancelled => {
-                self.interaction.hover.clear(world.document, world.filter)
+                self.hovered_by = None;
+                hover.clear(world.document, world.filter)
             }
-            _ => self
-                .interaction
-                .hover
-                .move_to(world.document, world.filter, chain),
+            _ if event.kind == PointerKind::Touch => {
+                self.hovered_by = Some(event.id);
+                hover.touch(world.document, world.filter, chain)
+            }
+            _ => {
+                self.hovered_by = Some(event.id);
+                hover.move_to(world.document, world.filter, chain)
+            }
         }
     }
 

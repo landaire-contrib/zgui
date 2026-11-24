@@ -85,6 +85,60 @@ pub fn move_bit(
     moved
 }
 
+/// The elements on `to` and not on `from`, and those on `from` and not on `to`, in the order of
+/// [`move_bit`]. Writes nothing. Elements no longer in `document` are left out.
+pub fn crossed(document: &Document, from: &[NodeKey], to: &[NodeKey]) -> Moved {
+    let mut moved = Moved::default();
+    if from == to {
+        return moved;
+    }
+
+    let store = document.store();
+    let live = |key: &&NodeKey| store.index_of(**key).is_some();
+    moved.left.extend(
+        from.iter()
+            .filter(|key| !to.contains(key))
+            .filter(live)
+            .copied(),
+    );
+    moved.entered.extend(
+        to.iter()
+            .filter(|key| !from.contains(key))
+            .filter(live)
+            .copied(),
+    );
+
+    moved
+}
+
+/// Turns `bit` on or off, as `on` says, along `path`, in one batch.
+///
+/// # Panics
+///
+/// Panics if the document is poisoned by an earlier batch that unwound.
+pub fn set_bit(
+    document: &Document,
+    filter: &dyn StyleFilter,
+    bit: UiState,
+    path: &[NodeKey],
+    on: bool,
+) {
+    if path.is_empty() {
+        return;
+    }
+
+    document
+        .edit(filter, |edit| {
+            for key in path {
+                let Some(index) = edit.document().store().index_of(*key) else {
+                    continue;
+                };
+                edit.set_state(index, bit, on);
+            }
+        })
+        .expect("the document is not poisoned");
+}
+
 #[cfg(test)]
 mod tests {
     use zgui_dom::{Document, EverythingMatters, NodeKey};

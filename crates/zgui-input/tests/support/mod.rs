@@ -379,6 +379,28 @@ impl Session {
         );
         routed.chain.path().to_vec()
     }
+
+    /// Routes one finger action at a point, and reports the elements it arrived on and left.
+    pub fn touch_at(
+        &mut self,
+        point: Point<DevicePx, Device>,
+        action: zgui_vocab::PointerAction,
+    ) -> zgui_input::Moved {
+        let mut event =
+            zgui_vocab::PointerEvent::mouse(Point::new(CssPx(point.x.0), CssPx(point.y.0)));
+        event.kind = zgui_vocab::PointerKind::Touch;
+        event.id = zgui_vocab::PointerId::new(1);
+        let filter = self.fixture.filter();
+        let world = self.fixture.world(&filter);
+        let routed = self.router.pointer(
+            &world,
+            action,
+            &event,
+            zgui_vocab::Modifiers::NONE,
+            zgui_vocab::Timestamp::ORIGIN,
+        );
+        routed.hover.clone()
+    }
 }
 
 /// Builds one fixture element and everything below it, through the document's own batch.
