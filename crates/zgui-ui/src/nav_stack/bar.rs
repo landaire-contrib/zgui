@@ -267,12 +267,20 @@ pub(crate) fn NavBarRow(
             short: short_size.get().width,
             chevron,
         });
-        let title = if !bar.shows_title() {
+        let measured = if !bar.shows_title() {
             DevicePx::ZERO
         } else if bar.title_view().is_some() {
             view_size.get().width
         } else {
             title_size.get().width
+        };
+        // The drawn title's edges snap to whole device pixels, and text that loses a fraction of
+        // a pixel ends in an ellipsis, so the title is given its measure rounded up and one pixel
+        // more.
+        let title = if measured > DevicePx::ZERO {
+            DevicePx(measured.0.ceil() + 1.0)
+        } else {
+            measured
         };
         let widths = BarWidths {
             row,
