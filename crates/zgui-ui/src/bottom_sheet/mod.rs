@@ -183,10 +183,10 @@ pub fn BottomSheet(
             let Some(grab) = drag.grab.get_value() else {
                 return;
             };
-            drag.offset.set(Some(grab.geometry.resisted(
-                grab.from + pan.translation().height.0,
-                floor(grab.geometry),
-            )));
+            drag.offset.set(Some(
+                grab.geometry
+                    .resisted(grab.from + pan.translation().height.0, floor(grab.geometry)),
+            ));
         }
         GesturePhase::Ended => {
             drag.framed.set_value(false);

@@ -138,6 +138,12 @@ impl Windows {
         self.commands.set_dock_icon_visible(visible);
     }
 
+    /// Plays `haptic` on the device. Does nothing where the device plays none; see
+    /// [`PlatformCapabilities::haptics`].
+    pub fn play_haptic(&self, haptic: zgui_platform::Haptic) {
+        self.commands.play_haptic(haptic);
+    }
+
     /// Every window that is open, as a snapshot.
     pub fn all(&self) -> Vec<WindowHandle> {
         self.registry.get_untracked()

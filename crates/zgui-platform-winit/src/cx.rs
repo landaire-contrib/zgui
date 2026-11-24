@@ -394,6 +394,13 @@ impl PlatformCx for WinitCx<'_> {
         let _ = visible;
     }
 
+    fn play_haptic(&self, haptic: zgui_platform::Haptic) {
+        #[cfg(target_os = "ios")]
+        crate::ios::haptics::play(haptic);
+        #[cfg(not(target_os = "ios"))]
+        let _ = haptic;
+    }
+
     fn request_exit(&self) {
         self.event_loop.exit();
     }
@@ -463,6 +470,7 @@ fn capabilities(event_loop: &ActiveEventLoop, knows_scheme: bool) -> PlatformCap
     capabilities.window_controls = true;
     capabilities.status_item = cfg!(target_os = "macos");
     capabilities.dock_icon = cfg!(target_os = "macos");
+    capabilities.haptics = cfg!(target_os = "ios");
     capabilities
 }
 

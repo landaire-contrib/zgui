@@ -34,12 +34,11 @@ pub(crate) fn Grabber(
         let to = detents.with_value(|detents| larger(detents, current.get_untracked()));
         on_rest.run(to);
     };
-    let collapse = move || {
-        match detents.with_value(|detents| smaller(detents, current.get_untracked())) {
+    let collapse =
+        move || match detents.with_value(|detents| smaller(detents, current.get_untracked())) {
             Some(to) => on_rest.run(to),
             None => on_dismiss.run(()),
-        }
-    };
+        };
     let toggle = move || {
         let detent = current.get_untracked();
         let largest = detents.with_value(|detents| detents.last().copied());

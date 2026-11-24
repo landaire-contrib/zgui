@@ -197,6 +197,13 @@ pub trait PlatformCx {
         let _ = visible;
     }
 
+    /// Plays `haptic` on the device.
+    ///
+    /// A backend whose device has no haptic engine ignores it, which is what the default does.
+    fn play_haptic(&self, haptic: crate::Haptic) {
+        let _ = haptic;
+    }
+
     /// Asks the loop to finish.
     ///
     /// Nothing stops at once: the loop finishes what it is doing, reports that it is shutting

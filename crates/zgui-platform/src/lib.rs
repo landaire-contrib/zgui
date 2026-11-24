@@ -69,6 +69,7 @@ pub mod clock;
 pub mod cx;
 pub mod error;
 pub mod grab;
+pub mod haptic;
 pub mod menu;
 pub mod monitor;
 pub mod preferences;
@@ -94,6 +95,7 @@ pub use crate::clock::{Clock, VirtualClock};
 pub use crate::cx::PlatformCx;
 pub use crate::error::{PlatformError, Unsupported};
 pub use crate::grab::FocusGrabId;
+pub use crate::haptic::{Haptic, ImpactWeight, Outcome};
 pub use crate::menu::{
     AppMenu, MenuAction, MenuEntry, MenuId, MenuRole, Shortcut, StatusAnchor, StatusIcon,
     StatusItem, StatusPress, Submenu,

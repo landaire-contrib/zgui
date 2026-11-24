@@ -184,15 +184,17 @@ impl Sheet {
             phase,
             origin: Point::<CssPx, Css>::new(CssPx(500.0), CssPx(600.0)),
             position: Point::new(CssPx(500.0), CssPx(600.0 + travel)),
-            velocity: Velocity { x: 0.0, y: velocity },
+            velocity: Velocity {
+                x: 0.0,
+                y: velocity,
+            },
             kind: PointerKind::Touch,
             edge: None,
         };
-        self.harness.window.dispatcher().send_to(
-            body,
-            EventKind::VerticalPan,
-            Payload::Pan(pan),
-        );
+        self.harness
+            .window
+            .dispatcher()
+            .send_to(body, EventKind::VerticalPan, Payload::Pan(pan));
         self.harness.window.frame();
     }
 
@@ -493,7 +495,9 @@ fn the_release_curve_ends_with_the_settle() {
     sheet.release(-100.0, -1200.0);
     let curve = sheet.property("zui-bottom-sheet-ease");
     assert!(
-        curve.as_deref().is_some_and(|curve| curve.starts_with("cubic-bezier(")),
+        curve
+            .as_deref()
+            .is_some_and(|curve| curve.starts_with("cubic-bezier(")),
         "{curve:?}"
     );
 
@@ -557,7 +561,10 @@ fn the_grabber_is_a_control_that_moves_the_sheet() {
     assert_eq!(sheet.resting().as_deref(), Some("medium"));
 
     sheet.harness.press(grabber, NamedKey::ArrowDown);
-    assert!(!sheet.open.get_untracked(), "a collapse at medium closes it");
+    assert!(
+        !sheet.open.get_untracked(),
+        "a collapse at medium closes it"
+    );
 }
 
 #[test]

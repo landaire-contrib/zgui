@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use zgui_geom::{DevicePx, Size};
 use zgui_platform::{
-    AppEvent, ClickSettings, Clipboard, Clock, ColorScheme, FocusGrabId, Lifecycle, MonitorInfo,
-    MotionPreference, PlatformCapabilities, PlatformCx, PlatformError, ScrollSettings,
+    AppEvent, ClickSettings, Clipboard, Clock, ColorScheme, FocusGrabId, Haptic, Lifecycle,
+    MonitorInfo, MotionPreference, PlatformCapabilities, PlatformCx, PlatformError, ScrollSettings,
     StatusAnchor, StatusItem, StatusPress, Surface, SurfaceAttributes, SurfaceId, TextScale,
     VirtualClock, WakeReason, Waker,
 };
@@ -62,6 +62,8 @@ pub struct Headless {
     status_items: Mutex<Vec<Option<StatusItem>>>,
     /// Every Dock icon visibility the application asked for, in order.
     dock_icon: Mutex<Vec<bool>>,
+    /// Every haptic the application played, in order.
+    haptics: Mutex<Vec<Haptic>>,
     /// Whether the loop has been asked to finish.
     exiting: AtomicBool,
     /// Every focus grab that exists, with the surfaces it limits focus to.
@@ -118,6 +120,7 @@ impl Headless {
             click: Mutex::new(ClickSettings::desktop()),
             status_items: Mutex::new(Vec::new()),
             dock_icon: Mutex::new(Vec::new()),
+            haptics: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
             grabs: Mutex::new(Vec::new()),
             next_grab: AtomicU64::new(1),
@@ -233,6 +236,14 @@ impl Headless {
     /// Every Dock icon visibility the application asked for, in order.
     pub fn dock_icon_log(&self) -> Vec<bool> {
         self.dock_icon
+            .lock()
+            .expect("the log is not poisoned")
+            .clone()
+    }
+
+    /// Every haptic the application played, in order.
+    pub fn haptic_log(&self) -> Vec<Haptic> {
+        self.haptics
             .lock()
             .expect("the log is not poisoned")
             .clone()
@@ -510,6 +521,13 @@ impl PlatformCx for Headless {
             .lock()
             .expect("the log is not poisoned")
             .push(visible);
+    }
+
+    fn play_haptic(&self, haptic: Haptic) {
+        self.haptics
+            .lock()
+            .expect("the log is not poisoned")
+            .push(haptic);
     }
 
     fn request_exit(&self) {

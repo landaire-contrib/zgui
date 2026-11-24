@@ -1108,6 +1108,11 @@ impl Runtime {
                         cx.set_dock_icon_visible(visible);
                     }
                 }
+                WindowCommand::Haptic(haptic) => {
+                    if cx.capabilities().haptics {
+                        cx.play_haptic(haptic);
+                    }
+                }
                 WindowCommand::Quit => cx.request_exit(),
             }
         }

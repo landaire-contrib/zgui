@@ -114,6 +114,12 @@ pub struct PlatformCapabilities {
     /// [`PlatformCx::set_dock_icon_visible`](crate::PlatformCx::set_dock_icon_visible) shows or
     /// hides it. An application that lives in the status area hides it while no window shows.
     pub dock_icon: bool,
+    /// Whether the platform offers haptic feedback. A device without haptic hardware plays
+    /// nothing.
+    ///
+    /// Where the platform offers it, [`PlatformCx::play_haptic`](crate::PlatformCx::play_haptic)
+    /// plays it.
+    pub haptics: bool,
 }
 
 impl PlatformCapabilities {
@@ -148,6 +154,7 @@ impl PlatformCapabilities {
             window_controls: false,
             status_item: false,
             dock_icon: false,
+            haptics: false,
         }
     }
 

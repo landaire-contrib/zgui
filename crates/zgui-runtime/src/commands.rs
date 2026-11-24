@@ -188,6 +188,8 @@ pub(crate) enum WindowCommand {
     Zoom(WindowToken),
     /// Show or hide the application's icon in the Dock.
     DockIcon(bool),
+    /// Play a haptic.
+    Haptic(zgui_platform::Haptic),
     /// Stop the application.
     Quit,
 }
@@ -356,6 +358,15 @@ impl WindowCommands {
             .borrow_mut()
             .queue
             .push_back(WindowCommand::DockIcon(visible));
+        self.ping();
+    }
+
+    /// Asks for `haptic` to be played on the device.
+    pub fn play_haptic(&self, haptic: zgui_platform::Haptic) {
+        self.inner
+            .borrow_mut()
+            .queue
+            .push_back(WindowCommand::Haptic(haptic));
         self.ping();
     }
 
