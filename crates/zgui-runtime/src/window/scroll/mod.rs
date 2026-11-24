@@ -393,11 +393,12 @@ impl Window {
                         zgui_geom::DevicePx(-(at.x.0 - from.x.0) * scale),
                         zgui_geom::DevicePx(-(at.y.0 - from.y.0) * scale),
                     );
+                    let layout = self.layout.borrow();
                     let mut scroller = self.scroll.borrow_mut();
                     if takeover || !scroller.is_touching() {
                         scroller.press(&self.panning);
                     }
-                    scroller.steer(travel);
+                    scroller.steer(&layout, &self.panning, travel);
                 }
                 zgui_input::Gesture::PanMove {
                     pointer,

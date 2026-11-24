@@ -3,7 +3,8 @@
 //! A gesture latches to one container at its first movement and moves only that container until it
 //! ends, as AppKit and the browsers do. A list that reaches its end halfway through a gesture then
 //! stretches; the page around it stays still. A gesture that starts clearly along one axis also
-//! rails to that axis.
+//! rails to that axis, if a container under it scrolls along that axis. A rail along an axis that
+//! nothing scrolls along would hold the content still for the whole gesture.
 //!
 //! While the fingers are down, every edge the gesture stretches is gripped: it stays where the
 //! finger put it. When the fingers lift, the edges return.
@@ -16,6 +17,7 @@ use zgui_geom::{Device, DevicePx, Point, Size};
 use zgui_layout::LayoutStore;
 
 use crate::chain;
+use crate::scroller::Overflow;
 use crate::scroller::Scroller;
 use crate::stretch::Stretch;
 
@@ -40,12 +42,13 @@ enum Rail {
 }
 
 impl Rail {
-    /// The rail a gesture whose first movement is `delta` follows.
-    fn for_first(delta: Size<DevicePx, Device>) -> Self {
+    /// The rail a gesture whose first movement is `delta` follows, over containers that overflow
+    /// along the axes of `overflow`.
+    fn for_first(delta: Size<DevicePx, Device>, overflow: Overflow) -> Self {
         let (x, y) = (delta.width.0.abs(), delta.height.0.abs());
-        if y >= x * RAIL_RATIO {
+        if overflow.down && y >= x * RAIL_RATIO {
             Self::Down
-        } else if x >= y * RAIL_RATIO {
+        } else if overflow.across && x >= y * RAIL_RATIO {
             Self::Across
         } else {
             Self::Free
@@ -103,22 +106,29 @@ impl Gesture {
         }
     }
 
-    /// Records that `delta` arrived at `at`, and gives the part of it the rail lets through.
+    /// Records that `delta` arrived at `at` over containers that overflow along the axes that
+    /// `overflow` gives, and gives the part of it the rail lets through.
     pub(crate) fn moved(
         &mut self,
         delta: Size<DevicePx, Device>,
         at: Duration,
+        overflow: impl FnOnce() -> Overflow,
     ) -> Size<DevicePx, Device> {
-        self.aim(delta);
+        self.aim(delta, overflow);
         let along = self.along(delta);
         self.measure(along, at);
         along
     }
 
-    /// Chooses the rail from `travel`, if no movement has chosen it yet.
-    pub(crate) fn aim(&mut self, travel: Size<DevicePx, Device>) {
+    /// Chooses the rail from `travel` over containers that overflow along the axes that
+    /// `overflow` gives, if no movement has chosen it yet.
+    pub(crate) fn aim(
+        &mut self,
+        travel: Size<DevicePx, Device>,
+        overflow: impl FnOnce() -> Overflow,
+    ) {
         if self.rail.is_none() && !chain::negligible(travel) {
-            self.rail = Some(Rail::for_first(travel));
+            self.rail = Some(Rail::for_first(travel, overflow()));
         }
     }
 
@@ -199,7 +209,7 @@ impl Scroller {
         else {
             return self.scroll_by(store, chain, delta, stretch);
         };
-        let delta = gesture.moved(delta, at);
+        let delta = gesture.moved(delta, at, || self.chain_overflows(store, chain));
         if gesture.latched.is_none() && !chain::negligible(delta) {
             gesture.latched = self.latch(store, chain, delta);
         }
@@ -236,7 +246,7 @@ impl Scroller {
         if gesture.stage == Stage::Spent {
             return SmallVec::new();
         }
-        let delta = gesture.moved(delta, at);
+        let delta = gesture.moved(delta, at, || self.chain_overflows(store, chain));
         if gesture.latched.is_none() && !chain::negligible(delta) {
             gesture.latched = self.latch(store, chain, delta);
         }
@@ -293,6 +303,21 @@ impl Scroller {
         let returning = self.lift();
         self.gesture = None;
         returning
+    }
+
+    /// The axes along which some container of `chain` overflows.
+    pub(crate) fn chain_overflows(&self, store: &LayoutStore, chain: &[NodeKey]) -> Overflow {
+        let mut overflow = Overflow {
+            across: false,
+            down: false,
+        };
+        for container in chain {
+            let own = self.overflows(self.hand_limit_for(store, *container));
+            overflow.across |= own.across;
+            overflow.down |= own.down;
+        }
+
+        overflow
     }
 
     /// The container a gesture that first moves by `delta` over `chain` latches to.
@@ -392,6 +417,13 @@ mod tests {
     use zgui_geom::{DevicePx, Size};
 
     use super::{Gesture, Rail};
+    use crate::scroller::Overflow;
+
+    /// Content that overflows along both axes.
+    const BOTH: Overflow = Overflow {
+        across: true,
+        down: true,
+    };
 
     fn by(x: f32, y: f32) -> Size<DevicePx, zgui_geom::Device> {
         Size::new(DevicePx(x), DevicePx(y))
@@ -399,17 +431,35 @@ mod tests {
 
     #[test]
     fn a_gesture_that_starts_clearly_along_one_axis_rails_to_it() {
-        assert_eq!(Rail::for_first(by(3.0, 20.0)), Rail::Down);
-        assert_eq!(Rail::for_first(by(-20.0, 3.0)), Rail::Across);
-        assert_eq!(Rail::for_first(by(10.0, 12.0)), Rail::Free);
+        assert_eq!(Rail::for_first(by(3.0, 20.0), BOTH), Rail::Down);
+        assert_eq!(Rail::for_first(by(-20.0, 3.0), BOTH), Rail::Across);
+        assert_eq!(Rail::for_first(by(10.0, 12.0), BOTH), Rail::Free);
+    }
+
+    #[test]
+    fn a_gesture_does_not_rail_to_an_axis_that_nothing_scrolls_along() {
+        let down = Overflow {
+            across: false,
+            down: true,
+        };
+        assert_eq!(Rail::for_first(by(-20.0, 3.0), down), Rail::Free);
+        assert_eq!(Rail::for_first(by(3.0, 20.0), down), Rail::Down);
+        let across = Overflow {
+            across: true,
+            down: false,
+        };
+        assert_eq!(Rail::for_first(by(3.0, 20.0), across), Rail::Free);
     }
 
     #[test]
     fn a_railed_gesture_drops_the_other_axis_until_it_ends() {
         let mut gesture = Gesture::touching();
-        assert_eq!(gesture.moved(by(1.0, 20.0), Duration::ZERO), by(0.0, 20.0));
         assert_eq!(
-            gesture.moved(by(30.0, 2.0), Duration::from_millis(8)),
+            gesture.moved(by(1.0, 20.0), Duration::ZERO, || BOTH),
+            by(0.0, 20.0)
+        );
+        assert_eq!(
+            gesture.moved(by(30.0, 2.0), Duration::from_millis(8), || BOTH),
             by(0.0, 2.0)
         );
     }
@@ -418,14 +468,14 @@ mod tests {
     fn the_speed_is_measured_from_the_stamps() {
         let mut gesture = Gesture::touching();
         for step in 0..10 {
-            gesture.moved(by(0.0, 10.0), Duration::from_millis(10 * step));
+            gesture.moved(by(0.0, 10.0), Duration::from_millis(10 * step), || BOTH);
         }
         assert!(
             (gesture.velocity.height.0 - 1000.0).abs() < 1.0,
             "{:?}",
             gesture.velocity
         );
-        gesture.moved(by(0.0, 10.0), Duration::from_secs(5));
+        gesture.moved(by(0.0, 10.0), Duration::from_secs(5), || BOTH);
         assert_eq!(gesture.velocity, by(0.0, 0.0), "a stale gap says nothing");
     }
 }

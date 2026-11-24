@@ -353,11 +353,11 @@ const STRAY_RANGE: f32 = 2.0;
 
 /// Which axes of one container overflow its scrollport.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Overflow {
+pub(crate) struct Overflow {
     /// The horizontal axis.
-    across: bool,
+    pub(crate) across: bool,
     /// The vertical axis.
-    down: bool,
+    pub(crate) down: bool,
 }
 
 #[cfg(test)]

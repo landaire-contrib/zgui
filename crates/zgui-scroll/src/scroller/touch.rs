@@ -46,15 +46,22 @@ impl Scroller {
         moving
     }
 
-    /// Chooses the axes the pan of the finger moves, from `travel`: how far the finger went before
-    /// it began to pan.
+    /// Chooses the axes the pan of the finger over `chain` moves, from `travel`: how far the finger
+    /// went before it began to pan.
     ///
     /// A pan begins only once the finger has travelled past the slop, and its first movement is
     /// what remains of the step that crossed it. The whole travel says more about the direction.
-    pub fn steer(&mut self, travel: Size<DevicePx, Device>) {
-        if let Some(gesture) = self.gesture.as_mut() {
-            gesture.aim(travel);
-        }
+    pub fn steer(
+        &mut self,
+        store: &LayoutStore,
+        chain: &[NodeKey],
+        travel: Size<DevicePx, Device>,
+    ) {
+        let Some(mut gesture) = self.gesture else {
+            return;
+        };
+        gesture.aim(travel, || self.chain_overflows(store, chain));
+        self.gesture = Some(gesture);
     }
 
     /// The finger lifted, moving the content at `velocity` device pixels per second.
