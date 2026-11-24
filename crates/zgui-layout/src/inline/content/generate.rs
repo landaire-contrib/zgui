@@ -6,7 +6,10 @@
 //! of spaces, tabs and newlines becomes a single space, a run at the very start of the context or
 //! immediately after a forced break disappears, and so does one at the very end. Under `preserve`
 //! nothing is touched except a tab, which stands for a jump to the next tab stop rather than for a
-//! character of its own.
+//! character of its own, and a carriage return.
+//!
+//! A segment break in a text node is a line feed, a carriage return and line feed pair, or a lone
+//! carriage return. A value that preserves breaks generates each one as one line feed.
 //!
 //! Every one of those is a change to the byte offsets, which is why the map is built as the string
 //! is: this is the only point at which the correspondence is known. The synthetic space a collapsed
@@ -158,11 +161,13 @@ impl Builder {
         for (offset, character) in text.char_indices() {
             let width = character.len_utf8();
             match character {
-                '\n' if newlines => {
-                    self.pending = None;
-                    self.emit(index, offset..offset + width, "\n");
-                    self.interrupt_transform();
-                    self.at_start = true;
+                '\n' if newlines => self.segment_break(index, offset..offset + width),
+                // A carriage return before a line feed is one segment break with it, and a lone one
+                // is a segment break on its own.
+                '\r' if newlines => {
+                    if !text[offset + width..].starts_with('\n') {
+                        self.segment_break(index, offset..offset + width);
+                    }
                 }
                 '\t' if !collapse => {
                     self.flush();
@@ -177,7 +182,6 @@ impl Builder {
                 _ if collapse && is_collapsible(character) => {
                     self.pending.get_or_insert((index, offset));
                 }
-                '\r' => {}
                 _ => {
                     self.flush();
                     self.emit_char(index, offset..offset + width, character, !collapse);
@@ -216,6 +220,15 @@ impl Builder {
         if let Some(transformer) = self.transform.as_mut() {
             transformer.interrupt();
         }
+    }
+
+    /// Emits a preserved segment break from `run`'s bytes at `source` as a line feed, which the
+    /// shaper takes as a forced break.
+    fn segment_break(&mut self, run: usize, source: Range<usize>) {
+        self.pending = None;
+        self.emit(run, source, "\n");
+        self.interrupt_transform();
+        self.at_start = true;
     }
 
     /// Records one inline box at the current offset.

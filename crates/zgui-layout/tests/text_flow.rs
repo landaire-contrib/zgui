@@ -87,6 +87,43 @@ fn a_forced_break_ends_a_line_and_the_next_one_starts_clean() {
 }
 
 #[test]
+fn each_spelling_of_a_segment_break_forces_one_break_where_breaks_are_preserved() {
+    for white_space in [
+        "pre",
+        "pre-wrap",
+        "pre-line",
+        "break-spaces",
+        "normal",
+        "nowrap",
+    ] {
+        let preserved = !matches!(white_space, "normal" | "nowrap");
+        for source in ["a\nb", "a\r\nb", "a\rb"] {
+            let fixture = Fixture::new(
+                Element::new("root").children(vec![Element::new("para").text(source)]),
+                &format!(
+                    "root {{ display: block; width: 400px }}
+                     para {{ display: block; white-space: {white_space} }}"
+                ),
+            );
+            let mut store = fixture.box_tree();
+            let mut content = measurer();
+            lay_out(&mut store, &mut content, 400.0, 600.0);
+            let resolution = store
+                .inline_resolution(inline_root(&store))
+                .expect("laid out");
+            let shaped = content.cache().get(resolution.key).expect("shaped");
+            let (text, lines) = if preserved { ("a\nb", 2) } else { ("a b", 1) };
+            assert_eq!(shaped.text(), text, "{source:?} under {white_space}");
+            assert_eq!(
+                resolution.lines.len(),
+                lines,
+                "{source:?} under {white_space}"
+            );
+        }
+    }
+}
+
+#[test]
 fn every_generated_offset_maps_back_to_the_character_it_came_from() {
     // The map is what every caret, selection and hit test is remapped through, and collapsing is
     // exactly what makes it necessary: the fourth character of the generated string is not the
