@@ -328,7 +328,6 @@ fn a_finger_that_lifts_while_it_pulls_throws_the_edge_on_before_it_returns() {
     screen.press(200.0, 50.0);
     // Twenty pixels each ten milliseconds: the finger lifts at 2000 pixels per second.
     screen.drag(&[
-        (200.0, 55.0),
         (200.0, 70.0),
         (200.0, 90.0),
         (200.0, 110.0),

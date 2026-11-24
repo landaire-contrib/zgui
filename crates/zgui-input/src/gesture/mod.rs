@@ -235,10 +235,12 @@ impl Gestures {
                 read.extend(self.move_pinch());
             }
             PointerAction::Released => {
-                let Some(track) = self.contacts.remove(&event.id) else {
+                let Some(mut track) = self.contacts.remove(&event.id) else {
                     return read;
                 };
                 self.pressed.retain(|id| *id != event.id);
+                // Where it lifted is its last position, which a late lift carries further on.
+                track.passed(event.position, at);
                 if track.is_panning() {
                     read.push(Gesture::PanEnd {
                         pointer: event.id,

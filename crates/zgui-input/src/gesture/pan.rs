@@ -1,9 +1,9 @@
 //! One contact, from touch-down to lift, and the speed it left with.
 //!
-//! The speed follows UIScrollView, which carries on at a speed lower than its pan recogniser
-//! reports, because a finger slows down as it lifts. The weights of the last three steps are the
-//! ones Flutter measured to match it (`IOSScrollViewFlingVelocityTracker`): the oldest of the
-//! three counts most and the newest least.
+//! The speed is the slope of a weighted least-squares line through the positions of the last
+//! 100 ms, in which the weight of a position halves every 10 ms. A fit over several positions
+//! reads the speed of the finger when the stamps of the events are irregular, as they are on a
+//! platform that stamps an event when its busy thread gets to it.
 
 use core::time::Duration;
 
@@ -24,22 +24,13 @@ pub struct Movement {
     pub began_panning: bool,
 }
 
-/// How much each of the last three steps counts in a speed, newest first.
-const WEIGHTS: [f32; 3] = [0.05, 0.35, 0.6];
-
 /// A contact that has not moved for longer than this has stopped.
 ///
 /// A finger that stops and then lifts has no speed left, whatever it moved at before it stopped.
 const AT_REST: Duration = Duration::from_millis(40);
 
-/// How many recent positions a contact keeps: one more than the steps in a speed.
-const SAMPLES: usize = WEIGHTS.len() + 1;
-
-/// Two positions closer together in time than this are one position.
-///
-/// A platform that delivers a batch of moves at once stamps them nearly together, and a step over
-/// no time reads as a speed of thousands of pixels per second.
-const TOGETHER: Duration = Duration::from_millis(1);
+/// How many recent positions a contact keeps: 100 ms of them at 240 Hz.
+const SAMPLES: usize = 24;
 
 /// Where a contact was, and when.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -48,6 +39,17 @@ struct Sample {
     at: Point<CssPx, Css>,
     /// When it was there.
     when: Timestamp,
+}
+
+/// A position in a fit, with how much it counts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Weighted {
+    /// The position.
+    at: Point<CssPx, Css>,
+    /// How long before the newest position it was there, in seconds.
+    age: f32,
+    /// How much it counts.
+    weight: f32,
 }
 
 /// One contact that is down.
@@ -59,8 +61,16 @@ pub struct Track {
     at: Point<CssPx, Css>,
     /// When it went down.
     started: Timestamp,
-    /// Its most recent positions, newest first.
-    samples: [Option<Sample>; SAMPLES],
+
+    /// Its most recent positions, in a ring whose newest entry is at `newest`.
+    samples: [Sample; SAMPLES],
+    /// The index of the newest entry of `samples`.
+    newest: usize,
+    /// How many entries of `samples` hold a position.
+    filled: usize,
+    /// When the last position arrived.
+    arrived: Timestamp,
+
     /// Whether it has travelled past the slop.
     panning: bool,
     /// Whether it has already produced something that rules a tap out.
@@ -72,13 +82,14 @@ pub struct Track {
 impl Track {
     /// A contact that has just gone down at `at`.
     pub fn started(at: Point<CssPx, Css>, when: Timestamp) -> Self {
-        let mut samples = [None; SAMPLES];
-        samples[0] = Some(Sample { at, when });
         Self {
             origin: at,
             at,
             started: when,
-            samples,
+            samples: [Sample { at, when }; SAMPLES],
+            newest: 0,
+            filled: 1,
+            arrived: when,
             panning: false,
             spent: false,
             claimed: false,
@@ -86,27 +97,27 @@ impl Track {
     }
 
     /// Where it went down.
-    pub fn origin(self) -> Point<CssPx, Css> {
+    pub fn origin(&self) -> Point<CssPx, Css> {
         self.origin
     }
 
     /// Where it is now.
-    pub fn at(self) -> Point<CssPx, Css> {
+    pub fn at(&self) -> Point<CssPx, Css> {
         self.at
     }
 
     /// Whether it is dragging.
-    pub fn is_panning(self) -> bool {
+    pub fn is_panning(&self) -> bool {
         self.panning
     }
 
     /// Whether it has already meant something that a tap cannot follow.
-    pub fn is_spent(self) -> bool {
+    pub fn is_spent(&self) -> bool {
         self.spent
     }
 
     /// Whether a long press is still possible for it.
-    pub fn may_become_long_press(self) -> bool {
+    pub fn may_become_long_press(&self) -> bool {
         !self.panning && !self.spent
     }
 
@@ -140,26 +151,30 @@ impl Track {
         }
     }
 
-    /// Records that it passed through `at` on its way to its next move, which counts towards its
-    /// speed only.
+    /// Records that it passed through `at` on its way to its next move, or lifted there, which
+    /// counts towards its speed only.
     ///
     /// A queue that folds several moves into one keeps the positions of the folded ones, and each
-    /// is a step of the speed.
+    /// is a sample of the speed. A position equal to the newest one is not a sample, so the time
+    /// since the contact last moved is the age of the newest sample.
     pub fn passed(&mut self, at: Point<CssPx, Css>, when: Timestamp) {
-        // A position that arrives together with the newest sample takes its place and keeps its
-        // stamp, so a fast run of moves still steps on at least once a millisecond.
-        match self.samples[0] {
-            Some(newest) if when.saturating_since(newest.when) < TOGETHER => {
-                self.samples[0] = Some(Sample {
-                    at,
-                    when: newest.when,
-                });
-            }
-            _ => {
-                self.samples.rotate_right(1);
-                self.samples[0] = Some(Sample { at, when });
-            }
+        // A touch screen samples a contact every 4 ms at the most often. Positions that arrive
+        // less than 1 ms apart were held in a queue, and their stamps tell when the queue was
+        // emptied: they are one position, at the first of those stamps.
+        const QUEUED: Duration = Duration::from_millis(1);
+
+        let queued = when.saturating_since(self.arrived) < QUEUED;
+        self.arrived = when;
+        if self.samples[self.newest].at == at {
+            return;
         }
+        if queued {
+            self.samples[self.newest].at = at;
+            return;
+        }
+        self.newest = (self.newest + 1) % SAMPLES;
+        self.samples[self.newest] = Sample { at, when };
+        self.filled = (self.filled + 1).min(SAMPLES);
     }
 
     /// Whether it has now been held long enough to be a long press, marking it spent if so.
@@ -175,41 +190,162 @@ impl Track {
     }
 
     /// How long until it becomes a long press, if it still can.
-    pub fn long_press_in(self, now: Timestamp) -> Option<Duration> {
+    pub fn long_press_in(&self, now: Timestamp) -> Option<Duration> {
         self.may_become_long_press()
             .then(|| LONG_PRESS.saturating_sub(now.saturating_since(self.started)))
     }
 
-    /// How fast it is travelling at `now`, from its last three steps.
+    /// How fast it is travelling at `now`, from its recent positions.
     ///
-    /// A step that is missing, or that took no time, counts as no speed. A step that took longer
-    /// than 40 ms spans a stop, and it and the steps before it count as no speed.
-    pub fn velocity(self, now: Timestamp) -> Velocity {
-        let Some(newest) = self.samples[0] else {
-            return Velocity::default();
-        };
+    /// The speed is the slope of a weighted least-squares line through the positions since the
+    /// contact last stopped, back to 100 ms before the newest one, and at least two of them. A
+    /// contact that has not moved for 40 ms has no speed. A position far from the line is an
+    /// outlier, and the line is fitted again without it.
+    pub fn velocity(&self, now: Timestamp) -> Velocity {
+        // A position farther from the line than this many times the spread of the fit is an
+        // outlier.
+        const OUTLIER: f32 = 3.0;
+        // The least distance from the line, in CSS pixels, at which a position is an outlier. A
+        // fit through positions on one line has no spread.
+        const LEAST_OUTLIER: f32 = 1.0;
+
+        let newest = self.samples[self.newest];
         if now.saturating_since(newest.when) > AT_REST {
             return Velocity::default();
         }
 
-        let mut velocity = Velocity::default();
-        for (step, weight) in WEIGHTS.iter().enumerate() {
-            let (Some(end), Some(start)) = (self.samples[step], self.samples[step + 1]) else {
+        let mut recent = [Weighted {
+            at: newest.at,
+            age: 0.0,
+            weight: 0.0,
+        }; SAMPLES];
+        let recent = self.recent(&mut recent);
+        let Some(fit) = Fit::through(recent.iter().copied()) else {
+            return Velocity::default();
+        };
+        let tolerance = (OUTLIER * fit.spread).max(LEAST_OUTLIER);
+        let kept = recent
+            .iter()
+            .copied()
+            .filter(|position| fit.miss(position) <= tolerance);
+
+        Fit::through(kept).unwrap_or(fit).velocity
+    }
+
+    /// Fills `into` with the positions a speed is measured from, newest first, and returns them.
+    ///
+    /// They are the positions back to the horizon, and at least two, so that a contact whose
+    /// events stalled for longer than the horizon still has a speed. They stop at a gap of more
+    /// than 40 ms over which the contact moved less than the slop: it stood still there.
+    fn recent<'a>(&self, into: &'a mut [Weighted; SAMPLES]) -> &'a [Weighted] {
+        // How far back the positions go.
+        const HORIZON: Duration = Duration::from_millis(100);
+        // The age at which a position counts half as much as the newest one. Short enough that a
+        // slow drag that ended in a flick reads as a flick, and long enough that one late stamp
+        // does not.
+        const HALF_LIFE: Duration = Duration::from_millis(10);
+
+        let decay = core::f32::consts::LN_2 / HALF_LIFE.as_secs_f32();
+        let newest = self.samples[self.newest];
+        let mut later = newest;
+        let mut count = 0;
+        for back in 0..self.filled {
+            let sample = self.samples[(self.newest + SAMPLES - back) % SAMPLES];
+            let age = newest.when.saturating_since(sample.when);
+            if count >= 2 && age > HORIZON {
                 break;
+            }
+            let held = later.when.saturating_since(sample.when) > AT_REST
+                && !travelled(sample.at, later.at);
+            if held {
+                break;
+            }
+            let age = age.as_secs_f32();
+            into[count] = Weighted {
+                at: sample.at,
+                age,
+                weight: (-decay * age).exp(),
             };
-            let took = end.when.saturating_since(start.when);
-            if took > AT_REST {
-                break;
-            }
-            let seconds = took.as_secs_f32();
-            if seconds <= 0.0 {
-                continue;
-            }
-            velocity.x += weight * (end.at.x.0 - start.at.x.0) / seconds;
-            velocity.y += weight * (end.at.y.0 - start.at.y.0) / seconds;
+            count += 1;
+            later = sample;
         }
 
-        velocity
+        &into[..count]
+    }
+}
+
+/// A weighted least-squares line through positions against their ages.
+#[derive(Clone, Copy, Debug)]
+struct Fit {
+    /// The slope of the line, forwards in time.
+    velocity: Velocity,
+    /// The weighted mean age, in seconds, at which the line passes through `centre`.
+    age: f32,
+    /// The weighted mean position.
+    centre: Point<CssPx, Css>,
+    /// The weighted root mean square distance of the positions from the line, in CSS pixels.
+    spread: f32,
+}
+
+impl Fit {
+    /// The line through `positions`. Nothing when they span less than a millisecond, over which
+    /// no speed can be told.
+    fn through(positions: impl Iterator<Item = Weighted> + Clone) -> Option<Self> {
+        // The least span of the ages, in seconds.
+        const LEAST_SPAN: f32 = 0.001;
+
+        let mut weight = 0.0;
+        let (mut age, mut x, mut y) = (0.0, 0.0, 0.0);
+        let (mut newest, mut oldest) = (f32::INFINITY, f32::NEG_INFINITY);
+        for position in positions.clone() {
+            newest = newest.min(position.age);
+            oldest = oldest.max(position.age);
+            weight += position.weight;
+            age += position.weight * position.age;
+            x += position.weight * position.at.x.0;
+            y += position.weight * position.at.y.0;
+        }
+        if weight <= 0.0 || oldest - newest < LEAST_SPAN {
+            return None;
+        }
+        let (age, x, y) = (age / weight, x / weight, y / weight);
+
+        let (mut ages, mut across, mut down) = (0.0, 0.0, 0.0);
+        for position in positions.clone() {
+            let off = position.age - age;
+            ages += position.weight * off * off;
+            across += position.weight * off * (position.at.x.0 - x);
+            down += position.weight * off * (position.at.y.0 - y);
+        }
+        if ages <= 0.0 {
+            return None;
+        }
+        // Age runs backwards in time, so the slope over age is the velocity reversed.
+        let velocity = Velocity {
+            x: -across / ages,
+            y: -down / ages,
+        };
+
+        let mut fit = Self {
+            velocity,
+            age,
+            centre: Point::new(CssPx(x), CssPx(y)),
+            spread: 0.0,
+        };
+        let squares: f32 = positions
+            .map(|position| position.weight * fit.miss(&position).powi(2))
+            .sum();
+        fit.spread = (squares / weight).sqrt();
+
+        Some(fit)
+    }
+
+    /// How far, in CSS pixels, `position` is from the line.
+    fn miss(&self, position: &Weighted) -> f32 {
+        let later = self.age - position.age;
+        let x = self.centre.x.0 + self.velocity.x * later;
+        let y = self.centre.y.0 + self.velocity.y * later;
+        (position.at.x.0 - x).hypot(position.at.y.0 - y)
     }
 }
 
@@ -282,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn moves_stamped_together_are_one_position() {
+    fn moves_stamped_together_still_read_the_speed() {
         let mut track = Track::started(at(0.0, 0.0), stamp(0));
         for step in 1..=3 {
             track.moved(at(0.0, step as f32 * 10.0), stamp(step * 10));
@@ -300,18 +436,74 @@ mod tests {
     }
 
     #[test]
-    fn the_oldest_of_the_last_three_steps_counts_most() {
+    fn a_burst_after_a_stall_longer_than_the_horizon_reads_the_speed_over_the_stall() {
+        // A finger at 1500 px/s. Its samples from 48 to 240 ms wait for a busy thread, and arrive
+        // 0.3 ms apart from 240 ms on.
         let mut track = Track::started(at(0.0, 0.0), stamp(0));
-        // Steps at 3000, 2000, 1000 and then 500 pixels per second.
-        track.moved(at(0.0, 30.0), stamp(10));
-        track.moved(at(0.0, 50.0), stamp(20));
-        track.moved(at(0.0, 60.0), stamp(30));
-        track.moved(at(0.0, 65.0), stamp(40));
-        let velocity = track.velocity(stamp(40));
-        let expected = 0.05 * 500.0 + 0.35 * 1000.0 + 0.6 * 2000.0;
+        for step in 1..=5_u64 {
+            track.moved(at(0.0, step as f32 * 12.0), stamp(step * 8));
+        }
+        let micros = |micros: u64| Timestamp::from_origin(Duration::from_micros(micros));
+        let mut when = stamp(240);
+        for (index, step) in (6..=30_u64).enumerate() {
+            when = micros(240_000 + index as u64 * 300);
+            track.moved(at(0.0, step as f32 * 12.0), when);
+        }
+        let velocity = track.velocity(when);
         assert!(
-            (velocity.y - expected).abs() < 0.01,
-            "read {velocity:?}, expected {expected}"
+            (velocity.y - 1500.0).abs() < 1500.0 * 0.05,
+            "a finger at 1500 px/s read {} px/s",
+            velocity.y
+        );
+    }
+
+    #[test]
+    fn late_stamps_still_read_the_speed() {
+        // A finger at 1500 px/s sampled every 8 ms, each sample stamped up to 7 ms late.
+        let lateness = [0, 6, 1, 7, 0, 5, 7, 2, 0, 6, 3, 7, 1];
+        for shift in 0..lateness.len() {
+            let mut track = Track::started(at(0.0, 0.0), stamp(0));
+            let mut when = stamp(0);
+            for step in 1..=12_u64 {
+                when = stamp(step * 8 + lateness[(step as usize + shift) % lateness.len()]);
+                track.moved(at(0.0, step as f32 * 12.0), when);
+            }
+            let velocity = track.velocity(when);
+            assert!(
+                (velocity.y - 1500.0).abs() < 1500.0 * 0.15,
+                "a finger at 1500 px/s read {} px/s",
+                velocity.y
+            );
+        }
+    }
+
+    #[test]
+    fn a_long_gap_in_which_the_finger_moved_counts() {
+        // The samples between 40 and 88 ms arrive as one, at 88 ms.
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        for step in (1..=5).chain(11..=13) {
+            track.moved(at(0.0, step as f32 * 12.0), stamp(step * 8));
+        }
+        let velocity = track.velocity(stamp(104));
+        assert!(
+            (velocity.y - 1500.0).abs() < 1.0,
+            "a finger at 1500 px/s read {} px/s",
+            velocity.y
+        );
+    }
+
+    #[test]
+    fn a_position_far_off_the_line_is_left_out() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        for step in 1..=12_u64 {
+            let jump = if step == 10 { 25.0 } else { 0.0 };
+            track.moved(at(0.0, step as f32 * 12.0 + jump), stamp(step * 8));
+        }
+        let velocity = track.velocity(stamp(96));
+        assert!(
+            (velocity.y - 1500.0).abs() < 1500.0 * 0.1,
+            "a finger at 1500 px/s with one stray position read {} px/s",
+            velocity.y
         );
     }
 
@@ -328,7 +520,7 @@ mod tests {
         }
         let velocity = track.velocity(stamp(540));
         assert!(
-            (velocity.y - 2000.0).abs() < 0.01,
+            (velocity.y - 2000.0).abs() < 2000.0 * 0.05,
             "the flick read {} px/s; the slow drag before it counted",
             velocity.y
         );
@@ -362,6 +554,17 @@ mod tests {
             Velocity::default(),
             "held for 50 ms"
         );
+    }
+
+    #[test]
+    fn a_finger_that_stops_and_lifts_beside_where_it_stopped_has_no_speed() {
+        let mut track = Track::started(at(0.0, 0.0), stamp(0));
+        for step in 1..=6_u64 {
+            track.moved(at(0.0, step as f32 * 12.0), stamp(step * 8));
+        }
+        // Held for 60 ms, then lifted half a pixel away.
+        track.passed(at(0.0, 72.5), stamp(108));
+        assert_eq!(track.velocity(stamp(108)), Velocity::default());
     }
 
     #[test]
